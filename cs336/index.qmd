@@ -1,0 +1,20 @@
+---
+title: CS336
+author: jshn9515
+date: 2026-07-17
+date-modified: today
+page-layout: full
+comments: false
+
+listing:
+  contents:
+    - "assignment*/*.qmd"
+  sort: order asc
+  type: table
+  fields: [title, author, date]
+  date-format: iso
+
+open-graph:
+  title: cs336-llm-from-scratch
+  description: "Stanford CS336: Language Modeling from Scratch"
+---
