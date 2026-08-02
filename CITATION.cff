@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use these deep learning notes, please cite them as below."
+title: "Deep Learning Notes: Personal deep learning study notes and tutorial-style notebooks"
+type: software
+authors:
+  - family-names: Lin
+    given-names: Yunjie
+repository-code: "https://github.com/jshn9515/deep-learning-notes"
+url: "https://jshn9515.github.io/deep-learning-notes/"
+abstract: >-
+  A collection of tutorial-style deep learning notes and notebooks that explain
+  core concepts, classic models, PyTorch implementation details, efficient deep
+  learning systems, modern computer vision models, and natural language processing.
+keywords:
+  - deep learning
+  - machine learning
+  - PyTorch
+  - computer vision
+  - natural language processing
+license: CC-BY-NC-4.0
+date-released: 2026-03-15
