@@ -1,0 +1,2 @@
+# TODO: Remove this when the Windows asyncio policy deprecation warning is resolved.
+PYTHONWARNINGS="ignore::DeprecationWarning"

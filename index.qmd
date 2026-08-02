@@ -1,0 +1,24 @@
+---
+title: "Deep Learning Notes"
+format: html
+author: jshn9515
+date: 2026-03-19
+date-modified: today
+page-layout: full
+comments: false
+---
+
+<script>
+var lang = navigator.language || navigator.userLanguage;
+
+if (lang.startsWith('zh')) {
+  window.location.href = "zh/index.html";
+} else {
+  window.location.href = "en/index.html";
+}
+</script>
+
+Choose language:
+
+- [中文](zh/index.html)
+- [English](en/index.html)

@@ -1,0 +1,105 @@
+project:
+  type: book
+  output-dir: "_typst/en"
+  render:
+    - "*.qmd"
+  post-render:
+    - "utils/rename_pdfs.py"
+
+execute:
+  enabled: false
+
+format:
+  typst:
+    lang: en
+    toc: true
+    toc-depth: 2
+    toc-indent: 0em
+    wrap: none
+    engine: jupyter
+    papersize: a4
+    fig-cap-location: bottom
+    tbl-cap-location: top
+    code-annotations: below
+    citeproc: true
+    bibliographystyle: ieee
+    citation-location: document
+    syntax-highlighting: idiomatic
+    include-before-body:
+      - "utils/typst-header-en.typ"
+
+book:
+  chapters:
+    - index.qmd
+    - part: "Chapter 1: Introduction to Deep Learning"
+      chapters:
+        - "en/ch1-introduction/ch1.1-neural-network.qmd"
+        - "en/ch1-introduction/ch1.3-computation-graph.qmd"
+    - part: "Chapter 2: Getting Started with PyTorch"
+      chapters:
+        - "en/ch2-pytorch-introduction/ch2.1-automatic-differentiation.qmd"
+        - "en/ch2-pytorch-introduction/ch2.2-autograd-contexts.qmd"
+        - "en/ch2-pytorch-introduction/ch2.3-dataset-and-dataloader.qmd"
+        - "en/ch2-pytorch-introduction/ch2.4-nn-module.qmd"
+        - "en/ch2-pytorch-introduction/ch2.5-optimizer.qmd"
+        - "en/ch2-pytorch-introduction/ch2.6-training-loop.qmd"
+        - "en/ch2-pytorch-introduction/ch2.7-checkpoint-resuming.qmd"
+    - part: "Chapter 3: Multi-Layer Perceptron: From Single Layer to Deep Nonlinear Modeling"
+      chapters:
+        - "en/ch3-multi-layer-perceptron/ch3.1-from-linear-model-to-mlp.qmd"
+        - "en/ch3-multi-layer-perceptron/ch3.2-activation-functions.qmd"
+        - "en/ch3-multi-layer-perceptron/ch3.3-softmax-cross-entropy.qmd"
+        - "en/ch3-multi-layer-perceptron/ch3.4-linear-layer.qmd"
+        - "en/ch3-multi-layer-perceptron/ch3.5-mlp-from-scratch.qmd"
+        - "en/ch3-multi-layer-perceptron/ch3.6-train-mlp-on-mnist.qmd"
+        - "en/ch3-multi-layer-perceptron/ch3.7-gradient-checking.qmd"
+        - "en/ch3-multi-layer-perceptron/ch3.8-mlp-with-pytorch.qmd"
+    - part: "Chapter 4: Optimization Algorithms: How Neural Networks Update Parameters"
+      chapters:
+        - "en/ch4-optimization-algorithms/ch4.1-gradient-descent.qmd"
+        - "en/ch4-optimization-algorithms/ch4.2-momentum-nesterov.qmd"
+        - "en/ch4-optimization-algorithms/ch4.3-adagrad.qmd"
+        - "en/ch4-optimization-algorithms/ch4.4-rmsprop-adadelta.qmd"
+        - "en/ch4-optimization-algorithms/ch4.5-adam.qmd"
+        - "en/ch4-optimization-algorithms/ch4.6-adamw.qmd"
+        - "en/ch4-optimization-algorithms/ch4.7-muon.qmd"
+        - "en/ch4-optimization-algorithms/ch4.8-optimizer-practice.qmd"
+        - "en/ch4-optimization-algorithms/ch4.9-learning-rate-schedulers.qmd"
+    - part: "Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
+      chapters:
+        - "en/ch9-attention-and-transformer/ch9.1-bahdanau-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.2-cross-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.3-self-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.4-multi-head-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.5-positional-encoding.qmd"
+        - "en/ch9-attention-and-transformer/ch9.6-transformer-encoder.qmd"
+        - "en/ch9-attention-and-transformer/ch9.7-transformer-decoder.qmd"
+        - "en/ch9-attention-and-transformer/ch9.8-encoder-decoder-transformer.qmd"
+        - "en/ch9-attention-and-transformer/ch9.9-kv-cache.qmd"
+        - "en/ch9-attention-and-transformer/ch9.10-transformer-architectures.qmd"
+        - "en/ch9-attention-and-transformer/ch9.11-hugging-face-transformers-api.qmd"
+    - part: "Chapter 10: Efficient Attention Implementations: From Memory-Efficient Attention to FlashAttention"
+      chapters:
+        - "en/ch10-efficient-attention/ch10.1-attention-is-io-bound.qmd"
+        - "en/ch10-efficient-attention/ch10.2-flash-attention-v1.qmd"
+    - part: "Chapter 11: Vision Transformer: From Image Classification to Visual Sequence Modeling"
+      chapters:
+        - "en/ch11-vision-transformers/ch11.1-from-cnn-to-vit.qmd"
+        - "en/ch11-vision-transformers/ch11.2-patch-embedding.qmd"
+        - "en/ch11-vision-transformers/ch11.3-positional-embedding.qmd"
+        - "en/ch11-vision-transformers/ch11.4-vit-encoder.qmd"
+        - "en/ch11-vision-transformers/ch11.5-vit-as-backbone.qmd"
+    - part: "Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation"
+      chapters:
+        - "en/ch13-autoencoders-and-vaes/ch13.1-autoencoder.qmd"
+        - "en/ch13-autoencoders-and-vaes/ch13.2-variational-autoencoder.qmd"
+        - "en/ch13-autoencoders-and-vaes/ch13.3-elbo-vae-objective.qmd"
+        - "en/ch13-autoencoders-and-vaes/ch13.4-vae-training-phenomena.qmd"
+        - "en/ch13-autoencoders-and-vaes/ch13.5-vae-limitations-and-future-directions.qmd"
+    - part: "Chapter 14: Diffusion Models: From Denoising to Generation"
+      chapters:
+        - "en/ch14-diffusion-models/ch14.1-ddpm-basics.qmd"
+        - "en/ch14-diffusion-models/ch14.2-ddpm-forward.qmd"
+        - "en/ch14-diffusion-models/ch14.3-ddpm-reverse.qmd"
+        - "en/ch14-diffusion-models/ch14.4-ddpm-design-and-sampling.qmd"
+        - "en/ch14-diffusion-models/ch14.5-elbo-for-ddpm.qmd"

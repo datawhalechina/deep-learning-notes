@@ -1,0 +1,146 @@
+project:
+  type: website
+  output-dir: _site
+  render:
+    - "*.qmd"
+  post-render:
+    - "utils/clean_checkpoints.py"
+    - "utils/generate_toc.py"
+
+execute:
+  jupyter: python3
+  freeze: auto
+  cache: true
+
+format:
+  html:
+    theme:
+      - cosmo
+      - brand
+    grid:
+      sidebar-width: 250px
+      body-width: 850px
+      margin-width: 250px
+    css: styles.css
+    toc: true
+    syntax-highlighting: github
+    code-annotations: hover
+    license: CC BY-NC
+
+website:
+  title: deep-learning-notes
+  search: true
+  back-to-top-navigation: false
+  page-navigation: true
+  repo-url: https://github.com/jshn9515/deep-learning-notes
+  repo-actions: [source, issue, edit]
+  open-graph:
+    locale: en_US
+    site-name: deep-learning-notes
+  comments:
+    giscus:
+      repo: jshn9515/deep-learning-notes
+      repo-id: R_kgDOSIPXtQ
+      category: Announcements
+      category-id: DIC_kwDOSIPXtc4C7Uuj
+      mapping: og:title
+      loading: lazy
+      input-position: top
+      language: en
+  navbar:
+    left:
+      - text: CS336
+        href: cs336/index.qmd
+    right:
+      - text: 中文
+        href: zh/
+      - text: English
+        href: en/
+  sidebar:
+    - id: cs336
+      title: "CS336: Language Modeling from Scratch"
+      style: floating
+      contents:
+        - href: "cs336/index.qmd"
+          text: Overview
+        - "cs336/assignment1/assignment1.qmd"
+    - id: zh
+      style: floating
+      contents:
+        - section: "Part 1: 深度学习基础"
+          contents:
+            - section: "Chapter 1: 深度学习简介"
+              contents: "zh/ch1-introduction/*.qmd"
+            - section: "Chapter 2: PyTorch 入门"
+              contents: "zh/ch2-pytorch-introduction/*.qmd"
+            - section: "Chapter 3: 多层感知机：从单层到深层的非线性建模"
+              contents: "zh/ch3-multi-layer-perceptron/*.qmd"
+            - section: "Chapter 4: 优化算法：神经网络如何更新参数"
+              contents: "zh/ch4-optimization-algorithms/*.qmd"
+        - section: "Part 2: 卷积神经网络"
+          contents:
+            - section: "Chapter 5: 卷积神经网络：从局部感知到全局建模"
+              contents: "zh/ch5-convolutional-neural-network/*.qmd"
+            - section: "Chapter 7: 正则化与归一化：让深层网络更稳定"
+              contents: "zh/ch7-regularization-and-normalization/*.qmd"
+        - section: "Part 4: Attention 机制与 Transformer"
+          contents:
+            - section: "Chapter 9: Attention 与 Transformer：从动态检索到序列建模"
+              contents: "zh/ch9-attention-and-transformer/*.qmd"
+            - section: "Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention"
+              contents: "zh/ch10-efficient-attention/*.qmd"
+        - section: "Part 5: 现代计算机视觉"
+          contents:
+            - section: "Chapter 11: Vision Transformer：从图像分类到视觉序列建模"
+              contents: "zh/ch11-vision-transformers/*.qmd"
+        - section: "Part 6: 生成模型"
+          contents:
+            - section: "Chapter 12: GAN：在对抗中学习生成"
+              contents: "zh/ch12-generative-adversarial-networks/*.qmd"
+            - section: "Chapter 13: VAE：从压缩重建到概率生成"
+              contents: "zh/ch13-autoencoders-and-vaes/*.qmd"
+            - section: "Chapter 14: Diffusion Models：从去噪到生成"
+              contents: "zh/ch14-diffusion-models/*.qmd"
+        - section: "Part 7: 多模态学习"
+          contents:
+            - section: "Chapter 15: 视觉语言模型：从图文对齐到多模态对话"
+              contents: "zh/ch15-vision-language-models/*.qmd"
+        - section: "Part 8: LLM 基础：以 GPT-2 为例"
+          contents:
+            - section: "Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构"
+              contents: "zh/ch18-gpt2-from-scratch/*.qmd"
+    - id: en
+      style: floating
+      contents:
+        - section: "Part 1: Deep Learning Fundamentals"
+          contents:
+            - section: "Chapter 1: Introduction to Deep Learning"
+              contents: "en/ch1-introduction/*.qmd"
+            - section: "Chapter 2: Getting Started with PyTorch"
+              contents: "en/ch2-pytorch-introduction/*.qmd"
+            - section: "Chapter 3: Multi-Layer Perceptron: From Single Layer to Deep Nonlinear Modeling"
+              contents: "en/ch3-multi-layer-perceptron/*.qmd"
+            - section: "Chapter 4: Optimization Algorithms: How Neural Networks Update Parameters"
+              contents: "en/ch4-optimization-algorithms/*.qmd"
+        - section: "Part 4: Attention Mechanism and Transformer"
+          contents:
+            - section: "Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
+              contents: "en/ch9-attention-and-transformer/*.qmd"
+            - section: "Chapter 10: Efficient Attention Implementations: From Memory-Efficient Attention to FlashAttention"
+              contents: "en/ch10-efficient-attention/*.qmd"
+        - section: "Part 5: Modern Computer Vision"
+          contents:
+            - section: "Chapter 11: Vision Transformer: From Image Classification to Visual Sequence Modeling"
+              contents: "en/ch11-vision-transformers/*.qmd"
+        - section: "Part 6: Generative Models"
+          contents:
+            - section: "Chapter 12: GAN: Learning to Generate through Adversarial Training"
+              contents: "en/ch12-generative-adversarial-networks/*.qmd"
+            - section: "Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation"
+              contents: "en/ch13-autoencoders-and-vaes/*.qmd"
+            - section: "Chapter 14: Diffusion Models: From Denoising to Generation"
+              contents: "en/ch14-diffusion-models/*.qmd"
+        - section: "Part 7: Multimodal Learning"
+          contents:
+            - section: "Chapter 15: Vision-Language Models: From Image-Text Alignment to Multimodal Dialogue"
+              contents: "en/ch15-vision-language-models/*.qmd"

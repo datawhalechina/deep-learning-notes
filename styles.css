@@ -1,0 +1,125 @@
+/* make quarto title metadata in the same line */
+.quarto-title-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) !important;
+  column-gap: 1.5rem;
+  row-gap: 0.75rem;
+}
+
+.quarto-title-meta > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: auto;
+  max-width: none;
+  flex: none;
+  margin: 0;
+}
+
+.quarto-title-meta-heading,
+.quarto-title-meta-contents,
+.quarto-title-meta-contents p {
+  display: inline;
+  margin: 0;
+}
+
+.quarto-title-block .quarto-title-banner,
+.quarto-title-block .quarto-title {
+  margin-bottom: 0.8rem;
+}
+
+/* make images responsive and fit within the container */
+img {
+  max-width: 100%;
+}
+
+img:not([height]):not([style*="height"]) {
+  height: auto;
+}
+
+/* make code blocks wrap and be scrollable if too wide */
+.cell-output pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow-x: visible;
+  max-width: 100%;
+}
+
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cell-output pre code {
+  white-space: inherit;
+}
+
+pre code {
+  white-space: inherit;
+}
+
+/* style for blockquotes */
+blockquote {
+  margin: 1rem 0;
+  padding: 0.7rem 1.2rem;
+  background-color: #eef5f2;
+  border-left: 6px solid #35c27c;
+  border-radius: 0;
+  color: #616161;
+  font-size: 1.5rem;
+  line-height: 1.7;
+}
+
+blockquote,
+blockquote p,
+blockquote strong {
+  color: #616161;
+}
+
+blockquote p {
+  margin: 0;
+}
+
+blockquote strong {
+  font-weight: 500;
+}
+
+/* center table content */
+table th,
+table td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* center figures in cell outputs */
+.cell-output-display figure {
+  text-align: center;
+}
+
+.cell-output-display figure img {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* center figure captions in quarto documents */
+.quarto-figure-center {
+  text-align: center;
+}
+
+.quarto-figure-center figure {
+  display: inline-block;
+}
+
+.quarto-figure-center figcaption {
+  text-align: center;
+}
+
+/* style for plaintext blocks */
+pre.text {
+  background-color: #f1f3f5;
+  padding: 12px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
