@@ -7,6 +7,7 @@ open-graph:
   description: "CS336 Assignment 1 Writeup: Building a Transformer LM"
 title: "CS336 Assignment 1：从零实现一个小型语言模型"
 order: 1
+eval: false
 ---
 
 这一部分对应 CS336 Assignment 1：从零实现一个小型语言模型。
