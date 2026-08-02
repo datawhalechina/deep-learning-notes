@@ -1,0 +1,604 @@
+---
+author: jshn9515
+date: 2026-05-23
+date-modified: 2026-05-23
+open-graph:
+  title: ch2.3-dataset-and-dataloader
+  description: "2.3 Data Loading in PyTorch: Dataset, DataLoader, and Batching"
+title: "2.3 Data Loading in PyTorch: Dataset, DataLoader, and Batching"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch2-pytorch-introduction/ch2.3-dataset-and-dataloader.ipynb){fig-align="left"}
+
+In the previous two sections, we discussed PyTorch's automatic differentiation mechanism. We know that the forward pass builds a computation graph, and backpropagation sends gradients back along that graph; we also know that during validation and inference, `no_grad()` or `inference_mode()` can be used to disable gradient recording.
+
+But a complete training process is not only about models and gradients. There is a more fundamental question: where does the data come from?
+
+In the simplest examples, we can directly write a tensor by hand:
+
+```python
+X = torch.randn(1000, 10)
+y = torch.randn(1000, 1)
+```
+
+Then slice it ourselves during each training step:
+
+```python
+batch_size = 32
+
+X_batch = X[:batch_size]
+y_batch = y[:batch_size]
+```
+
+This certainly works, but we quickly run into many questions: what if the data needs to be shuffled? What if the last batch has fewer than 32 samples? What if the data is not a tensor, but a collection of image files? What if each sample has a different length and cannot be directly stacked into a regular tensor? What if reading and preprocessing data is too slow, so the GPU keeps waiting for the CPU?
+
+These are not model problems; they are **data pipeline** problems.
+
+PyTorch organizes this with two concepts:
+
+- `Dataset` defines what one sample looks like and how to retrieve one sample.
+- `DataLoader` organizes many samples into mini-batches and handles common training details such as shuffling, multiprocessing loading, batch collation, and pin memory.
+
+In this section, we start from the simplest tensor data and gradually understand the design behind Dataset and DataLoader.
+
+```{python}
+from collections.abc import Iterator
+
+import dnnlpy
+import torch
+import torch.utils.data as utils
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+```{python}
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+## 2.3.1 Dataset: Accessing Samples Through a Unified Interface
+
+In a training loop, we usually do not feed all data into the model at once. Instead, we take one mini-batch at a time:
+
+```text
+dataset -> mini-batch -> model -> loss -> backward -> optimizer step
+```
+
+If all data already exists in tensors, we can implement mini-batches directly with slicing. But this mixes many things that do not belong to the training logic itself: retrieving samples, shuffling order, forming batches, and handling the final batch all have to be written by hand.
+
+Real data is often not one neat large tensor. For example, in an image classification task, the data may be a collection of image paths:
+
+```text
+cat_001.jpg -> label 0
+dog_001.jpg -> label 1
+cat_002.jpg -> label 0
+...
+```
+
+What we really need is a unified interface: whether the data comes from tensors, images, text files, or a database, we can access it like this:
+
+```python
+sample = dataset[index]
+```
+
+This is the role of Dataset.
+
+In PyTorch, a basic map-style dataset only needs to answer two questions:
+
+1. How many samples are in the dataset?
+2. Given an index, how do we retrieve the corresponding sample?
+
+That is, it implements `__len__()` and `__getitem__()`.
+
+First, write a minimal version:
+
+```{python}
+class SimpleTensorDataset(utils.Dataset):
+    """Simple dataset that wraps training data and targets."""
+
+    def __init__(self, X: Tensor, y: Tensor):
+        if X.size(0) != y.size(0):
+            raise AssertionError('X and y must have the same length.')
+        self.X = X
+        self.y = y
+
+    def __len__(self) -> int:
+        return len(self.X)
+
+    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
+        X = self.X[idx]
+        y = self.y[idx]
+        return X, y
+```
+
+Now we can wrap tensors as a dataset:
+
+```{python}
+X = torch.randn(1000, 10)
+y = torch.randn(1000, 1)
+
+dataset = SimpleTensorDataset(X, y)
+x0, y0 = dataset[0]
+
+print('Dataset length:', len(dataset))
+print('First input shape:', x0.shape)
+print('First target shape:', y0.shape)
+```
+
+This way, the training code no longer needs to care how data is stored internally. It only needs to know that samples can be retrieved by index.
+
+Of course, PyTorch also provides a built-in version called `TensorDataset`, specifically for packaging any number of tensors into samples along the first dimension:
+
+```{python}
+dataset = utils.TensorDataset(X, y)
+x0, y0 = dataset[0]
+
+print('First input shape:', x0.shape)
+print('First target shape:', y0.shape)
+```
+
+If the data is ordinary tensor data, `TensorDataset` is enough. But once the data becomes a little more complex, such as an image classification dataset or text classification dataset, we need to write our own Dataset and implement file reading, preprocessing, and label return logic inside `__getitem__()`.
+
+At this point, we have solved how to retrieve one sample. But during training, we usually cannot feed only one sample to the model each time; we need to organize samples into a mini-batch. This requires DataLoader.
+
+## 2.3.2 DataLoader: Organizing Samples into Mini-Batches
+
+Dataset itself only knows how to retrieve one sample. DataLoader goes one step further and organizes these samples into mini-batches needed by the training loop.
+
+The simplest usage is:
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+)
+
+X, y = next(iter(dataloader))
+print('Input batch shape:', X.shape)
+print('Target batch shape:', y.shape)
+```
+
+Here, DataLoader does several things:
+
+1. Retrieves several samples from the Dataset, specified by `batch_size`.
+2. Packs those samples into a batch.
+3. If `shuffle=True`, shuffles sample order at each epoch.
+4. Returns tensors that can be used directly for model training.
+
+Then the training loop can be written in this standard form:
+
+```python
+for X, y in dataloader:
+    y_pred = model(X)
+    loss = loss_fn(y_pred, y)
+    loss.backward()
+```
+
+From this perspective, DataLoader is the adapter layer between the training loop and the dataset. The model does not need to know how the raw data is stored, and the training loop does not need to manage indices, shuffling, or batch collation by itself.
+
+We can summarize their relationship as:
+
+```text
+Dataset:    index -> sample
+DataLoader: samples -> batch
+```
+
+This is why PyTorch separates Dataset and DataLoader. The former describes the data itself, and the latter describes how data is fed into the training process.
+
+## 2.3.3 collate_fn: How Samples Are Packed into a Batch
+
+We said earlier that DataLoader packs multiple samples into one batch. This "packing" process is controlled by `collate_fn`.
+
+By default, PyTorch uses its default collate logic. For example, if each sample is `(x, y)`, where `x` has shape `(10,)` and `y` has shape `(1,)`, then 32 samples are automatically stacked into:
+
+```text
+x: (32, 10)
+y: (32, 1)
+```
+
+This is the behavior we saw above.
+
+However, if each sample has a different shape, default collation fails. The most common example is variable-length sequences in natural language processing. Suppose we have 4 samples of different lengths:
+
+```{python}
+class VariableLengthDataset(utils.Dataset):
+    """Variable-length sequence dataset for demonstration."""
+
+    def __init__(self):
+        self.samples = [
+            torch.tensor([1, 2, 3]),
+            torch.tensor([4, 5]),
+            torch.tensor([6, 7, 8, 9]),
+            torch.tensor([10]),
+        ]
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, idx: int) -> Tensor:
+        return self.samples[idx]
+```
+
+If we use DataLoader directly, it tries to stack tensors of different lengths into a regular tensor, which clearly cannot be done:
+
+```{python}
+dataset = VariableLengthDataset()
+dataloader = utils.DataLoader(dataset, batch_size=2)
+
+try:
+    batch = next(iter(dataloader))
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+At this point, we need a custom `collate_fn`.
+
+`collate_fn` receives a list containing the samples in the current batch. Its job is to organize these samples into a batch that the model can accept. For example, we can pad variable-length sequences to the maximum length in the current batch:
+
+```{python}
+def pad_collate_fn(batch: list[Tensor]) -> tuple[Tensor, Tensor]:
+    """Pad variable-length sequences in a batch to the same length."""
+    lengths = torch.tensor([len(x) for x in batch])
+    max_len = lengths.max().item()
+
+    padded = torch.zeros(len(batch), max_len, dtype=torch.long)
+    for i, x in enumerate(batch):
+        padded[i, : len(x)] = x
+
+    return padded, lengths
+```
+
+Then pass it to DataLoader:
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=2,
+    collate_fn=pad_collate_fn,
+)
+
+for tokens, lengths in dataloader:
+    print('tokens:', tokens, sep='\n')
+    print('lengths:', lengths, end='\n\n')
+```
+
+Now PyTorch uses our `pad_collate_fn` to organize each batch into a tensor and a length vector.
+
+In real tasks, `collate_fn` is very common. For example:
+
+- Padding variable-length sentences in text tasks.
+- In object detection, each image has a different number of bounding boxes and cannot simply be stacked.
+- In multimodal tasks, organizing images, text, masks, and metadata into a dictionary.
+- Performing additional organization on data inside a batch.
+
+So `collate_fn` can be understood as DataLoader's "packing rule." The default rule works for tensors with consistent shapes; once the sample structure becomes more complex, we need to tell PyTorch how this batch should be assembled.
+
+## 2.3.4 num_workers: Parallelizing Data Loading and Model Computation
+
+So far, our DataLoaders have loaded data in the main process. That is, model training and data reading happen alternately in the same Python process:
+
+```text
+read batch -> train one step -> read batch -> train one step -> ...
+```
+
+If each sample is just retrieved from an in-memory tensor, this is usually fine. But if each sample requires reading an image, decoding, data augmentation, or tokenization, CPU preprocessing may become the bottleneck. After the GPU finishes one batch, it has to wait for the CPU to prepare the next batch, and the GPU sits idle.
+
+The role of `num_workers` is to let DataLoader start multiple subprocesses to load data ahead of time:
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=0,
+)
+```
+
+When `num_workers=0`, all data loading happens in the main process. This is the simplest setting, the easiest to debug, and the least likely to create strange problems. When `num_workers>0`, PyTorch starts multiple worker processes. They retrieve samples from the dataset ahead of time, execute `collate_fn`, and put prepared batches into a queue. When the main process trains, it can take already prepared batches from the queue:
+
+```text
+worker 0 -> prepare batch
+worker 1 -> prepare batch
+worker 2 -> prepare batch
+main process -> train model
+```
+
+The benefit is that data loading and model computation can overlap. Ideally, while the GPU is training the current batch, CPU workers are already preparing later batches.
+
+However, larger `num_workers` is not always better. It has several side effects.
+
+First, more workers mean more processes and more memory overhead. Each worker holds a copy of the dataset, at least copying the Python objects inside the dataset. If the dataset stores a large Python list in `__init__()`, enabling multiple workers may noticeably increase memory usage.
+
+Second, multiprocessing makes debugging harder. Errors inside `Dataset.__getitem__()` may not be displayed clearly in the main process; sometimes you only see an error like "DataLoader worker exited unexpectedly." In that case, set `num_workers` back to 0 first so the error is exposed in the main process.
+
+Finally, different operating systems start workers in different ways, which affects code style and performance.
+
+On Linux, multiprocessing usually uses fork. A child process copies an almost identical state from the parent process. It starts quickly, and many memory pages can temporarily be shared through copy-on-write. But if workers modify certain objects, or if the dataset contains complex Python objects, memory may still gradually increase.
+
+On Windows, there is no Unix-style fork, and multiprocessing usually uses spawn. The child process starts a new Python interpreter, re-imports your script, and then receives the needed objects through serialization. This is safer, but slower to start, and it requires objects such as the dataset and `collate_fn` to be serializable.
+
+Therefore, when using `num_workers>0` on Windows, the training entry point usually needs to be placed inside:
+
+```python
+if __name__ == '__main__':
+    main()
+```
+
+Otherwise, when subprocesses re-import the script, they may repeatedly execute top-level code, causing recursive process creation, hangs, or errors.
+
+So a relatively safe rule of thumb is: first use `num_workers=0` to confirm the code is correct; then gradually try `num_workers=2, 4, 8`; observe GPU utilization, CPU usage, and memory usage; do not blindly set `num_workers` very large.
+
+Note that `num_workers` essentially trades more CPU processes for faster data supply. If the bottleneck is data reading and preprocessing, it can be very useful; if the data is already in memory and preprocessing is light, using many workers may instead be slower.
+
+::: {.callout-warning}
+Because of the special nature of Jupyter Notebook, using `num_workers>0` in a notebook environment may cause extra trouble. Therefore, if you are debugging code in a notebook, do not use `num_workers>0`.
+:::
+
+## 2.3.5 persistent_workers: Avoid Restarting Workers Every Epoch
+
+When `num_workers>0`, DataLoader starts multiple worker processes. By default, after one epoch finishes iterating, these worker processes are shut down; when the next epoch starts, workers are created again.
+
+If dataset initialization is light, this may not be noticeable. But if worker startup is expensive, such as re-importing many modules, initializing data-reading state, opening file handles, or preparing caches, restarting workers every epoch wastes time.
+
+The role of `persistent_workers=True` is to keep workers alive after an epoch ends, so they can be reused in the next epoch:
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=2,
+    persistent_workers=True,
+)
+```
+
+::: {.callout-warning}
+`persistent_workers=True` only makes sense when `num_workers>0`. If `num_workers=0`, there are no subprocesses to keep alive.
+:::
+
+Its benefit is reducing worker startup cost between epochs. This may be especially helpful on Windows, where `spawn` makes worker startup slower. But it also has a cost: workers remain alive, and their memory and resources stay occupied until the DataLoader is destroyed. If your dataset maintains internal state, note that this state persists across epochs instead of being reinitialized every epoch.
+
+So we can understand it this way:
+
+- `num_workers` controls whether subprocesses are used.
+- `persistent_workers` controls whether those subprocesses are kept across epochs.
+
+If training has many epochs and `num_workers>0`, try enabling `persistent_workers=True`. If you are only debugging, running small experiments, or memory is tight, keeping the default is completely fine.
+
+## 2.3.6 pin_memory: Whether to Put Batches into Page-Locked Memory
+
+::: {.callout-tip}
+If you are interested in the details of using `pin_memory` and `non_blocking`, as well as their actual effects in benchmarks, see the official PyTorch tutorial [A guide on good usage of non_blocking and pin_memory in PyTorch](https://docs.pytorch.org/tutorials/intermediate/pinmem_nonblock.html). It analyzes CPU-to-GPU data transfer mechanisms and the performance impact of `pin_memory` and `non_blocking` in different scenarios.
+:::
+
+When we train on a GPU, each batch is usually prepared by the CPU first, then copied to the GPU:
+
+```python
+X = X.to(device)
+y = y.to(device)
+```
+
+This involves a host-to-device copy, meaning a copy from CPU memory to GPU memory. The role of `pin_memory=True` is to make DataLoader place returned tensors in pinned memory, also called page-locked memory.
+
+Ordinary CPU memory may be managed by operating-system paging; pinned memory will not be paged out, so the GPU can copy data from it more efficiently. Intuitively, if we frequently move batches from CPU to GPU, pinned memory can make this data path smoother.
+
+Usage is simple:
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+    pin_memory=device.type == 'cuda',
+)
+```
+
+Note that `pin_memory` usually targets CUDA. Therefore, if training with CUDA, we can usually set:
+
+```python
+pin_memory = True
+```
+
+Then use `non_blocking=True` when moving data to the GPU:
+
+```python
+X = X.to('cuda', non_blocking=True)
+y = y.to('cuda', non_blocking=True)
+```
+
+Here, `non_blocking=True` means that, when conditions allow, the CPU-to-GPU copy can be asynchronous and overlap with part of the computation. But it usually works as intended only when the source tensor is in pinned memory.
+
+So should `pin_memory` always be enabled? Not necessarily.
+
+If you are training with CUDA and batches are copied from CPU to GPU, `pin_memory=True` is usually worth trying, and many training scripts enable it by default. But if you train only on CPU, or the data is already on GPU, or you are not using CUDA but another GPU such as Intel XPU, or batches are small and copying is not the bottleneck, the benefit may be small or there may even be a little extra overhead.
+
+So a more practical rule is:
+
+- CUDA training: try `pin_memory=True` first.
+- CPU training: usually unnecessary.
+- Unsure whether it helps: test actual training throughput.
+
+`pin_memory` is not a switch for model correctness; it is a switch for data-transfer efficiency. The problem it solves is not whether training can happen, but whether batches prepared by the CPU can reach the GPU faster.
+
+## 2.3.7 IterableDataset: When Data Cannot Be Randomly Accessed
+
+So far, we have used the most common **map-style dataset** by default. For example, the earlier `SimpleTensorDataset` can be randomly accessed by index:
+
+```python
+sample = dataset[index]
+```
+
+Such datasets usually have a clear length and can naturally be shuffled. Image classification datasets, already organized text classification datasets, and ordinary tensor datasets can mostly be written as map-style datasets.
+
+But not all data is suitable for indexed access. For example, some data comes from a stream that continuously produces samples:
+
+- Continuously reading new data from a logging system.
+- Streaming samples from a remote service or database.
+- Sequentially scanning an extremely large file.
+- Dynamically generating training samples in generative tasks.
+
+In these cases, we may not know the total length, and we may not be able to randomly access the i-th sample. All we can do is keep iterating forward:
+
+```text
+sample_1 -> sample_2 -> sample_3 -> ...
+```
+
+This kind of data is better written as an `IterableDataset`.
+
+IterableDataset does not implement `__getitem__()`; it implements `__iter__()`:
+
+```{python}
+class SimpleCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1."""
+
+    def __init__(self, end: int):
+        self.end = end
+
+    def __iter__(self) -> Iterator[Tensor]:
+        for i in range(self.end):
+            yield torch.tensor(i)
+```
+
+We can read it directly with DataLoader:
+
+```{python}
+dataset = SimpleCountingDataset(end=10)
+dataloader = utils.DataLoader(dataset, batch_size=4)
+
+for i, batch in enumerate(dataloader, start=1):
+    print(f'Batch {i}: {batch}')
+```
+
+Notice that the semantics have changed. For map-style datasets, DataLoader can use a sampler to generate a set of indices, then use those indices to retrieve samples. For iterable-style datasets, DataLoader can only keep taking samples from the data stream produced by `__iter__()`.
+
+So the core difference between Dataset and IterableDataset is not the code form, but the data access pattern:
+
+::: {.list-table tbl-colwidths="[20,20,30,45]"}
+Table 1: Differences between Dataset and IterableDataset
+
+- - Type
+  - Core interface
+  - Data access pattern
+  - Typical scenarios
+
+- - Dataset
+  - `__len__()` and `__getitem__()`
+  - Random access by index
+  - Tensor data, image classification, fixed text datasets
+
+- - IterableDataset
+  - `__iter__()`
+  - Sequential iteration over a data stream
+  - Streaming data, huge files, online sample generation
+:::
+
+The two also differ in usage.
+
+First, `shuffle=True` is usually an operation for map-style datasets, because it only needs to shuffle data indices. But for IterableDataset, since data is produced as a stream, DataLoader cannot know all samples in advance and shuffle them. Therefore, if streaming data needs randomization, we usually implement buffer shuffling or data sharding logic inside the IterableDataset itself.
+
+Second, when IterableDataset is used with multiple workers, each worker receives a copy of the dataset. Without manually splitting the data, different workers may read duplicate samples. In this case, we can use `get_worker_info()` inside `__iter__()` to know which worker we are in and assign different ranges to different workers:
+
+```{python}
+class ShardedCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1, sharded across workers."""
+
+    def __init__(self, end: int):
+        self.end = end
+
+    def __iter__(self) -> Iterator[Tensor]:
+        worker_info = utils.get_worker_info()
+
+        if worker_info is None:
+            start = 0
+            step = 1
+        else:
+            start = worker_info.id
+            step = worker_info.num_workers
+
+        for i in range(start, self.end, step):
+            yield torch.tensor(i)
+```
+
+In this example, if there are 2 workers, worker 0 produces `0, 2, 4, ...`, and worker 1 produces `1, 3, 5, ...`. This avoids repeatedly reading the same data.
+
+Of course, in small experiments, we mostly use map-style datasets. But knowing that IterableDataset exists is important, because it tells us that PyTorch's data pipeline is not only for small, already organized datasets; it can also serve data streams that are closer to real systems.
+
+::: {.callout-tip}
+If you want to learn more about engineering extensions for PyTorch data loading, take a look at [torchdata](https://meta-pytorch.org/data/beta/index.html). One direction worth paying attention to now is `StatefulDataLoader`: it allows a data loader to save state like models and optimizers do. This means that when training is interrupted in the middle of an epoch, we may not have to restart from the beginning of the epoch; we can try to resume closer to where the interruption happened.
+:::
+
+## 2.3.8 A DataLoader Configuration Closer to a Training Script
+
+At this point, we have understood several DataLoader parameters that are easy to confuse:
+
+- `batch_size` controls how many samples are in each mini-batch.
+- `shuffle` controls whether sample order is shuffled each epoch.
+- `collate_fn` controls how multiple samples are assembled into a batch.
+- `num_workers` controls whether multiprocessing is used to load data ahead of time.
+- `persistent_workers` controls whether workers are kept across epochs.
+- `pin_memory` controls whether batches are placed in pinned memory to speed up CPU-to-GPU copies.
+
+In a common GPU training script, we might write:
+
+::: {.callout-note}
+Here we use the newer `torch.accelerator` API to dynamically detect the currently available accelerator device. If CUDA is available, CUDA is used; if XPU is available, XPU is used; if no accelerator is available, it falls back to CPU. This approach is more modern than directly writing `torch.device('cuda' if torch.cuda.is_available() else 'cpu')` and is also more suitable for future accelerator types. All later training code will use this approach to obtain the device. This API was introduced in PyTorch 2.6.
+:::
+
+```python
+device = torch.accelerator.current_accelerator(check_available=True)
+if device is None:
+    device = torch.device('cpu')
+
+dataset = utils.TensorDataset(X, y)
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=64,
+    shuffle=True,
+    num_workers=2,
+    pin_memory=device.type == 'cuda',
+    persistent_workers=True,
+)
+```
+
+Then in the training loop:
+
+```python
+for X, y in dataloader:
+    X = X.to(device, non_blocking=True)
+    y = y.to(device, non_blocking=True)
+
+    y_pred = model(X)
+    loss = loss_fn(y_pred, y)
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+```
+
+However, this configuration is not optimal for every situation. For example, on Windows, `num_workers=2` uses spawn to start subprocesses, so the first startup may be slower; in notebook environments, multiprocessing is more likely to encounter serialization or entry-point issues; if the data is already small tensors in memory, `num_workers=0` may be simpler and faster.
+
+Therefore, DataLoader parameters should not be memorized as a fixed template. They should be adjusted according to the bottleneck:
+
+- Code not running correctly yet: start with `num_workers=0`.
+- Data reading is slow and the GPU is waiting for data: increase `num_workers`.
+- CUDA training and CPU->GPU copy is noticeable: try `pin_memory=True`.
+- Many epochs and slow worker startup: try `persistent_workers=True`.
+- Samples cannot be collated by default: write a `collate_fn`.
+
+With this understanding, DataLoader is not just a tool where we fill in `batch_size`; it is part of the entire training throughput.
+
+## 2.3.9 Summary
+
+In this section, we started from the data problem in the training loop and introduced PyTorch's Dataset and DataLoader.
+
+Dataset defines how a single sample is retrieved. The common map-style dataset supports indexed access through `__len__()` and `__getitem__()`; IterableDataset produces a data stream through `__iter__()` and is more suitable for streaming data and sources that cannot be randomly accessed.
+
+DataLoader turns samples into mini-batches. By default, it automatically stacks tensors with consistent shapes; if samples have different lengths or more complex structures, `collate_fn` is needed to customize the packing method.
+
+In terms of efficiency, `num_workers` can use multiple subprocesses to load data ahead of time, but it also introduces memory, debugging, and cross-platform issues. Windows usually uses spawn, so `if __name__ == '__main__'` and object serializability need attention; Linux commonly uses fork, which starts faster, but complex state and memory usage still need care. `pin_memory` mainly serves CPU-to-GPU data copies in CUDA training, while `persistent_workers` can reduce the cost of repeatedly starting workers between epochs.
+
+So the core of DataLoader is not a fixed configuration, but making data supply keep up with model training. Small experiments can start from a simple configuration; when data reading becomes the bottleneck, gradually enable multiprocessing, pinned memory, and persistent workers.
+
+At this point, we have understood the basic structure and common configurations of the PyTorch data pipeline. In the next section, we will look at the main body of PyTorch models: `nn.Module` and `nn.functional`, and how they define models.

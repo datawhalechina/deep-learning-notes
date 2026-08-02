@@ -1,0 +1,471 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.5-mlp-from-scratch
+  description: "3.5 Building a Complete MLP with NumPy"
+title: "3.5 Building a Complete MLP with NumPy"
+order: 5
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch3-multi-layer-perceptron/ch3.5-mlp-from-scratch.ipynb){fig-align="left"}
+
+In the previous sections, we implemented several basic components needed for an MLP:
+
+1. The `Linear` layer performs a learnable linear transformation;
+2. Activation functions introduce nonlinearity;
+3. `CrossEntropyLoss` turns logits into a loss and provides the starting point for backpropagation.
+
+Now we can finally put these components together and obtain a complete multilayer perceptron.
+
+However, there is still one question we have not solved:
+
+> **How exactly are the forward pass and backward pass of an MLP connected?**
+
+We will implement a two-layer MLP with NumPy:
+
+$$
+X
+\rightarrow
+\operatorname{Linear}_1
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}_2
+\rightarrow
+\operatorname{CrossEntropyLoss}
+\rightarrow
+L
+$$
+
+That is:
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \operatorname{ReLU}(H) \\
+Z &= AW_2 + b_2 \\
+L &= \operatorname{CrossEntropyLoss}(Z, y)
+\end{aligned}
+$$
+
+Here, $X$ is the input, $y$ is the label, $H$ is the hidden-layer output, $A$ is the hidden representation after ReLU, $Z$ is the final logits, and $L$ is the classification loss.
+
+```{python}
+from typing import override
+
+import dnnlpy.models.mlp as mlp
+import numpy as np
+
+rng = np.random.default_rng(42)
+print('NumPy version:', np.__version__)
+```
+
+## 3.5.1 From Modules to Models
+
+In the previous derivations, each layer only cared about its own local computation.
+
+For example, a linear layer only knows:
+
+$$
+Y = XW + b
+$$
+
+ReLU only knows:
+
+$$
+A = \operatorname{ReLU}(H)
+$$
+
+Softmax cross entropy only knows:
+
+$$
+L = \operatorname{CrossEntropy}(\operatorname{Softmax}(Z), y)
+$$
+
+However, a neural network is not an isolated single layer. It is a composite function formed by chaining many layers together:
+
+$$
+f(X) = \operatorname{Linear}_2(\operatorname{ReLU}(\operatorname{Linear}_1(X)))
+$$
+
+This is also the basic structure of deep learning models:
+
+> **Each layer is responsible for a simple transformation, and the whole network obtains a more complex function by composing layers together.**
+
+Therefore, the key to implementing an MLP is not to make one layer complicated, but to let these layers smoothly:
+
+1. perform the forward pass in order;
+2. perform the backward pass in reverse order;
+3. store and update all learnable parameters.
+
+## 3.5.2 Forward Pass of a Two-Layer MLP
+
+Suppose we want to handle the MNIST classification task. Each image has size $28 \times 28$, so after flattening, the input dimension is:
+
+$$
+D_{\text{in}} = 28 \times 28 = 784
+$$
+
+If the hidden-layer dimension is $D_{\text{hidden}}$ and the number of classes is $C=10$, then the input and output shapes for a batch are:
+
+$$
+X \in \mathbb{R}^{B \times 784}
+$$
+
+The first linear transformation is:
+
+$$
+H = XW_1 + b_1
+$$
+
+where:
+
+$$
+W_1 \in \mathbb{R}^{784 \times D_{\text{hidden}}},
+\quad
+b_1 \in \mathbb{R}^{D_{\text{hidden}}}
+$$
+
+Therefore:
+
+$$
+H \in \mathbb{R}^{B \times D_{\text{hidden}}}
+$$
+
+Next, it passes through ReLU:
+
+$$
+A = \operatorname{ReLU}(H)
+$$
+
+ReLU does not change the tensor shape, so:
+
+$$
+A \in \mathbb{R}^{B \times D_{\text{hidden}}}
+$$
+
+The second linear transformation outputs logits:
+
+$$
+Z = AW_2 + b_2
+$$
+
+where:
+
+$$
+W_2 \in \mathbb{R}^{D_{\text{hidden}} \times 10},
+\quad
+b_2 \in \mathbb{R}^{10}
+$$
+
+Therefore:
+
+$$
+Z \in \mathbb{R}^{B \times 10}
+$$
+
+Finally, softmax cross entropy computes the loss from the logits and the true labels $y$:
+
+$$
+L = \operatorname{CrossEntropyLoss}(Z, y)
+$$
+
+Note that $Z$ here is logits, not probabilities after softmax. In the previous section, we saw that implementing softmax and cross entropy together is both more stable and more convenient for backpropagation.
+
+## 3.5.3 Backward Pass of a Two-Layer MLP
+
+The forward pass goes from the input to the loss:
+
+$$
+X \rightarrow H \rightarrow A \rightarrow Z \rightarrow L
+$$
+
+The backward pass goes in the opposite direction, passing gradients back layer by layer:
+
+$$
+L \rightarrow Z \rightarrow A \rightarrow H \rightarrow X
+$$
+
+In the previous section, we derived the backward pass of softmax cross entropy:
+
+$$
+\frac{\partial L}{\partial Z} =
+\frac{1}{B}(\hat{Y} - Y)
+$$
+
+Denote it as:
+
+$$
+G_Z = \frac{\partial L}{\partial Z}
+$$
+
+Then for the second linear layer:
+
+$$
+Z = AW_2 + b_2
+$$
+
+The corresponding gradients are:
+
+$$
+\begin{aligned}
+\frac{\partial L}{\partial W_2} &= A^\top G_Z \\
+\frac{\partial L}{\partial b_2} &= \sum_{i=1}^{B} (G_Z)_i \\
+\frac{\partial L}{\partial A} &= G_Z W_2^\top
+\end{aligned}
+$$
+
+Next, it passes through ReLU. Since:
+
+$$
+A = \operatorname{ReLU}(H)
+$$
+
+we have:
+
+$$
+\frac{\partial L}{\partial H} =
+\frac{\partial L}{\partial A}
+\odot \mathbb{1}(H > 0)
+$$
+
+Denote it as:
+
+$$
+G_H = G_A \odot \mathbb{1}(H > 0)
+$$
+
+Finally, we return to the first linear layer:
+
+$$
+H = XW_1 + b_1
+$$
+
+The corresponding gradients are:
+
+$$
+\begin{aligned}
+\frac{\partial L}{\partial W_1} &= X^\top G_H \\
+\frac{\partial L}{\partial b_1} &= \sum_{i=1}^{B} (G_H)_i \\
+\frac{\partial L}{\partial X} &= G_H W_1^\top
+\end{aligned}
+$$
+
+If we are only training the model, we usually do not need to continue using $\frac{\partial L}{\partial X}$, because the input image is not a parameter that needs to be learned. But from the perspective of backpropagation, the linear layer still passes the gradient back to the previous layer.
+
+## 3.5.4 Implementing a Two-Layer MLP
+
+With these modules in place, the MLP itself becomes very simple.
+
+During the forward pass, we call `forward` sequentially according to the layer order:
+
+$$
+X \rightarrow \operatorname{Linear}_1 \rightarrow
+\operatorname{ReLU} \rightarrow \operatorname{Linear}_2
+$$
+
+During the backward pass, we call `backward` sequentially in the reverse order:
+
+$$
+\operatorname{Linear}_2 \rightarrow \operatorname{ReLU}
+\rightarrow \operatorname{Linear}_1
+$$
+
+```{python}
+class MLP(mlp.Module):
+    def __init__(self, input_dim: int, hidden_dim: int, num_classes: int):
+        self.fc1 = mlp.Linear(input_dim, hidden_dim)
+        self.relu = mlp.ReLU()
+        self.fc2 = mlp.Linear(hidden_dim, num_classes)
+
+    @override
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        h = self.fc1(x)
+        a = self.relu(h)
+        logits = self.fc2(a)
+        return logits
+
+    @override
+    def backward(self, grad: np.ndarray) -> np.ndarray:
+        grad = self.fc2.backward(grad)
+        grad = self.relu.backward(grad)
+        grad = self.fc1.backward(grad)
+        return grad
+```
+
+Here we omit the `parameters()` method, because its concrete implementation has already been written in `mlp.Module`.
+
+## 3.5.5 One Complete Forward and Backward Pass
+
+To check whether the model can run end to end, we first construct a very small random batch.
+
+Suppose the input dimension is 4, the hidden-layer dimension is 8, and the number of classes is 3:
+
+```{python}
+batch_size = 5
+input_dim = 4
+hidden_dim = 8
+num_classes = 3
+
+x = rng.random((batch_size, input_dim))
+y = np.array([0, 1, 2, 1, 0])
+
+model = MLP(input_dim, hidden_dim, num_classes)
+loss_fn = mlp.CrossEntropyLoss()
+```
+
+First, perform the forward pass:
+
+```{python}
+logits = model(x)
+loss = loss_fn(logits, y)
+
+print('Logits shape:', logits.shape)
+print('Loss:', loss)
+```
+
+Then, start backpropagation from the loss:
+
+```{python}
+dlogits = loss_fn.backward()
+dx = model.backward(dlogits)
+```
+
+At this point, every parameter in the model should have a corresponding gradient:
+
+```{python}
+for p in model.parameters():
+    print(f'Parameter shape: {p.shape}\t| Gradient shape: {p.grad.shape}')
+```
+
+If everything is correct, the shapes of parameters and gradients should match one by one. This means:
+
+1. The forward pass produced logits with the correct shape;
+2. The loss can provide the gradient with respect to the logits;
+3. The gradient can pass through the second linear layer, ReLU, and the first linear layer in order;
+4. Every learnable parameter receives a gradient with the same shape as itself.
+
+## 3.5.6 Parameter Updates
+
+Backpropagation only computes gradients; it has not actually changed the parameters yet. The simplest update rule is SGD:
+
+$$
+\theta \leftarrow \theta - \eta \frac{\partial L}{\partial \theta}
+$$
+
+where $\eta$ is the learning rate.
+
+Now we can perform one complete training step:
+
+```{python}
+logits = model(x)
+optimizer = mlp.SGD(model.parameters(), lr=0.1)
+loss_before = loss_fn(logits, y)
+
+dlogits = loss_fn.backward()
+model.backward(dlogits)
+optimizer.step()
+
+logits = model(x)
+loss_after = loss_fn(logits, y)
+
+print('Loss before update:', loss_before)
+print('Loss after update:', loss_after)
+```
+
+Since we only update once here, and the data is randomly generated, the loss may not decrease significantly. But this example demonstrates the basic flow of a complete training step:
+
+```text
+forward -> loss -> backward -> update
+```
+
+That is:
+
+```python
+# forward
+logits = model(x)
+loss = loss_fn(logits, y)
+
+# backward
+dlogits = criterion.backward()
+model.backward(dlogits)
+
+# update
+optimizer.step()
+```
+
+This is the core part of a neural network training loop.
+
+## 3.5.7 Why Does `backward` Run in Reverse Order?
+
+During the forward pass, data passes through each layer in order:
+
+$$
+X \rightarrow H \rightarrow A \rightarrow Z \rightarrow L
+$$
+
+That is, $Z$ depends on $A$, $A$ depends on $H$, and $H$ depends on $X$.
+
+Backpropagation computes the gradient of the loss with respect to each intermediate variable. According to the chain rule, to compute the gradient of $L$ with respect to $H$, we first need to know the gradient of $L$ with respect to $A$; to compute the gradient of $L$ with respect to $X$, we first need to know the gradient of $L$ with respect to $H$.
+
+Therefore, gradients must start from the last layer and move backward one layer at a time:
+
+$$
+\frac{\partial L}{\partial Z}
+\rightarrow
+\frac{\partial L}{\partial A}
+\rightarrow
+\frac{\partial L}{\partial H}
+\rightarrow
+\frac{\partial L}{\partial X}
+$$
+
+This is why each module's `backward` receives an upstream gradient `grad` and then returns a downstream gradient `dx`.
+
+From this perspective, backpropagation is essentially a set of local rules:
+
+> **Each layer only needs to know what it did during the forward pass and what gradient was passed back from upstream. Then it can compute its own parameter gradients and continue passing the gradient to the previous layer.**
+
+## 3.5.8 Summary
+
+In this section, we connected the modules discussed in the previous sections and implemented a complete two-layer MLP with NumPy.
+
+The forward pass of this model is:
+
+$$
+X
+\rightarrow
+\operatorname{Linear}_1
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}_2
+\rightarrow
+Z
+$$
+
+The loss function is:
+
+$$
+L = \operatorname{CrossEntropyLoss}(Z, y)
+$$
+
+The backward pass starts from softmax cross entropy and passes through the following modules in reverse order:
+
+$$
+\operatorname{Linear}_2
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}_1
+$$
+
+Finally, we used the simplest SGD to complete the parameter update:
+
+$$
+\theta \leftarrow \theta - \eta \frac{\partial L}{\partial \theta}
+$$
+
+At this point, we have an MLP that can fully execute forward, backward, and update. In the next section, we will apply it to the real MNIST dataset and complete our first image classification training experiment implemented from scratch.

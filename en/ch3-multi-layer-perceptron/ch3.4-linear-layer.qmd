@@ -1,0 +1,536 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.4-linear-layer
+  description: "3.4 Forward and Backward Propagation of Linear Layers"
+title: "3.4 Forward and Backward Propagation of Linear Layers"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch3-multi-layer-perceptron/ch3.4-linear-layer.ipynb){fig-align="left"}
+
+In the previous sections, we discussed several key components in an MLP:
+
+1. Linear transformations map inputs into a new feature space;
+2. Activation functions introduce nonlinearity;
+3. Softmax cross entropy converts the final logits into a loss and provides the starting point for backpropagation.
+
+Now we return to the most fundamental and most common module in an MLP: the **linear layer**. Before going into the specific formulas, let us first look at where linear layers appear in the overall structure of an MLP. In practice, we usually add an activation function after each hidden layer, but we will temporarily ignore that here.
+
+![Figure 3.4.0: MLP model [@zhang2023d2l, fig. 4.1.1]](figures/ch3.1-mlp.svg)
+
+As shown in the figure, adjacent layers in an MLP are usually fully connected. Each edge corresponds to a learnable weight, and the overall computation from one layer to the next can be written as a linear transformation.
+
+For a two-layer MLP, the linear layer appears twice:
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+Y &= HW_2 + b_2
+\end{aligned}
+$$
+
+Although their input and output dimensions are different, they are essentially doing the same thing:
+
+$$
+Y = XW + b
+$$
+
+In this section, we will derive the forward and backward propagation of a linear layer, and then implement a reusable `Linear` class with NumPy. Later, when we handwrite a complete MLP, we will directly use this module.
+
+```{python}
+import math
+from collections.abc import Iterable, Iterator
+from typing import Any, override
+
+import numpy as np
+import numpy.typing as npt
+from dnnlpy.models.mlp import Module, Optimizer
+
+rng = np.random.default_rng(42)
+print('NumPy version:', np.__version__)
+```
+
+## 3.4.1 Forward Propagation of a Linear Layer
+
+Suppose there are $B$ samples in a batch, and the input dimension of each sample is $D_{\text{in}}$. Then the input can be written as:
+
+$$
+X \in \mathbb{R}^{B \times D_{\text{in}}}
+$$
+
+A linear layer has two learnable parameters: the weight $W$ and the bias $b$:
+
+$$
+\begin{aligned}
+W &\in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}} \\
+b &\in \mathbb{R}^{D_{\text{out}}}
+\end{aligned}
+$$
+
+The forward propagation is:
+
+$$
+Y = XW + b
+$$
+
+The output shape is:
+
+$$
+Y \in \mathbb{R}^{B \times D_{\text{out}}}
+$$
+
+Here, the bias $b$ is broadcast along the batch dimension. In other words, the same bias vector is added to every sample:
+
+$$
+Y_i = X_i W + b
+$$
+
+In NumPy, this can be written as:
+
+```{python}
+B = 4
+D_in = 3
+D_out = 2
+
+X = rng.random((B, D_in))
+W = rng.random((D_in, D_out))
+b = np.zeros(D_out)
+
+Y = X @ W + b
+
+print('X.shape:', X.shape)
+print('W.shape:', W.shape)
+print('b.shape:', b.shape)
+print('Y.shape:', Y.shape)
+```
+
+From the perspective of shapes:
+
+$$
+(B, D_{\text{in}}) @ (D_{\text{in}}, D_{\text{out}}) = (B, D_{\text{out}})
+$$
+
+Therefore, the role of a linear layer is to map each sample from a $D_{\text{in}}$-dimensional space to a $D_{\text{out}}$-dimensional space.
+
+## 3.4.2 Backward Propagation of a Linear Layer
+
+When training a neural network, forward propagation produces the loss $L$, while backward propagation needs to compute the gradient of the loss with respect to each parameter.
+
+For a linear layer:
+
+$$
+Y = XW + b
+$$
+
+During backpropagation, we receive the upstream gradient from the next layer:
+
+$$
+G = \frac{\partial L}{\partial Y}
+$$
+
+Its shape is the same as $Y$:
+
+$$
+G \in \mathbb{R}^{B \times D_{\text{out}}}
+$$
+
+The linear layer needs to compute three things from this upstream gradient:
+
+1. The gradient of the loss with respect to the input: $\frac{\partial L}{\partial X}$, which is passed further to the previous layer;
+2. The gradient of the loss with respect to the weight: $\frac{\partial L}{\partial W}$, which is used to update $W$;
+3. The gradient of the loss with respect to the bias: $\frac{\partial L}{\partial b}$, which is used to update $b$.
+
+In other words, the backward method of a linear layer takes $G$ as input, returns $\frac{\partial L}{\partial X}$, and also stores $\frac{\partial L}{\partial W}$ and $\frac{\partial L}{\partial b}$.
+
+### 3.4.2.1 Gradient with Respect to the Input
+
+First, let us look at the gradient with respect to the input $X$. For a batch, the linear layer can be written as:
+
+$$
+Y = XW + b
+$$
+
+where:
+
+$$
+\begin{aligned}
+X &\in \mathbb{R}^{B \times D_{\text{in}}} \\
+W &\in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}} \\
+b &\in \mathbb{R}^{D_{\text{out}}} \\
+Y &\in \mathbb{R}^{B \times D_{\text{out}}}
+\end{aligned}
+$$
+
+The $j$-th component of the $i$-th output sample can be written as:
+
+$$
+Y_{i,j} = \sum_{k=1}^{D_{\text{in}}} X_{i,k} W_{k,j} + b_j
+$$
+
+If we fix one input component $X_{i,k}$, it appears in the formula for every output component $Y_{i,j}$ of the same sample:
+
+$$
+\begin{aligned}
+Y_{i,1} &= \cdots + X_{i,k} W_{k,1} + \cdots \\
+Y_{i,2} &= \cdots + X_{i,k} W_{k,2} + \cdots \\
+&\vdots \\
+Y_{i,D_{\text{out}}} &= \cdots + X_{i,k} W_{k,D_{\text{out}}} + \cdots
+\end{aligned}
+$$
+
+Therefore, if we want to know how the $k$-th input component $X_{i,k}$ of the $i$-th sample affects the loss, we need to sum its effects over all output dimensions of that sample:
+
+$$
+\frac{\partial L}{\partial X_{i,k}} =
+\sum_{j=1}^{D_{\text{out}}}\frac{\partial L}{\partial Y_{i,j}}
+\frac{\partial Y_{i,j}}{\partial X_{i,k}} =
+\sum_{j=1}^{D_{\text{out}}} G_{i,j} W_{k,j}
+$$
+
+Since:
+
+$$
+\frac{\partial Y_{i,j}}{\partial X_{i,k}} = W_{k,j}
+$$
+
+we have:
+
+$$
+\frac{\partial L}{\partial X_{i,k}} =
+\sum_{j=1}^{D_{\text{out}}} G_{i,j} W_{k,j}
+$$
+
+Written in matrix form, this is:
+
+$$
+\frac{\partial L}{\partial X} = G W^\top
+$$
+
+The shapes also match exactly:
+
+$$
+(B, D_{\text{out}}) @ (D_{\text{out}}, D_{\text{in}}) = (B, D_{\text{in}})
+$$
+
+This shows that the shape of the input gradient remains the same as the shape of the input $X$.
+
+### 3.4.2.2 Gradient with Respect to the Weight
+
+Next, let us look at the gradient with respect to the weight $W$. For a batch, the linear layer can be written as:
+
+$$
+Y = XW + b
+$$
+
+The $j$-th component of the $i$-th output sample is:
+
+$$
+Y_{i,j} = \sum_{k=1}^{D_{\text{in}}} X_{i,k} W_{k,j} + b_j
+$$
+
+If we fix the weight $W_{k,j}$, it appears in the $j$-th output of every sample:
+
+$$
+\begin{aligned}
+Y_{1,j} &= \cdots + X_{1,k} W_{k,j} + \cdots \\
+Y_{2,j} &= \cdots + X_{2,k} W_{k,j} + \cdots \\
+&\vdots \\
+Y_{B,j} &= \cdots + X_{B,k} W_{k,j} + \cdots
+\end{aligned}
+$$
+
+Therefore, if we want to know how the weight $W_{k,j}$ affects the loss, we need to sum the effects over all samples in the batch:
+
+$$
+\frac{\partial L}{\partial W_{k,j}} =
+\sum_{i=1}^{B}
+\frac{\partial L}{\partial Y_{i,j}}
+\frac{\partial Y_{i,j}}{\partial W_{k,j}}
+$$
+
+Since:
+
+$$
+\frac{\partial Y_{i,j}}{\partial W_{k,j}} = X_{i,k}
+$$
+
+we have:
+
+$$
+\frac{\partial L}{\partial W_{k,j}} =
+\sum_{i=1}^{B} G_{i,j} X_{i,k}
+$$
+
+Reordering the multiplication inside the summation:
+
+$$
+\frac{\partial L}{\partial W_{k,j}} =
+\sum_{i=1}^{B} X_{i,k} G_{i,j}
+$$
+
+This exactly corresponds to the matrix multiplication:
+
+$$
+\frac{\partial L}{\partial W} = X^\top G
+$$
+
+with shape:
+
+$$
+(D_{\text{in}}, B) @ (B, D_{\text{out}}) = (D_{\text{in}}, D_{\text{out}})
+$$
+
+Therefore, the shape of $\frac{\partial L}{\partial W}$ is the same as the shape of $W$.
+
+This point is important: **the gradient of a parameter must have the same shape as the parameter itself**. Otherwise, we cannot use it to update the parameter.
+
+### 3.4.2.3 Gradient with Respect to the Bias
+
+Finally, let us look at the bias $b$. During forward propagation, the bias is added to the output of every sample:
+
+$$
+Y_i = X_i W + b
+$$
+
+For the $j$-th bias $b_j$, it affects the $j$-th output of all samples in the batch. Therefore:
+
+$$
+\frac{\partial L}{\partial b_j} =
+\sum_{i=1}^{B} \frac{\partial L}{\partial Y_{i,j}}
+$$
+
+Written in vector form, this is:
+
+$$
+\frac{\partial L}{\partial b} = \sum_{i=1}^{B} G_i
+$$
+
+Its shape is $(D_{\text{out}})$, which is the same as the shape of the bias $b$.
+
+### 3.4.2.4 Summary of Linear-Layer Backpropagation
+
+For a linear layer:
+
+$$
+Y = XW + b
+$$
+
+Suppose the upstream gradient is:
+
+$$
+G = \frac{\partial L}{\partial Y}
+$$
+
+Then the backward propagation is:
+
+$$
+\begin{aligned}
+\frac{\partial L}{\partial X} &= G W^\top \\
+\frac{\partial L}{\partial W} &= X^\top G \\
+\frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
+\end{aligned}
+$$
+
+In NumPy, this can be written as:
+
+```{python}
+G = rng.random((B, D_out))
+
+dX = G @ W.T
+dW = X.T @ G
+db = np.sum(G, axis=0)
+
+print('dX.shape:', dX.shape)
+print('dW.shape:', dW.shape)
+print('db.shape:', db.shape)
+```
+
+The most common mistakes in backpropagation are usually matrix transposes and summation dimensions. Therefore, when implementing a linear layer, it is best to always use shapes to check whether each step is reasonable.
+
+## 3.4.3 Implementing a Linear Layer with NumPy
+
+Before implementing the Linear layer, we first define a `Parameter` class to wrap learnable parameters.
+
+This class inherits from NumPy's ndarray and adds a `.grad` attribute to store gradients. Its role is similar to `nn.Parameter` in PyTorch, but without the Autograd part. You do not need to understand the implementation of this class. You only need to know that it is a NumPy array with a gradient attribute.
+
+```{python}
+class Parameter(np.ndarray):
+    __array_priority__ = 1000
+
+    grad: np.ndarray | None
+
+    def __new__(cls, data: Any, dtype: npt.DTypeLike = np.float32):
+        obj = np.asarray(data, dtype=dtype).view(cls)
+        obj.grad = None
+        return obj
+
+    def __array_finalize__(self, obj: Any):
+        if obj is None:
+            return
+        self.grad = getattr(obj, 'grad', None)
+
+    def __array_wrap__(self, out_arr: Any, context=None, return_scalar=False):
+        return np.asarray(out_arr)
+
+    @property
+    def data(self) -> np.ndarray:
+        return np.asarray(self)
+```
+
+Now we can wrap the linear layer as a class. It needs to do several things:
+
+1. Initialize the parameters $W$ and $b$;
+2. Compute $XW + b$ in `forward`;
+3. Save the input $X$, because it is needed during backward;
+4. Compute `dx`, `dW`, and `db` in `backward`.
+
+```{python}
+class Linear(Module):
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+
+        W = rng.standard_normal((in_features, out_features))
+        W = W * math.sqrt(2.0 / in_features)
+        b = np.zeros(out_features)
+
+        self.W = Parameter(W)
+        self.b = Parameter(b)
+
+    @override
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        self.ctx = x  # save input for backward
+        return x @ self.W + self.b
+
+    @override
+    def backward(self, grad: np.ndarray) -> np.ndarray:
+        assert self.ctx is not None, 'Must call forward before backward.'
+        x = self.ctx  # recover saved input
+
+        self.W.grad = x.T @ grad  # dW
+        self.b.grad = np.sum(grad, axis=0)  # db
+        return grad @ self.W.T  # dx
+
+    @override
+    def parameters(self) -> Iterator[Parameter]:
+        for value in self.__dict__.values():
+            if isinstance(value, Parameter):
+                yield value
+            elif isinstance(value, Module):
+                yield from value.parameters()
+```
+
+Here, `grad` is the upstream gradient, which is the $G$ in the derivation above.
+
+When initializing the weight $W$, we used He initialization:
+
+$$
+W \sim \mathcal{N}\left(0, \frac{2}{D_{\text{in}}}\right)
+$$
+
+It is often used together with ReLU. Its purpose is to prevent the signal from growing or shrinking too quickly as it propagates between layers. We will not expand on initialization theory here; we will simply use it as a more stable default choice than directly using a standard normal distribution.
+
+We can briefly test whether its shapes are correct:
+
+```{python}
+linear = Linear(in_features=3, out_features=2)
+x = rng.random((4, 3))
+out = linear(x)
+
+dout = rng.random(out.shape)
+dx = linear.backward(dout)
+
+print('out.shape:', out.shape)
+print('dx.shape:', dx.shape)
+print('dW.shape:', linear.W.grad.shape)
+print('db.shape:', linear.b.grad.shape)
+```
+
+This shows that the `Linear` layer can already be used like a real neural network module: it receives inputs during forward propagation, receives upstream gradients during backward propagation, and passes gradients back to the previous layer.
+
+## 3.4.4 Parameter Updates
+
+The backward method of a linear layer is only responsible for computing gradients. It does not directly update the parameters. Parameter updates are usually handled by an optimizer. The simplest optimizer is SGD:
+
+$$
+\begin{aligned}
+W &\leftarrow W - \eta \frac{\partial L}{\partial W} \\
+b &\leftarrow b - \eta \frac{\partial L}{\partial b}
+\end{aligned}
+$$
+
+where $\eta$ is the learning rate.
+
+In NumPy, this is:
+
+```{python}
+class SGD(Optimizer):
+    def __init__(self, params: Iterable[Parameter], lr: float = 0.1):
+        super().__init__(params)
+        self.lr = lr
+
+    @override
+    def step(self):
+        for p in self.params:
+            if p.grad is None:
+                continue
+
+            p -= self.lr * p.grad
+```
+
+We can test this optimizer:
+
+```{python}
+optimizer = SGD(linear.parameters(), lr=0.1)
+
+print('Original W:\n', linear.W)
+print('Original b:', linear.b)
+
+print('\n', end='')
+optimizer.step()
+
+print('Updated W:\n', linear.W)
+print('Updated b:', linear.b)
+```
+
+Here, the `parameters()` method returns all learnable parameters of this layer, wrapped with `Parameter`, namely the weight `W` and the bias `b`. If a module contains submodules, then `parameters()` recursively returns the parameters inside those submodules.
+
+One design principle is very important here:
+
+> **Forward computes outputs, backward computes gradients, and parameter updates modify parameters according to gradients.**
+
+Although these three steps happen consecutively in the training loop, conceptually they should be understood separately.
+
+## 3.4.5 Summary
+
+In this section, we derived and implemented the forward and backward propagation of a linear layer.
+
+The forward propagation of a linear layer is:
+
+$$
+Y = XW + b
+$$
+
+Given the upstream gradient:
+
+$$
+G = \frac{\partial L}{\partial Y}
+$$
+
+the backward propagation of the linear layer is:
+
+$$
+\begin{aligned}
+\frac{\partial L}{\partial X} &= G W^\top \\
+\frac{\partial L}{\partial W} &= X^\top G \\
+\frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
+\end{aligned}
+$$
+
+From the implementation perspective, a linear layer needs to save the input during forward, because $X$ is needed when backward computes $\frac{\partial L}{\partial W}$. This also reflects a basic rule of backpropagation: each layer saves the necessary information during forward, and uses this information together with the upstream gradient during backward to compute its own gradients.
+
+At this point, we already have the main building blocks of an MLP: linear layers, activation functions, and softmax cross entropy. In the next section, we will put these modules together and build a complete MLP with NumPy.

@@ -1,0 +1,415 @@
+---
+author: jshn9515
+date: 2026-03-25
+date-modified: 2026-04-04
+open-graph:
+  title: ch13.3-elbo-vae-objective
+  description: "13.3 ELBO: Where Does the VAE Objective Function Come From?"
+title: "13.3 ELBO: Where Does the VAE Objective Function Come From?"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch13-autoencoders-and-vaes/ch13.3-elbo-vae-objective.ipynb){fig-align="left"}
+
+In the previous section, we already understood the basic modeling idea of VAE:
+
+- First sample a latent variable from the prior distribution $p(z)$
+- Then generate data $x$ through the decoder
+- Use the encoder to give an approximate posterior $q_\phi(z\mid x)$
+- Through the reparameterization trick, let the sampling process participate in backpropagation
+
+At this point, the structure of VAE is already clear. But there is still one problem left unresolved:
+
+> **When training a VAE, what exactly are we optimizing?**
+
+Why does that classic loss function appear in the end: one term responsible for reconstruction, and one term responsible for KL divergence regularization. It is not written by intuition or experience, but is derived step by step from a very natural objective.
+
+In this section, we will answer this question.
+
+::: {.callout-note}
+Note that this section will contain a lot of formula derivations. Be mentally prepared.
+:::
+
+```{python}
+import torch
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 13.3.1 Why VAE Introduces ELBO
+
+From the perspective of generative models, our final goal is always: let the model learn the distribution of real data.
+
+If a training sample is $x$, then we hope the model assigns it a larger probability, that is, we hope to maximize:
+
+$$
+p_\theta(x)
+$$
+
+During training, this is usually written as maximizing the log-likelihood:
+
+$$
+\log p_\theta(x)
+$$
+
+So the fundamental goal of VAE is actually to maximize $\log p_\theta(x)$. This point is very important. It shows that VAE does not design the loss function just for good-looking reconstructions. It is essentially still a probabilistic generative model, and the optimization objective is still data likelihood.
+
+In the previous section, we knew that
+
+$$
+\log p_\theta(x) = \log \int p(z)p_\theta(x\mid z)\,dz
+$$
+
+This step looks very normal, but it is actually difficult. Because there is an integral over all $z$, and the decoder is a neural network, usually without an analytical solution. Our objective is correct, but it itself is not easy to compute directly. So we need to change the idea: instead of directly optimizing $\log p_\theta(x)$, find a lower bound that is easy to compute and closely related to it, and optimize that.
+
+This lower bound is **ELBO (Evidence Lower Bound)**.
+
+## 13.3.2 Approximate Posterior $q_\phi(z\mid x)$
+
+As we said before, the true posterior
+
+$$
+p_\theta(z\mid x)
+$$
+
+is hard to compute directly. So VAE introduces an approximate distribution parameterized by the encoder:
+
+$$
+q_\phi(z\mid x)
+$$
+
+Now we do a very key operation: multiply by $q_\phi(z\mid x)$ and divide by $q_\phi(z\mid x)$ inside $\log p_\theta(x)$.
+
+Because they cancel each other, the value does not change:
+
+$$
+\log p_\theta(x) = \log \int q_\phi(z\mid x)\frac{p_\theta(x,z)}{q_\phi(z\mid x)}\,dz
+$$
+
+Write the integral as an expectation under $q_\phi(z\mid x)$:
+
+$$
+\log p_\theta(x) = \log \mathbb{E}_{q_\phi(z\mid x)} \left[\frac{p_\theta(x,z)}{q_\phi(z\mid x)}\right]
+$$
+
+At this point, the entrance to the ELBO derivation has appeared. Next we use a classic tool: **Jensen's inequality**.
+
+Since $\log$ is a concave function, we have:
+
+$$
+\log \mathbb{E}[Y] \ge \mathbb{E}[\log Y]
+$$
+
+Replace $Y$ here with
+
+$$
+\frac{p_\theta(x,z)}{q_\phi(z\mid x)}
+$$
+
+and we get:
+
+$$
+\log p_\theta(x) = \log \mathbb{E}_{q_\phi(z\mid x)} \left[\frac{p_\theta(x,z)}{q_\phi(z\mid x)}\right]
+\ge \mathbb{E}_{q_\phi(z\mid x)} \left[\log \frac{p_\theta(x,z)}{q_\phi(z\mid x)}\right]
+$$
+
+So we define the term on the right as ELBO:
+
+$$
+\mathcal{L}(\theta,\phi;x) = \mathbb{E}_{q_\phi(z\mid x)} \left[\log \frac{p_\theta(x,z)}{q_\phi(z\mid x)}\right]
+$$
+
+Then we have:
+
+$$
+\mathcal{L}(\theta,\phi; x) \le \log p_\theta(x)
+$$
+
+This is where the name Evidence Lower Bound comes from:
+
+- Evidence refers to the marginal probability of the observed data $p_\theta(x)$;
+- Lower bound means it is a lower bound of that quantity.
+
+So VAE does not directly maximize $\log p_\theta(x)$, but maximizes a computable lower bound of it:
+
+$$
+\max \mathcal{L}(\theta,\phi; x)
+$$
+
+## 13.3.3 Why Maximizing the Lower Bound Makes Sense
+
+You may ask: can optimizing a lower bound really help us optimize the original objective?
+
+The answer is yes. Because:
+
+$$
+\mathcal{L}(\theta,\phi;x) \le \log p_\theta(x)
+$$
+
+If we keep raising this lower bound, then at least it shows that the model's ability to explain data $x$ is improving. Even better, the gap between this lower bound and the true objective can be written exactly as a KL divergence. Let's derive this formula below.
+
+Starting from Bayes' rule:
+
+$$
+p_\theta(z\mid x)=\frac{p_\theta(x,z)}{p_\theta(x)}
+$$
+
+Take the logarithm:
+
+$$
+\log p_\theta(z\mid x)=\log p_\theta(x,z)-\log p_\theta(x)
+$$
+
+Rearrange it:
+
+$$
+\log p_\theta(x)=\log p_\theta(x,z)-\log p_\theta(z\mid x)
+$$
+
+Now take the expectation under $q_\phi(z\mid x)$ on both sides:
+
+$$
+\log p_\theta(x) = \mathbb{E}_{q_\phi(z\mid x)} [\log p_\theta(x,z)-\log p_\theta(z\mid x)]
+$$
+
+Then artificially add and subtract $\log q_\phi(z\mid x)$:
+
+$$
+\log p_\theta(x) = \mathbb{E}_{q_\phi(z\mid x)} \left[\log p_\theta(x,z)-\log q_\phi(z\mid x)\right]
++ \mathbb{E}_{q_\phi(z\mid x)} \left[\log q_\phi(z\mid x)-\log p_\theta(z\mid x)\right]
+$$
+
+The previous term is exactly ELBO:
+
+$$
+\mathcal{L}(\theta,\phi;x) = \mathbb{E}_{q_\phi(z\mid x)} \left[\log p_\theta(x,z)-\log q_\phi(z\mid x)\right]
+$$
+
+The latter term is exactly the KL divergence:
+
+$$
+D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p_\theta(z\mid x))
+$$
+
+So we get a very important relationship:
+
+$$
+\log p_\theta(x) = \mathcal{L}(\theta,\phi;x) + D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p_\theta(z\mid x))
+$$
+
+Because KL divergence is always non-negative, we have:
+
+$$
+\mathcal{L}(\theta,\phi;x) \le \log p_\theta(x)
+$$
+
+This not only shows that ELBO is a lower bound, but also shows that:
+
+> **Maximizing ELBO is, on the one hand, increasing the log-likelihood, and on the other hand, making the approximate posterior $q_\phi(z\mid x)$ closer to the true posterior $p_\theta(z\mid x)$.**
+
+This is very beautiful. In other words, in one training process, VAE simultaneously learns a generative model and learns posterior inference.
+
+## 13.3.4 The Classic Form of ELBO
+
+Although the formula above is already very beautiful, another decomposition is more common during training.
+
+Start from the definition of ELBO:
+
+$$
+\mathcal{L}(\theta,\phi;x) = \mathbb{E}_{q_\phi(z\mid x)} \left[\log \frac{p_\theta(x,z)}{q_\phi(z\mid x)}\right]
+$$
+
+Decompose the joint distribution:
+
+$$
+p_\theta(x,z)=p(z)p_\theta(x\mid z)
+$$
+
+Substitute it in:
+
+$$
+\mathcal{L}(\theta,\phi;x)
+= \mathbb{E}_{q_\phi(z\mid x)} \left[\log p_\theta(x\mid z)+\log p(z)-\log q_\phi(z\mid x)\right]
+$$
+
+Split the expectation:
+
+$$
+\mathcal{L}(\theta,\phi;x) = \mathbb{E}_{q_\phi(z\mid x)}[\log p_\theta(x\mid z)]
++ \mathbb{E}_{q_\phi(z\mid x)}[\log p(z)-\log q_\phi(z\mid x)]
+$$
+
+The second term can be written exactly as a negative KL divergence:
+
+$$
+\mathbb{E}_{q_\phi(z\mid x)}[\log p(z)-\log q_\phi(z\mid x)] = - D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p(z))
+$$
+
+So we finally get the most classic objective function form of VAE:
+
+$$
+\mathcal{L}(\theta,\phi;x)
+= \mathbb{E}_{q_\phi(z\mid x)}[\log p_\theta(x\mid z)] - D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p(z))
+$$
+
+This is the ELBO expression you see most often in various materials. It is also the formula we talked about in the previous section as **reconstruction term + KL regularization term**.
+
+In actual training code, we usually write it as minimizing a loss, so we take the negative sign:
+
+$$
+\mathcal{J}_{\text{VAE}} = -\mathcal{L}(\theta,\phi;x)
+$$
+
+Thus:
+
+$$
+\mathcal{J}_{\text{VAE}} = -\mathbb{E}_{q_\phi(z\mid x)}[\log p_\theta(x\mid z)]
++ D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p(z))
+$$
+
+The first term here is the reconstruction error, and the second term is KL regularization. So in many implementations we will see:
+
+$$
+\text{loss} = \text{reconstruction loss} + \text{KL loss}
+$$
+
+This is the engineering form of **negative ELBO**.
+
+If you only look at the formula, VAE training looks like optimizing two terms at the same time. But in practice, VAE training is more like a tug-of-war between them.
+
+On one side, the reconstruction term requires that we do not throw away information related to the input $x$, because we need to restore it as accurately as possible. On the other side, the KL term requires that we do not hide every sample in some remote corner of the latent space. We need them as a whole to stay close to the standard normal distribution and remain regular and smooth. Therefore, if we only care about reconstruction and do not constrain the distribution, then the latent space will become very messy and fall back to the problem of a normal AE; if we only care about being close to the prior and do not preserve information related to the input $x$, then the decoder will not be able to reconstruct the input.
+
+So VAE finds a balance between expressive power and latent-space regularity.
+
+## 13.3.5 BCE vs. MSE: Choosing the Function for the Reconstruction Term
+
+Here we need to add another point that can easily be confusing.
+
+The reconstruction term we wrote earlier is:
+
+$$
+\mathbb{E}_{q_\phi(z\mid x)}[\log p_\theta(x\mid z)]
+$$
+
+It is a **log-likelihood term**. But in code, we often see MSE or BCE. How do these correspond to it?
+
+The key is:
+
+> How do we assume the form of $p_\theta(x\mid z)$?
+
+**Case 1: Treat the output as a Gaussian distribution**
+
+If we assume:
+
+$$
+p_\theta(x\mid z)=\mathcal{N}(x;\hat{x},\sigma^2 I)
+$$
+
+Then maximizing the log-likelihood is basically equivalent to minimizing MSE:
+
+$$
+\|x-\hat{x}\|^2
+$$
+
+So for continuous-value reconstruction, MSE is often used.
+
+**Case 2: Treat the output as a Bernoulli distribution**
+
+If we assume pixel values are probabilities between 0 and 1, and let:
+
+$$
+p_\theta(x\mid z)
+$$
+
+follow a pixel-wise Bernoulli distribution, then maximizing the log-likelihood corresponds to BCE:
+
+$$
+-\sum_i [x_i\log \hat{x}_i + (1-x_i)\log(1-\hat{x}_i)]
+$$
+
+Therefore, which reconstruction loss is used in code is not chosen randomly. It corresponds to your probabilistic modeling assumption about $p_\theta(x\mid z)$.
+
+## 13.3.6 Closed-Form KL Term in the Gaussian Case
+
+The most common setting for VAE is:
+
+- Prior distribution: $p(z)=\mathcal{N}(0,I)$
+- Approximate posterior: $q_\phi(z\mid x)=\mathcal{N}(\mu, \mathrm{diag}(\sigma^2))$
+
+In this case, the KL divergence has a closed-form solution:
+
+$$
+D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p(z)) = \frac{1}{2}\sum_{j=1}^d \left(\mu_j^2 + \sigma_j^2 - \log \sigma_j^2 - 1\right)
+$$
+
+If the code outputs $\text{logvar} = \log \sigma^2$, then it is often written as:
+
+$$
+D_{\mathrm{KL}} = -\frac{1}{2}\sum_{j=1}^d \left(1 + \log \sigma_j^2 - \mu_j^2 - \sigma_j^2\right)
+$$
+
+These two formulas are equivalent.
+
+This is why VAE training is much simpler than the mathematical derivation. Because the reconstruction term can be computed directly, the KL term also has a closed-form formula, and the sampling in the middle is handled by the reparameterization trick, so the whole model can be trained end to end.
+
+## 13.3.7 A Minimal Loss Function Example
+
+Below is a common PyTorch-style loss implementation, which can be directly connected to the code in 13.2.
+
+This is the BCE version:
+
+```{python}
+def vae_bce_loss(x_hat: Tensor, x: Tensor, mu: Tensor, logvar: Tensor) -> Tensor:
+    # Reconstruction loss using binary cross-entropy
+    re_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    # KL divergence loss between the approximate posterior and the prior
+    kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return re_loss + kl_loss
+```
+
+If it is the MSE version, we just replace the reconstruction term with MSE:
+
+```{python}
+def vae_mse_loss(x_hat: Tensor, x: Tensor, mu: Tensor, logvar: Tensor) -> Tensor:
+    # Reconstruction loss using mean squared error
+    re_loss = F.mse_loss(x_hat, x, reduction='sum')
+    # KL divergence loss between the approximate posterior and the prior
+    kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return re_loss + kl_loss
+```
+
+You may say: we derived for so long, so why is the code only a few lines?
+
+Actually, this is exactly the charm of the mathematical derivation. Although the formulas look complicated, the logic behind them is very clear. We start from a very natural objective, go through a series of reasonable transformations, and finally obtain a loss function that is both theoretically meaningful and practical. This is the power of ELBO, and also the subtlety of VAE's design.
+
+## 13.3.8 Summary
+
+Now, we can finally answer the question at the beginning of this section: where does the VAE objective function come from?
+
+The answer is:
+
+First, VAE essentially still wants to maximize the log-likelihood of the data:
+
+$$
+\log p_\theta(x)
+$$
+
+Second, because this quantity is difficult to compute directly, we introduce the approximate posterior $q_\phi(z\mid x)$, and use Jensen's inequality to construct an optimizable lower bound:
+
+$$
+\mathcal{L}(\theta,\phi;x)
+= \mathbb{E}_{q_\phi(z\mid x)}[\log p_\theta(x\mid z)] - D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p(z))
+$$
+
+Third, during training we usually minimize the negative ELBO, and thus get the familiar form: reconstruction loss + KL regularization term.
+
+At this point, the core mathematics of VAE is complete:
+
+- Why introduce latent variable
+- Why use an approximate posterior
+- Why reparameterization can be used for training
+- Why the objective function becomes ELBO
+
+In the next section, we will look at what phenomena this objective function brings during training. Why are images generated by VAE often smoother, but sometimes blurry? What happens when KL is too strong or too weak?

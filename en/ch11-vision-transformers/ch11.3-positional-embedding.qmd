@@ -1,0 +1,458 @@
+---
+author: jshn9515
+date: 2026-05-13
+date-modified: 2026-05-13
+open-graph:
+  title: ch11.3-positional-embedding
+  description: "11.3 Class Token and Positional Embedding: Letting a Sequence Represent the Whole Image"
+title: "11.3 Class Token and Positional Embedding: Letting a Sequence Represent the Whole Image"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch11-vision-transformers/ch11.3-positional-embedding.ipynb){fig-align="left"}
+
+In the previous section, we converted the image from the original tensor
+
+$$
+(B, C, H, W)
+$$
+
+into a patch token sequence
+
+$$
+(B, N, D)
+$$
+
+where $N$ is the number of patches, and $D$ is the embedding dimension of each token.
+
+At this point, an image can already be viewed as a sequence of visual tokens and can be fed into a Transformer Encoder.
+
+However, this is still not the complete input of ViT. We still have two unresolved problems.
+
+The first problem is: if we want to do image classification, which token should finally represent the whole image? A patch token itself represents a local image block, while a classification task needs a semantic representation of the whole image.
+
+The second problem is: Transformer itself does not know where each patch comes from in the image. After patch embedding cuts the image into a sequence, if no extra positional information is added, it is hard for the model to distinguish whether a patch comes from the upper-left corner or the lower-right corner.
+
+Therefore, before feeding patch tokens into the Transformer Encoder, ViT does two more things:
+
+1. Add a **class token** at the beginning of the sequence, used to aggregate information from the whole image;
+2. Add **positional embedding** to each token, used to tell the model the position information of the token.
+
+In this section, we discuss these two designs.
+
+```{python}
+import dnnlpy.nn as dnn
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from dnnlpy.models.vit import ViTConvPatchEmbedding
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 11.3.1 Patch Tokens Still Cannot Directly Represent the Whole Image
+
+After patch embedding, an image becomes a patch sequence:
+
+$$
+X = [x_1, x_2, \dots, x_N]
+$$
+
+where each $x_i \in \mathbb{R}^D$ represents an image patch.
+
+If a Transformer Encoder is attached afterward, the output is still a sequence:
+
+$$
+H = [h_1, h_2, \dots, h_N]
+$$
+
+Here each $h_i$ is the contextual representation of the corresponding patch. It no longer contains only the information of the $i$-th patch itself, but has fused information from other patches through self-attention.
+
+But for image classification, what we finally need is a vector representation of the whole image, not $N$ patch vectors. In other words, we need to obtain an image representation of shape `(B, D)` from the output of shape `(B, N, D)`.
+
+A very natural approach is to average-pool all patch tokens:
+
+$$
+h_\mathrm{avg} = \frac{1}{N}\sum_{i=1}^N h_i
+$$
+
+This is certainly feasible. In fact, many later visual Transformer variants also use average pooling or similar aggregation methods.
+
+But the original ViT adopts another design: it adds a special learnable token before the patch tokens, called the **class token**, often written as `[CLS]`.
+
+## 11.3.2 Class Token: Letting One Token Represent the Whole Image
+
+The idea of the class token comes from Transformer models such as BERT. In text classification, the model adds a special token, such as `[CLS]`, at the beginning of the input sequence. After Transformer encoding, the output representation of this token is used as the representation of the whole sequence. ViT borrows this idea.
+
+Suppose the patch token sequence is:
+
+$$
+[x_1, x_2, \dots, x_N]
+$$
+
+ViT adds a learnable vector $x_\mathrm{cls}$ in front of it:
+
+$$
+X = [x_\mathrm{cls}, x_1, x_2, \dots, x_N]
+$$
+
+In this way, the sequence length changes from $N$ to $N + 1$.
+
+This class token is initially just an ordinary learnable parameter. It does not correspond to any patch in the image, nor does it come from the input image. Its role is to interact with all patch tokens through self-attention in the Transformer Encoder.
+
+After multiple Transformer Encoder layers, the output representation of the class token can be regarded as the aggregated information of the whole image:
+
+$$
+h_\mathrm{cls} = H[:, 0, :]
+$$
+
+Then this vector is fed into the classification head to obtain image classification logits:
+
+$$
+\mathrm{logits} = h_\mathrm{cls} W + b
+$$
+
+Intuitively, the class token is like a global position. It does not represent a local image block, but is specially used to collect information from all patch tokens and finally form the representation of the whole image.
+
+## 11.3.3 PyTorch Implementation of Class Token
+
+In implementation, the class token is usually a learnable parameter with shape `(1, 1, embed_dim)`:
+
+```{python}
+class ViTAddClassToken(nn.Module):
+    def __init__(self, embed_dim: int):
+        super().__init__()
+        cls_token = torch.zeros(1, 1, embed_dim)
+        self.cls_token = nn.Parameter(cls_token)
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+
+    def forward(self, x: Tensor) -> Tensor:
+        cls_token = self.cls_token.expand(x.size(0), -1, -1)
+        x = torch.concat([cls_token, x], dim=1)
+        return x
+```
+
+There are two details worth noting here.
+
+The first detail is that the shape of `cls_token` is `(1, 1, D)`, not `(B, 1, D)`. Because it is a model parameter, we should not store a separate copy for each batch. During the actual forward pass, we use `expand` to expand it to the current batch size:
+
+```python
+cls_token = self.cls_token.expand(batch_size, -1, -1)
+```
+
+The second detail is that `expand` does not really copy the parameter data. It only creates a broadcasted view. In this way, all samples use the same learnable class token, but in the computation graph it is updated together according to the gradients from all samples in the batch.
+
+Let us test the shape change:
+
+```{python}
+num_patches = 16
+embed_dim = 64
+
+x = torch.randn(2, num_patches, embed_dim)
+cls_layer = ViTAddClassToken(embed_dim)
+out = cls_layer(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', out.shape)
+```
+
+The input shape is `(B, N, D)`, and the output shape becomes `(B, N + 1, D)`. The extra first token is the class token.
+
+## 11.3.4  Positional Embedding: Letting the Model Know Token Positions
+
+After adding the class token, the sequence can already represent the whole image. But we still have another problem: where is the positional information of patch tokens?
+
+Patch embedding gives us a sequence of vectors:
+
+$$
+[x_1, x_2, \dots, x_N]
+$$
+
+Although we usually arrange patches from left to right and from top to bottom when flattening them, self-attention itself does not naturally understand the meaning of this order.
+
+This is the same problem as in text Transformers. When self-attention computes, it mainly looks at similarity among token vectors. Without additional positional information, it does not know whether a token is at the first position or the tenth position.
+
+For images, position is even more important. A patch in the upper-left corner and a patch in the lower-right corner may have completely different semantics. For example, the sky is usually in the upper part of an image, and grass is usually in the lower part; eyes, nose, and mouth in a face also have relatively stable spatial relationships. If the model has no idea about patch positions, it is hard to use these spatial structures.
+
+Therefore, ViT adds a learnable position vector to each token:
+
+$$
+Z = X + P
+$$
+
+where $X \in \mathbb{R}^{B \times (N+1) \times D}$ is the sequence after adding the class token, and $P \in \mathbb{R}^{1 \times (N+1) \times D}$ is the position embedding.
+
+Note that the number of positions here is $N + 1$, because besides the $N$ patch tokens, the class token also needs its own position embedding.
+
+## 11.3.5 PyTorch Implementation of Positional Embedding
+
+The original ViT uses learnable absolute positional embeddings. That is, the model directly learns a parameter matrix:
+
+$$
+P = [p_\mathrm{cls}, p_1, p_2, \dots, p_N]
+$$
+
+where $p_\mathrm{cls}$ is the positional embedding of the class token, and $p_i$ is the positional embedding of the $i$-th patch position.
+
+Then it is added to the token embeddings:
+
+$$
+Z = X + P
+$$
+
+The implementation is very simple:
+
+```{python}
+class ViTPositionalEmbedding(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_patches: int,
+        use_cls_token: bool = True,
+    ):
+        super().__init__()
+        self.use_cls_token = use_cls_token
+
+        num_tokens = num_patches + int(use_cls_token)
+        pos_embed = torch.zeros(1, num_tokens, embed_dim)
+        self.pos_embed = nn.Parameter(pos_embed)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.size(1) != self.pos_embed.size(1):
+            raise AssertionError(
+                f'Expected sequence length {self.pos_embed.size(1)}, '
+                f'but got {x.size(1)}.'
+            )
+        return x + self.pos_embed
+```
+
+Test it:
+
+```{python}
+num_patches = 16
+embed_dim = 64
+
+x = torch.randn(2, num_patches, embed_dim)
+x = ViTAddClassToken(embed_dim)(x)
+pos_embed = ViTPositionalEmbedding(
+    num_patches=num_patches,
+    embed_dim=embed_dim,
+    use_cls_token=True,
+)
+out = pos_embed(x)
+
+print('After class token:', x.shape)
+print('After positional embedding:', out.shape)
+```
+
+We can see that adding positional embedding does not change the tensor shape. It only adds a position-related offset to the representation of each token.
+
+That is:
+
+$$
+(B, N+1, D) \rightarrow (B, N+1, D)
+$$
+
+The dimensions do not change, but the token representations now contain positional information.
+
+## 11.3.6 The Order of Class Token and Positional Embedding
+
+In ViT, the common input construction order is:
+
+$$
+\text{image}
+\rightarrow
+\text{patch embedding}
+\rightarrow
+\text{append class token}
+\rightarrow
+\text{add positional embedding}
+$$
+
+That is:
+
+$$
+(B, C, H, W)
+\rightarrow
+(B, N, D)
+\rightarrow
+(B, N+1, D)
+\rightarrow
+(B, N+1, D)
+$$
+
+Why is the class token usually added first, and then positional embedding added afterward?
+
+Because positional embedding needs to correspond one-to-one to every token in the final input sequence. If positional embedding is first added to patch tokens and then the class token is concatenated, then the class token still needs to handle its own positional embedding separately. It is more direct to concatenate the class token first and then uniformly add a position embedding of length $N+1$.
+
+Below, we combine the patch embedding from the previous section with the class token and positional embedding discussed in this section to obtain a complete ViT input module.
+
+```{python}
+class ViTEmbedding(nn.Module):
+    def __init__(
+        self,
+        image_size: int = 224,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        embed_dim: int = 768,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.patch_embed = ViTConvPatchEmbedding(
+            image_size=image_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
+            embed_dim=embed_dim,
+        )
+        self.add_cls_token = ViTAddClassToken(embed_dim)
+        self.pos_embed = ViTPositionalEmbedding(
+            num_patches=self.patch_embed.num_patches,
+            embed_dim=embed_dim,
+            use_cls_token=True,
+        )
+        self.dropout = dnn.Dropout(dropout)  # <1>
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.patch_embed(x)
+        x = self.add_cls_token(x)
+        x = self.pos_embed(x)
+        x = self.dropout(x)
+        return x
+```
+
+1. The `Dropout` here is optional. The original ViT does not add dropout after the input module, but many later variants add a dropout layer here to increase input randomness and improve model generalization.
+
+Test the shape:
+
+```{python}
+vit_embed = ViTEmbedding(
+    image_size=32,
+    patch_size=8,
+    in_channels=3,
+    embed_dim=64,
+)
+
+x = torch.randn(2, 3, 32, 32)
+out = vit_embed(x)
+
+print('ViT embedding output shape:', out.shape)
+print('Number of patch tokens:', vit_embed.patch_embed.num_patches)
+```
+
+Here the image size is $32 \times 32$, and the patch size is $8 \times 8$, so each image has 16 patch tokens. After adding the class token, the sequence length becomes 17. Therefore, the output shape is `(B, 17, D)`.
+
+## 11.3.7 Positional Embedding and Two-Dimensional Spatial Structure
+
+At this point, there may still be one confusing point:
+
+> **The image is originally a two-dimensional grid, but ViT's positional embedding looks one-dimensional. Does this lose the two-dimensional spatial structure?**
+
+The answer is no. Although ViT uses one-dimensional position embedding, this does not mean it completely discards the two-dimensional positional information of the image. This is because the patch sequence is obtained by flattening the two-dimensional grid in a fixed order.
+
+For example, a $14 \times 14$ patch grid is flattened into 196 patch tokens in row-major order. In this way, the $i$-th position in the sequence always corresponds to a fixed patch coordinate in the original image. Therefore, although the shape of positional embedding is $(1, N+1, D)$ and appears to only add position vectors to a one-dimensional sequence, each position vector actually corresponds to a two-dimensional patch position behind the scenes.
+
+However, this kind of learnable absolute positional embedding also has a limitation: it is tightly bound to the patch grid size used during training. For example, if the model is trained with $224 \times 224$ images and $16 \times 16$ patches, then the patch grid is $14 \times 14$ and the positional embedding length is 197. If a higher-resolution image is used during inference, such as $384 \times 384$, the patch grid becomes $24 \times 24$ and the positional embedding length becomes 577. At this point, the length of the original positional embedding no longer matches.
+
+What should we do then?
+
+A common method is to apply two-dimensional interpolation to the patch part of the positional embedding. The positional embedding of the class token is kept separately; the patch positional embedding is first restored into a two-dimensional grid, then interpolated to the new grid size, and finally flattened back into a sequence.
+
+The concrete steps are:
+
+1. Separate the positional embedding of the class token and the positional embedding of patch tokens from the positional embedding.
+2. Reshape the positional embedding of patch tokens into a two-dimensional grid shape `(1, old_h, old_w, D)`.
+3. Use bilinear interpolation to interpolate the positional embedding from the old grid size to the new grid size `(1, new_h, new_w, D)`.
+4. Reshape the interpolated patch positional embedding back into sequence shape `(1, new_h * new_w, D)`.
+5. Concatenate the positional embedding of the class token and the new patch positional embedding to obtain the new positional embedding.
+
+Below is a simplified implementation:
+
+```{python}
+def interpolate_pos_embedding(
+    pos_embed: Tensor,
+    old_grid_size: tuple[int, int],
+    new_grid_size: tuple[int, int],
+) -> Tensor:
+    cls_pos_embed = pos_embed[:, :1]
+    patch_pos_embed = pos_embed[:, 1:]
+
+    old_h, old_w = old_grid_size
+    new_h, new_w = new_grid_size
+    embed_dim = pos_embed.size(-1)
+
+    patch_pos_embed = patch_pos_embed.reshape(1, old_h, old_w, embed_dim)
+    patch_pos_embed = patch_pos_embed.permute(0, 3, 1, 2)
+    patch_pos_embed = F.interpolate(
+        patch_pos_embed,
+        size=(new_h, new_w),
+        mode='bicubic',
+        align_corners=False,  # <1>
+    )
+    patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1)
+    patch_pos_embed = patch_pos_embed.reshape(1, new_h * new_w, embed_dim)
+
+    new_embed = torch.concat([cls_pos_embed, patch_pos_embed], dim=1)
+    return new_embed
+```
+
+1. `align_corners` controls how the old and new grids are aligned during interpolation. `align_corners=True` treats pixels as discrete points and forces the points at the four corners of the old and new grids to align, so the values at the corner positions are preserved; `align_corners=False` treats pixels as small squares and aligns the outer boundary of the whole image rather than the centers of corner pixels. In this way, all positions are redistributed according to the overall scale, which is closer to the default behavior of ordinary image resizing.
+
+Test the length change:
+
+```{python}
+# First dimension must be 1 because it's a parameter,
+# not a batch of embeddings.
+pos_embed = torch.randn(1, 14 * 14 + 1, 64)
+new_pos_embed = interpolate_pos_embedding(
+    pos_embed,
+    old_grid_size=(14, 14),
+    new_grid_size=(24, 24),
+)
+
+print('Old positional embedding shape:', pos_embed.shape)
+print('New positional embedding shape:', new_pos_embed.shape)
+```
+
+We can see that the original positional embedding length is 197 (196 patches + 1 class token), and the new positional embedding length is 577 (576 patches + 1 class token). In this way, it can adapt to inputs with different resolutions.
+
+## 11.3.8 Summary
+
+In this section, we added two key designs in the ViT input module: **class token** and **position embedding**.
+
+Patch embedding can only turn an image into a patch token sequence:
+
+$$
+(B, C, H, W) \rightarrow (B, N, D)
+$$
+
+But image classification needs a representation of the whole image, so ViT adds a learnable class token at the beginning of the sequence:
+
+$$
+(B, N, D) \rightarrow (B, N + 1, D)
+$$
+
+After the Transformer Encoder, the output representation of the class token is used as the representation of the whole image and fed into the classification head.
+
+At the same time, because self-attention itself does not contain positional information, ViT also adds learnable positional embeddings to each token:
+
+$$
+Z = X + P
+$$
+
+In this way, the model not only knows which patch content each token represents, but can also perceive where this patch is in the image through positional embedding.
+
+So the construction process of the complete ViT input module is:
+
+$$
+\text{image}
+\rightarrow
+\text{patch embedding}
+\rightarrow
+\text{class token}
+\rightarrow
+\text{positional embedding}
+$$
+
+At this point, we have completed the construction of the ViT input module. In the next section, we will move into the implementation of the ViT Encoder and use self-attention to fuse information from patch tokens and the class token, obtaining a representation of the whole image.

@@ -1,0 +1,575 @@
+---
+author: jshn9515
+date: 2026-05-23
+date-modified: 2026-05-23
+open-graph:
+  title: ch2.5-optimizer
+  description: "2.5 Optimizers in PyTorch: From Manual Updates to Parameter Groups and State Management"
+title: "2.5 Optimizers in PyTorch: From Manual Updates to Parameter Groups and State Management"
+order: 5
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch2-pytorch-introduction/ch2.5-optimizer.ipynb){fig-align="left"}
+
+In the previous sections, we have learned one thing: as long as the computation graph is recorded correctly, model parameters will receive gradients after calling `loss.backward()`.
+
+However, gradients themselves do not automatically modify parameters. They only tell us: if we want the loss to become smaller, in which direction should the parameters move? The component that actually updates parameters according to gradients is the **optimizer**.
+
+For example, the simplest gradient descent can be written as:
+
+$$
+\theta \leftarrow \theta - \eta \nabla_\theta L
+$$
+
+Here, $\theta$ is the parameter, $\nabla_\theta L$ is the gradient of the parameter, and $\eta$ is the learning rate.
+
+Without an optimizer, we can actually update parameters manually:
+
+```python
+x = torch.randn(8, 3)
+y = torch.randn(8, 1)
+
+linear = nn.Linear(3, 1)
+
+pred = linear(x)
+loss = F.mse_loss(pred, y)
+loss.backward()
+
+lr = 0.1
+with torch.no_grad():
+    for param in linear.parameters():
+        param -= lr * param.grad
+```
+
+This code works. But it has several problems:
+
+- Should gradients be cleared before each update?
+- What if different parameters need different learning rates?
+- If the optimizer has momentum, where should the momentum state be stored?
+- If we want to save training progress, should the optimizer state also be saved?
+- If the model is large, will updating parameters one by one be too slow?
+
+These are the problems that `torch.optim` is designed to solve.
+
+In this section, we start with the most basic `optimizer.step()` and gradually understand what PyTorch optimizers are actually managing.
+
+```{python}
+from pprint import pprint
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 2.5.1 From Manual Updates to optimizer.step()
+
+We first use a simple linear model as an example:
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+```
+
+When creating an optimizer, the most important thing is to tell it two things:
+
+- Which parameters we want to update.
+- Which rule we want to use to update those parameters.
+
+Here:
+
+```{python}
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+```
+
+means: give all parameters returned by `model.parameters()` to SGD and update them with a learning rate of 0.1.
+
+A minimal training step usually looks like this:
+
+```{python}
+x = torch.randn(8, 3)
+y = torch.randn(8, 1)
+
+pred = model(x)
+loss = F.mse_loss(pred, y)
+
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+
+print('Loss:', loss.item())
+```
+
+These three lines are very common:
+
+```python
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+```
+
+They correspond to three actions in training:
+
+- Clear old gradients to avoid accumulation.
+- Compute new gradients from the current loss and write them into each parameter's `.grad`.
+- Update parameters according to the new gradients and the optimizer state.
+
+Note that `backward()` is only responsible for writing gradients into the parameters' `.grad` attributes. The part that actually changes parameter values is `optimizer.step()`.
+
+We can directly check whether the parameter changed before and after the update:
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+before = model.weight.detach().clone()
+
+pred = model(x)
+loss = F.mse_loss(pred, y)
+
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+
+after = model.weight.detach().clone()
+
+flag = torch.allclose(before, after)
+max_diff = (before - after).abs().max().item()
+print('Is the parameter unchanged?', flag)
+print('Max absolute difference:', max_diff)
+```
+
+This shows that the parameter was indeed modified by the optimizer.
+
+## 2.5.2 Why zero_grad Is Needed Before Each Update
+
+One detail that is easy to overlook is that gradients in PyTorch **accumulate** by default instead of being overwritten. That is, if we call `backward()` twice in a row, the gradient from the second call does not replace the first one; it is added to the existing `.grad`.
+
+Let's look at a tiny example:
+
+```{python}
+w = torch.tensor([1.0], requires_grad=True)
+
+loss1 = w.pow(2)
+loss1.backward()
+print('After first backward:', w.grad)
+
+loss2 = w.pow(2)
+loss2.backward()
+print('After second backward:', w.grad)
+```
+
+After the first backward pass, the gradient is 2. After the second backward pass, the gradient becomes 4. This is not because the new gradient is 4; it is because the old gradient 2 and the new gradient 2 were accumulated.
+
+This is why training loops usually write:
+
+```python
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+```
+
+If gradients are not cleared, the gradients from each batch will accumulate on top of previous batches, and the parameter update will no longer correspond to the current batch's `loss`.
+
+Of course, gradient accumulation is not always wrong. Sometimes we intentionally accumulate gradients from multiple mini-batches and then update parameters once. This is called **gradient accumulation**.
+
+For example:
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+optimizer.zero_grad()
+
+for i in range(4):
+    x = torch.randn(8, 3)
+    y = torch.randn(8, 1)
+
+    pred = model(x)
+    loss = F.mse_loss(pred, y)
+    loss = loss / 4
+    loss.backward()
+
+optimizer.step()
+```
+
+Here we deliberately do not clear gradients after each mini-batch. Instead, we let the gradients from 4 mini-batches accumulate and then call `step()` once.
+
+So, more accurately, `zero_grad()` is needed not because `backward()` must be used this way, but because PyTorch accumulates gradients by default. If this update should use only the current batch's gradient, old gradients must be cleared before `backward()`.
+
+## 2.5.3 What set_to_none Means
+
+By default, `optimizer.zero_grad()` sets each parameter's `.grad` to `None`:
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+x = torch.randn(8, 3)
+y = torch.randn(8, 1)
+
+loss = F.mse_loss(model(x), y)
+loss.backward()
+
+flag1 = model.weight.grad is None
+print('Whether grad is None before zero_grad?', flag1)
+
+optimizer.zero_grad(set_to_none=True)
+
+flag2 = model.weight.grad is None
+print('Whether grad is None after zero_grad?', flag2)
+```
+
+Sometimes we also see:
+
+```python
+optimizer.zero_grad(set_to_none=False)
+```
+
+This sets gradients to 0 instead of `None`.
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+loss = F.mse_loss(model(x), y)
+loss.backward()
+
+optimizer.zero_grad(set_to_none=False)
+print(model.weight.grad)
+```
+
+Both approaches can clear old gradients, but their meanings are slightly different:
+
+- `.grad = None`: this parameter currently has no gradient.
+- `.grad = 0`: this parameter has a gradient, but its value is 0.
+
+In most training code, using the default `set_to_none=True` is fine. It usually saves memory and lets PyTorch allocate the gradient tensor again during the next backward pass. However, if your code assumes `.grad` is always a tensor rather than `None`, you need to be aware of this distinction.
+
+## 2.5.4 Parameter Groups: Different Parameters Can Use Different Learning Rates
+
+So far, we have given all model parameters to the same optimizer and used the same learning rate:
+
+```python
+optimizer = optim.SGD(model.parameters(), lr=1e-3)
+```
+
+But in real training, we often want different parts to use different hyperparameters.
+
+For example, when fine-tuning a pretrained model, the backbone may use a smaller learning rate and the final classification head may use a larger learning rate. The backbone has already learned many general features, so we do not want to change it too quickly; the head is randomly initialized, so it needs to learn the current task faster.
+
+This is where **parameter groups** are useful:
+
+```{python}
+class TinyModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.backbone = nn.Sequential(
+            nn.Linear(10, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+        )
+        self.head = nn.Linear(32, 2)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.backbone(x)
+        return self.head(x)
+
+
+model = TinyModel()
+optimizer = optim.SGD(
+    [
+        {'params': model.backbone.parameters(), 'lr': 1e-4},
+        {'params': model.head.parameters(), 'lr': 1e-3},
+    ],
+    weight_decay=1e-2,
+)
+
+for i, group in enumerate(optimizer.param_groups):
+    print(
+        f'Parameter group {i}: lr={group["lr"]}, weight_decay={group["weight_decay"]}'
+    )
+```
+
+What we pass to the optimizer is no longer a simple parameter iterator, but a list of dictionaries. Each dictionary describes a group of parameters and that group's own optimization hyperparameters.
+
+If a parameter group does not explicitly set a hyperparameter, it uses the default value from the optimizer constructor. For example, neither parameter group above sets `weight_decay` separately, so both use the outer `weight_decay=1e-2`.
+
+Parameter groups are also often used to disable weight decay for certain parameters. For example, many training scripts turn off weight decay for bias and normalization-layer parameters:
+
+```{python}
+def split_weight_decay_params(model: nn.Module):
+    decay = []
+    no_decay = []
+
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if name.endswith('bias') or 'norm' in name.lower():
+            no_decay.append(param)
+        else:
+            decay.append(param)
+
+    return [
+        {'params': decay, 'weight_decay': 1e-2},
+        {'params': no_decay, 'weight_decay': 0.0},
+    ]
+
+
+model = nn.Sequential(
+    nn.Linear(10, 32),
+    nn.LayerNorm(32),
+    nn.Linear(32, 2),
+)
+optimizer = optim.SGD(split_weight_decay_params(model), lr=1e-3)
+
+for i, group in enumerate(optimizer.param_groups):
+    print(
+        f'Parameter group {i}: '
+        f'weight_decay={group["weight_decay"]}, '
+        f'n_params={len(group["params"])}'
+    )
+```
+
+So, an optimizer does not have to update the entire model uniformly. Internally, it manages parameters group by group, and each group can have its own learning rate, weight decay, momentum, and other settings. We can flexibly split model parameters into different groups and let the optimizer manage them as needed.
+
+## 2.5.5 Optimizers Are Not Just Formulas, They Also Have State
+
+If we use the simplest SGD without momentum, the parameter update depends only on the current gradient $g$:
+
+$$
+\theta \leftarrow \theta - \eta g
+$$
+
+However, many optimizers depend not only on the current gradient, but also store some historical information. For example, SGD with momentum maintains a momentum buffer:
+
+$$
+v_t = \mu v_{t-1} + g_t
+$$
+
+Adam and AdamW maintain estimates of the first and second moments of the gradients.
+
+These historical values are not model parameters, but they affect later updates. Therefore, optimizers also have internal **state**.
+
+We can directly inspect an optimizer's `state_dict()`:
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+
+pprint(optimizer.state_dict(), sort_dicts=False)
+```
+
+When an optimizer is first created, `state` is usually empty because no update has been performed yet.
+
+After performing one update, look again:
+
+```{python}
+x = torch.randn(8, 3)
+y = torch.randn(8, 1)
+
+loss = F.mse_loss(model(x), y)
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+
+state_dict = optimizer.state_dict()
+pprint(state_dict, sort_dicts=False)
+```
+
+An optimizer's state_dict usually contains two parts:
+
+1. `state`: optimizer-internal state corresponding to each parameter.
+2. `param_groups`: parameter group configuration, such as learning rate, weight decay, betas, and so on.
+
+For AdamW, we usually see states like `step`, `exp_avg`, and `exp_avg_sq`. These are the historical values needed by AdamW during updates. Of course, what these states mean will be explained in detail later.
+
+This also explains why saving only model parameters is not enough when resuming training. If we only save `model.state_dict()`, the model weights can be restored, but SGD momentum or Adam/AdamW first and second moment estimates will be lost.
+
+Therefore, a more complete checkpoint usually contains:
+
+```{python}
+checkpoint = {
+    'model': model.state_dict(),
+    'optimizer': optimizer.state_dict(),
+}
+torch.save(checkpoint, 'checkpoint.pth')
+```
+
+Correspondingly, both parts should be restored when loading:
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+
+checkpoint = torch.load('checkpoint.pth')
+model.load_state_dict(checkpoint['model'])
+optimizer.load_state_dict(checkpoint['optimizer'])
+```
+
+Only then can training continue as closely as possible from the interrupted point, instead of restarting optimization with the same model parameters but fresh optimizer state.
+
+## 2.5.6 Foreach and Fused: Different Implementations of the Same Optimizer
+
+Sometimes we see parameters like this in optimizers:
+
+```{python}
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=1e-3,
+    foreach=True,
+)
+```
+
+or:
+
+```{python}
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=1e-3,
+    fused=True,
+)
+```
+
+These parameters do not change AdamW's mathematical objective; they choose **how the parameter update is executed**.
+
+In PyTorch, the same optimizer can roughly have three implementation paths:
+
+1. `for-loop`: the most traditional approach, updating parameter tensors one by one.
+2. `foreach`: package a group of tensors and call batched tensor operations.
+3. `fused`: fuse multiple update operations into fewer kernels.
+
+The easiest one to understand is for-loop. It processes parameters one by one like this:
+
+```python
+for param in params:
+    update(param)
+```
+
+This approach is simple and general, but if the model has many parameter tensors, it creates many small operations, which may be inefficient especially on GPUs.
+
+The idea of `foreach` is: do not update tensors one by one. Instead, pass many tensors as a list to the lower-level implementation and process them together. It is usually faster than an ordinary for-loop, especially when there are many parameter tensors on the GPU. But `foreach` is not completely free either, because it often needs to store intermediate tensor lists, so peak memory usage may be higher.
+
+`fused` goes one step further. It tries to fuse multiple operations inside the optimizer update, reducing repeated kernel launches and intermediate reads/writes. Intuitively, foreach is more like processing many tensors at once, while fused is more like combining multiple operations within one update.
+
+Therefore, in well-supported CUDA scenarios, `fused=True` may be faster. But it has stricter support requirements for device, dtype, and optimizer implementation.
+
+We can first understand them as three execution methods:
+
+1. for-loop: the most basic and most compatible.
+2. foreach: usually faster, but may use more memory.
+3. fused: more aggressive and may be fastest, but has more limited support.
+
+In practice, if there is no special requirement, we can usually let PyTorch use its default choice. Only when optimizing large-model training performance, memory usage, or compatibility issues do we need to manually specify `foreach` or `fused`.
+
+::: {.callout-tip}
+For the support status of PyTorch `foreach` and `fused` across different optimizers, the official documentation has more detailed explanations and compatibility lists. See [torch.optim - Algorithms](https://docs.pytorch.org/docs/2.12/optim.html#algorithms).
+:::
+
+The following code only demonstrates how the parameters are passed. Whether `fused=True` is supported may vary across machines, PyTorch versions, and devices.
+
+```{python}
+model = nn.Linear(10, 2)
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=1e-3,
+    foreach=False,
+    fused=False,
+)
+print(optimizer)
+```
+
+## 2.5.7 optimizer.step() Does Not Record the Computation Graph by Default
+
+When we manually updated parameters earlier, we wrote:
+
+```python
+with torch.no_grad():
+    param -= lr * param.grad
+```
+
+This is because, in ordinary training, the parameter update itself usually does not need to be recorded by Autograd.
+
+In other words, we generally care about how `loss` is differentiated with respect to parameters, not how the `optimizer.step()` update process itself can be differentiated again.
+
+PyTorch optimizers use the same default logic. By default, `optimizer.step()` updates parameters in a context that does not record gradients.
+
+This is reasonable for ordinary training, because if every parameter update were recorded into the computation graph, memory usage would grow rapidly and training would become more complex. However, some more advanced scenarios do need to differentiate through the optimization process, such as meta-learning, differentiable optimization, learning learning rates, or treating several gradient updates as part of a computation graph.
+
+In that case, the optimizer update process must also participate in Autograd. The corresponding parameter in PyTorch optimizers is called `differentiable`. When set to `True`, the optimizer's step process is tracked, allowing us to continue differentiating through the updated parameters.
+
+For example:
+
+```{python}
+model = nn.Linear(3, 1)
+optimizer = optim.SGD(
+    model.parameters(),
+    lr=0.1,
+    differentiable=True,
+)
+
+flag = optimizer.defaults['differentiable']
+print('Is optimizer step differentiable?', flag)
+```
+
+However, `differentiable=True` is not an option needed for regular training. It causes the optimizer step computation to be tracked, usually increasing memory cost and sometimes requiring more careful code.
+
+So for most training scenarios, remember: use the default `differentiable=False`. Only consider `differentiable=True` in special cases where you need to differentiate through the parameter update process.
+
+## 2.5.8 A Complete Optimization Step
+
+Now we can connect the previous pieces and write a complete optimization step.
+
+```{python}
+model = nn.Sequential(
+    nn.Linear(10, 32),
+    nn.ReLU(),
+    nn.Linear(32, 1),
+)
+optimizer = optim.AdamW(
+    [
+        {'params': model[0].parameters(), 'lr': 1e-3},
+        {'params': model[2].parameters(), 'lr': 1e-2},
+    ],
+    weight_decay=1e-2,
+)
+
+x = torch.randn(16, 10)
+y = torch.randn(16, 1)
+
+model.train()
+pred = model(x)
+loss = F.mse_loss(pred, y)
+
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+print('Loss:', loss.item())
+```
+
+Several things happen behind this code:
+
+- `model(x)`: runs the forward pass, computes the prediction `pred`, and builds the computation graph.
+- `loss.backward()`: computes gradients according to the current `loss` and accumulates the results into the model parameters' `.grad` attributes.
+- `optimizer.step()`: updates parameter values according to each parameter's `.grad` and the optimizer's internal state.
+- `optimizer.zero_grad()`: clears old gradients to prevent the next `backward()` from continuing to accumulate them.
+
+The optimizer stores not only hyperparameters, but also possibly historical state. Parameter groups decide how different parameters are updated, `foreach` and `fused` decide how the update process is executed efficiently, and `differentiable=True` decides whether the update process itself enters the computation graph.
+
+## 2.5.9 Summary
+
+In this section, we started from the simplest manual gradient descent and understood the role of PyTorch optimizers. `backward()` is responsible for computing gradients and writing them into the parameters' `.grad`; `optimizer.step()` is what actually modifies parameters according to those gradients.
+
+Because PyTorch accumulates gradients by default, regular training needs to call `optimizer.zero_grad()` before each backward pass. If we intentionally do not clear gradients, we can implement gradient accumulation.
+
+An optimizer does not have to receive one uniform group of parameters; it can also receive multiple parameter groups. Different parameter groups can set different learning rates, weight decay values, and other hyperparameters. This is very common in fine-tuning and large-model training.
+
+At the same time, the optimizer itself also has state. Optimizers like AdamW store historical gradient statistics, so when resuming training, we usually need to save both `model.state_dict()` and `optimizer.state_dict()`.
+
+Finally, we distinguished several optimizer execution implementations. `foreach` and `fused` do not change the mathematical meaning of the optimization algorithm; they change how the update process is executed. For ordinary training, the default settings are generally enough. Only when performance, memory, or differentiable optimization matters do we need to further control these options.
+
+In the next section, we will write out the full training loop, from data loading and model definition to loss computation and optimizer updates, and see how these pieces work together.

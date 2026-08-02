@@ -1,0 +1,1062 @@
+---
+author: jshn9515
+date: 2026-05-23
+date-modified: 2026-05-23
+open-graph:
+  title: ch2.4-nn-module
+  description: "2.4 nn.Module in PyTorch: Organizing Models, Parameters, and State"
+title: "2.4 nn.Module in PyTorch: Organizing Models, Parameters, and State"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch2-pytorch-introduction/ch2.4-nn-module.ipynb){fig-align="left"}
+
+In the previous sections, we learned how PyTorch records computation graphs, how gradients are backpropagated, and how training data is usually organized into mini-batches through Dataset and DataLoader.
+
+But so far, we have not really answered one question: **how should the model itself be organized?**
+
+The simplest linear model can be written directly as tensor operations:
+
+```python
+x = torch.randn(4, 3)
+weight = torch.randn(2, 3, requires_grad=True)
+bias = torch.randn(2, requires_grad=True)
+
+y = x @ weight.T + bias
+```
+
+This certainly works. `weight` and `bias` participate in the computation graph, and after `loss.backward()` they can receive gradients.
+
+But once the model becomes a little more complex, many engineering questions immediately appear:
+
+- Which tensors are parameters that need to be optimized?
+- How do we organize many network layers into one model?
+- How do we move the whole model to the GPU?
+- How do we save and load model state?
+- How do we distinguish training mode from evaluation mode?
+
+If everything is just scattered tensors outside the model, we have to manage all of these by hand. The role of nn.Module is to unify these tasks. It is not only an object that can perform forward computation; it is also PyTorch's basic container for organizing **computation, parameters, buffers, and submodules**.
+
+In this section, we start from the smallest linear layer and gradually understand several core ideas behind nn.Module.
+
+```{python}
+from pprint import pprint
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 2.4.1 Why nn.Module Is Needed
+
+Return to the linear transformation above:
+
+$$
+y = xW^\top + b
+$$
+
+If written directly with tensors, the code is roughly:
+
+```{python}
+in_features = 3
+out_features = 2
+
+weight = torch.randn(out_features, in_features, requires_grad=True)
+bias = torch.randn(out_features, requires_grad=True)
+
+x = torch.randn(4, in_features)
+y = x @ weight.T + bias
+
+print('y.shape:', y.shape)
+```
+
+Here, `weight` and `bias` are model parameters. But PyTorch does not know they belong to the same model, because they are just two ordinary variables. This creates a problem: if there are more parameters later, we have to collect them manually:
+
+```{python}
+params = [weight, bias]
+pprint(params)
+```
+
+For a linear model with only two parameters, this is acceptable. But if a model has dozens of layers and hundreds of parameter tensors, maintaining this list manually is very easy to get wrong.
+
+What we really want is:
+
+- Put parameters into a container.
+- Let the container know which tensors are parameters.
+- Let the optimizer automatically obtain these parameters.
+- Let the container be saved, loaded, and moved to the GPU.
+
+This is the problem nn.Module solves.
+
+First, write a minimal linear layer by hand:
+
+```{python}
+class SimpleLinear(nn.Module):
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(out_features, in_features))
+        self.bias = nn.Parameter(torch.randn(out_features))
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x @ self.weight.T + self.bias
+```
+
+Now `weight` and `bias` are no longer scattered external variables; they belong to the `SimpleLinear` module:
+
+```{python}
+linear = SimpleLinear(3, 2)
+
+for name, param in linear.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+The key change is: as long as an nn.Parameter is assigned to an nn.Module attribute, PyTorch automatically registers it as a parameter of that module. To get model parameters, we only need to call:
+
+```{python}
+params = list(linear.named_parameters())
+pprint(params)
+```
+
+With `parameters()`, we no longer need to manually maintain a parameter list. Module recursively finds all parameters inside the model. This is the first meaning of nn.Module: **it is a way to organize parameters.**
+
+## 2.4.2 forward(): Module Organizes Computation
+
+An nn.Module usually implements a `forward()` method to describe how input becomes output. For example, the earlier `SimpleLinear`:
+
+```python
+class SimpleLinear(nn.Module):
+    def forward(self, x: Tensor) -> Tensor:
+        return x @ self.weight.T + self.bias
+```
+
+When using it, we usually write:
+
+```{python}
+x = torch.randn(4, 3)
+y = linear(x)
+
+print('y.shape:', y.shape)
+```
+
+Notice that we call:
+
+```python
+linear(x)
+```
+
+instead of:
+
+```python
+linear.forward(x)
+```
+
+This is because nn.Module's `__call__` method calls `forward()` internally and also handles extra logic such as hooks and checks. When writing models, we should call `module(input)`, not directly call `module.forward(input)`.
+
+From this perspective, Module is not only a parameter container; it also describes a reusable computation:
+
+```text
+Module = parameters + forward computation
+```
+
+But this raises another easily confused question: if nn.Module contains computation, what is nn.functional?
+
+## 2.4.3 The Relationship Between nn.Module and nn.functional
+
+In PyTorch, we often see two styles.
+
+The first is the module style:
+
+```{python}
+linear = nn.Linear(3, 2)
+y1 = linear(x)
+
+print('y1.shape:', y1.shape)
+```
+
+The second is the functional style:
+
+```{python}
+weight = torch.randn(2, 3)
+bias = torch.randn(2)
+y2 = F.linear(x, weight, bias)
+
+print('y2.shape:', y2.shape)
+```
+
+Both perform a linear transformation, but their meanings differ.
+
+`nn.Linear` is an nn.Module. It holds its own `weight` and `bias`, and these parameters are automatically registered:
+
+```{python}
+for name, param in linear.named_parameters():
+    print(f'{name}: {param}')
+```
+
+`F.linear` is a function. It does not store parameters or register any state. You must explicitly pass in `weight` and `bias`:
+
+```python
+F.linear(x, weight, bias)
+```
+
+So their relationship can be understood simply as:
+
+```text
+nn.Module      = stateful layer or model
+nn.functional  = stateless function
+```
+
+In fact, if you look at PyTorch source code, many nn.Module `forward()` implementations are essentially calls to the corresponding nn.functional function. For example, `nn.Linear` can roughly be understood as:
+
+```python
+class Linear(nn.Module):
+    def forward(self, input: Tensor) -> Tensor:
+        return F.linear(x, self.weight, self.bias)
+```
+
+This is why we often mix the two when writing custom modules:
+
+```{python}
+class SimpleMLP(nn.Module):
+    """Minimal multi-layer perceptron with one hidden layer."""
+
+    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)
+        return x
+```
+
+Here, `self.fc1` and `self.fc2` have learnable parameters, so they are naturally written as nn.Module; `relu` has no parameters that need to be saved, so using `F.relu` is natural.
+
+Of course, we could also write:
+
+```python
+self.relu = nn.ReLU()
+```
+
+This is also correct. The main difference is: if an operation has no state, the functional style is lighter; if you want it to appear in the module structure, or if it has different training/evaluation behavior, using nn.Module is clearer.
+
+For example, Dropout has no learnable parameters, but its behavior differs between training and evaluation, so it is usually written as:
+
+```python
+self.dropout = nn.Dropout(p=0.5)
+```
+
+Then it can follow the whole model when switching between `train()` and `eval()` modes.
+
+## 2.4.4 Parameter: Tensors Updated by the Optimizer
+
+Next, look closely at `Parameter`.
+
+An ordinary tensor, even with `requires_grad=True`, is not automatically turned into a model parameter when assigned to a Module:
+
+```{python}
+class BadLinear(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.weight = torch.randn(2, 3, requires_grad=True)
+
+
+bad = BadLinear()
+for name, param in bad.named_parameters():
+    print(f'{name}: {param}')
+```
+
+Here, `self.weight` is indeed a tensor that requires gradients, but it has not been registered as a Module parameter. Therefore, `parameters()` will not return it, and the optimizer will not update it automatically.
+
+If we want a tensor to become a model parameter, we need to use nn.Parameter:
+
+```{python}
+class GoodLinear(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(2, 3))
+
+
+good = GoodLinear()
+for name, param in good.named_parameters():
+    print(f'{name}: {param}')
+```
+
+nn.Parameter can be understood as a special `Tensor`. Its special property is not mathematical computation, but this rule: when it is assigned to an nn.Module attribute, it is automatically registered as a model parameter.
+
+So `Parameter` means:
+
+> **This is part of the model and usually needs to be updated by the optimizer.**
+
+Weights of linear layers, convolution kernels, and embedding tables are all typical parameters.
+
+Besides direct assignment, we can also explicitly register parameters with `register_parameter()`:
+
+```{python}
+class ExplicitLinear(nn.Module):
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__()
+        weight = nn.Parameter(torch.randn(out_features, in_features))
+        bias = nn.Parameter(torch.randn(out_features))
+
+        self.register_parameter('weight', weight)
+        self.register_parameter('bias', bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return F.linear(x, self.weight, self.bias)
+```
+
+Most of the time, writing:
+
+
+is enough. `register_parameter()` is more common when parameter names are generated dynamically, or when we want to explicitly control whether a certain name registers a parameter. For example, some modules can choose whether to use bias:
+
+```{python}
+class OptionalBiasLinear(nn.Module):
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(out_features, in_features))
+
+        if bias:
+            self.bias = nn.Parameter(torch.randn(out_features))
+        else:
+            self.register_parameter('bias', None)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return F.linear(x, self.weight, self.bias)
+```
+
+This way, even without bias, the module structure is explicit: it has a position named `bias`, but currently there is no parameter there.
+
+## 2.4.5 Buffer: Model State That Is Not Learnable
+
+Not every tensor inside a model should be updated by the optimizer.
+
+For example, BatchNorm has running mean and running variance. They are updated with training data and used for normalization during evaluation, but they are not learned by gradient descent. Similarly, a precomputed sinusoidal table for positional encoding may need to be saved, loaded, and moved with the model, but should not be updated by the optimizer. Such tensors are suitable as **buffers**.
+
+A buffer can be understood as:
+
+> **A tensor that belongs to model state and should follow the model, but is not a learnable parameter.**
+
+Consider a simple normalization module that uses fixed mean and standard deviation:
+
+```{python}
+class Normalize(nn.Module):
+    def __init__(self, mean: Tensor, std: Tensor):
+        super().__init__()
+        self.register_buffer('mean', mean)
+        self.register_buffer('std', std)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return (x - self.mean) / self.std
+```
+
+Here, `mean` and `std` should not appear in `parameters()`:
+
+```{python}
+mean = torch.tensor([0.5, 0.5, 0.5])
+std = torch.tensor([0.2, 0.2, 0.2])
+normalize = Normalize(mean, std)
+
+print('Parameters:')
+for name, param in normalize.named_parameters():
+    print(f'{name}: {param}')
+
+print('Buffers:')
+for name, buffer in normalize.named_buffers():
+    print(f'{name}: {buffer}')
+```
+
+But they do appear in `state_dict()`:
+
+```{python}
+pprint(normalize.state_dict())
+```
+
+This means they are saved as part of model state.
+
+Buffers also have an important property: when we call `model.to(device)`, buffers are moved to the corresponding device together with parameters. If we simply stored them as ordinary attributes:
+
+```python
+self.mean = mean
+self.std = std
+```
+
+then they would not appear in `state_dict()` and would not be managed as model state. But if we register them with `register_buffer()`, they become part of model state and move with the model.
+
+```{python}
+print('Buffers before moving to device:', normalize.mean.device)
+
+device = torch.accelerator.current_accelerator(check_available=True)
+normalize.to(device)
+
+print('Buffers after moving to device:', normalize.mean.device)
+```
+
+To decide whether a tensor should be registered as a buffer, ask three questions:
+
+- Is it part of the model?
+- Should it be saved and loaded?
+- Should it move with `model.to(device)`?
+
+If the answers are yes, but it is not a parameter updated by the optimizer, it is probably a buffer.
+
+`register_buffer()` also has a parameter called `persistent`. By default, buffers are persistent, meaning they are saved into `state_dict()`:
+
+```python
+self.register_buffer('mean', mean, persistent=True)
+```
+
+If `persistent=False`, the buffer still follows device movement and can still be found through `buffers()`, but it will not be saved into `state_dict()`. This is suitable for caches that can be regenerated, such as temporary masks or lookup results.
+
+```{python}
+class MaskCache(nn.Module):
+    def __init__(self, max_len: int):
+        super().__init__()
+        mask = torch.tril(torch.ones(max_len, max_len, dtype=torch.bool))
+        self.register_buffer('causal_mask', mask, persistent=False)
+
+
+cache = MaskCache(max_len=4)
+print('Buffers:')
+for name, buffer in cache.named_buffers():
+    print(f'{name}: {buffer}')
+
+print('State dict keys:', cache.state_dict())
+```
+
+The difference between Parameter and Buffer is:
+
+::: {.list-table}
+Table 1: Differences between Parameter and Buffer
+
+- - Type
+  - Is model state
+  - Updated by optimizer
+  - Enters state_dict
+  - Follows model.to(device)
+
+- - Parameter
+  - Yes
+  - Usually yes
+  - Yes
+  - Yes
+
+- - Buffer
+  - Yes
+  - No
+  - Yes by default
+  - Yes
+:::
+
+## 2.4.6 Submodules: Modules Can Contain Modules
+
+Neural networks are usually not a single layer, but structures made from many layers. In nn.Module, one module can contain another module.
+
+For example, the earlier MLP:
+
+```{python}
+class SimpleMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(3, 8)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(8, 2)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        return x
+
+
+model = SimpleMLP()
+print(model)
+```
+
+Here, `fc1`, `relu`, and `fc2` are submodules of `model`. As long as an nn.Module is assigned to an attribute of another nn.Module, it is automatically registered.
+
+Therefore, `model.parameters()` recursively finds parameters in all submodules:
+
+```{python}
+for name, param in model.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+Dots in parameter names represent module hierarchy. For example:
+
+```text
+fc1.weight
+fc1.bias
+fc2.weight
+fc2.bias
+```
+
+means `weight` and `bias` belong to submodules `fc1` or `fc2`.
+
+PyTorch provides several common methods for traversing module structure.
+
+`children()` returns only direct child modules:
+
+```{python}
+for child in model.children():
+    print(child)
+```
+
+`named_children()` also returns names:
+
+```{python}
+for name, child in model.named_children():
+    print(f'{name}: {child}')
+```
+
+`modules()` recursively returns the current module and all submodules:
+
+```{python}
+for module in model.modules():
+    print(type(module).__name__)
+```
+
+`named_modules()` recursively returns module names and module objects:
+
+```{python}
+for name, module in model.named_modules():
+    print(f'{repr(name)} -> {type(module).__name__}')
+```
+
+The first name here is an empty string, representing the model itself.
+
+These methods are useful when debugging model structure, freezing certain layers, or replacing submodules.
+
+For example, we can find all linear layers:
+
+```{python}
+for name, module in model.named_modules():
+    if isinstance(module, nn.Linear):
+        print('Linear layer:', name)
+```
+
+However, if we put submodules into an ordinary Python list, PyTorch does not automatically register the modules inside the list.
+
+```{python}
+class BadStack(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = [nn.Linear(3, 3), nn.Linear(3, 3)]
+
+
+bad_stack = BadStack()
+for name, param in bad_stack.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+If we want to store a group of submodules, we should use `nn.ModuleList`:
+
+```{python}
+class GoodStack(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.ModuleList(
+            [
+                nn.Linear(3, 3),
+                nn.Linear(3, 3),
+            ]
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
+good_stack = GoodStack()
+for name, param in good_stack.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+The same applies to dictionaries:
+
+```{python}
+class BadDict(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = {'layer1': nn.Linear(3, 3), 'layer2': nn.Linear(3, 3)}
+
+    def forward(self, x: Tensor) -> Tensor:
+        for layer in self.layers.keys():
+            x = self.layers[layer](x)
+        return x
+
+
+bad_dict = BadDict()
+for name, param in bad_dict.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+If we want to store a group of named submodules, we should use `nn.ModuleDict`:
+
+```{python}
+class GoodDict(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.ModuleDict(
+            {
+                'layer1': nn.Linear(3, 3),
+                'layer2': nn.Linear(3, 3),
+            }
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        for layer in self.layers.keys():
+            x = self.layers[layer](x)
+        return x
+
+
+good_dict = GoodDict()
+for name, param in good_dict.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+If modules are executed in a strict sequence, `nn.Sequential` can also be used:
+
+```{python}
+sequential_model = nn.Sequential(
+    nn.Linear(3, 8),
+    nn.ReLU(),
+    nn.Linear(8, 2),
+)
+
+print(sequential_model)
+```
+
+`ModuleList` and `ModuleDict` are more like registered lists and dictionaries of modules; we decide how `forward` uses them. `Sequential` directly defines a sequential computation chain.
+
+## 2.4.7 state_dict: A Dictionary of Model State
+
+After training a model, we need to save the trained model. What we usually want to save is not the whole Python object, but the state inside the model.
+
+In PyTorch, this state is represented by `state_dict()`:
+
+```{python}
+state = model.state_dict()
+
+for key, value in state.items():
+    print(f'{key}: {value.size()}')
+```
+
+state_dict is a dictionary from names to tensors. It contains all parameters and persistent buffers. For the earlier `SimpleMLP`, there are only linear-layer parameters and no buffers, so its state_dict is mainly the weights and biases of `fc1` and `fc2`.
+
+If a module has buffers, they are saved too:
+
+```{python}
+state = normalize.state_dict()
+
+for key, value in state.items():
+    print(f'{key}: {value.size()}')
+```
+
+This is why buffers, although not parameters, are still model state.
+
+Usually model parameters are saved like this:
+
+```{python}
+torch.save(model.state_dict(), 'model.pt')
+```
+
+When loading, recreate a model with the same structure first, then call `load_state_dict()`:
+
+```{python}
+model = SimpleMLP()
+state_dict = torch.load('model.pt')
+flag = model.load_state_dict(state_dict)
+print('Load state dict flag:', flag)
+```
+
+The important idea is:
+
+> **Model structure is defined by Python code, and model state is saved by state_dict.**
+
+state_dict only stores tensors such as weights, biases, and buffers; it does not store the Python logic of `forward()`. Therefore, before loading parameters, we need to create a model object with matching structure. If the structure does not match, such as different layer names or different parameter shapes, `load_state_dict()` will raise an error or return an `IncompatibleKeys` object. This object usually tells us the missing keys or unexpected keys: parameters required by the current model but absent from the file, or parameters present in the file but unused by the current model.
+
+In actual model training, state_dict is very important because it makes model saving clearer: we save state, not the entire runtime environment.
+
+## 2.4.8 train() and eval(): Switching Module Behavior
+
+In Section 2.2, we discussed `torch.no_grad()` and `torch.inference_mode()`. They control **whether the computation graph is recorded**. But `model.train()` and `model.eval()` control something else: **whether modules are in training mode or evaluation mode**. These concepts are easy to mix up, but they are not the same.
+
+Look at an example:
+
+```{python}
+dropout = nn.Dropout(p=0.5)
+x = torch.ones(5)
+
+dropout.train()
+print('Train mode:', dropout(x))
+
+dropout.eval()
+print('Eval mode:', dropout(x))
+```
+
+In training mode, Dropout randomly drops some elements; in evaluation mode, Dropout no longer drops elements and directly returns the input. This shows that `train()` and `eval()` affect the forward behavior of certain modules.
+
+The most common affected modules are:
+
+- Dropout: randomly drops during training, disabled during evaluation.
+- BatchNorm: uses current-batch statistics and updates running statistics during training; uses saved running statistics during evaluation.
+
+We can inspect the `training` attribute:
+
+```{python}
+model = SimpleMLP()
+print('Initial training mode:', model.training)
+
+model.eval()
+print('After calling eval():', model.training)
+
+model.train()
+print('After calling train():', model.training)
+```
+
+`model.train()` sets the model and all its submodules to training mode; `model.eval()` recursively sets them to evaluation mode. It is essentially equivalent to `model.train(False)`.
+
+However, `eval()` does not disable automatic differentiation. That is, even though the following code is in eval mode, PyTorch still records the computation graph if there is no `no_grad()`:
+
+```{python}
+model.eval()
+x = torch.randn(4, 3, requires_grad=True)
+y = model(x)
+print('y.requires_grad:', y.requires_grad)
+```
+
+Therefore, validation or inference usually needs both:
+
+```{python}
+model.eval()
+with torch.no_grad():
+    y_pred = model(x)
+```
+
+or, in pure inference scenarios:
+
+```{python}
+model.eval()
+with torch.inference_mode():
+    y_pred = model(x)
+```
+
+A simple distinction is:
+
+- `train()` / `eval()` control module behavior, such as how Dropout and BatchNorm compute during training versus evaluation.
+- `no_grad()` / `inference_mode()` control whether Autograd records the computation graph, such as when gradients are unnecessary during evaluation.
+
+So `eval()` only tells modules to use evaluation-stage behavior. Whether gradients are recorded is still controlled by `no_grad()` or `inference_mode()`. This point is important.
+
+::: {.callout-warning}
+Make sure to call `model.train()` during training and `model.eval()` during evaluation. Even if your network does not currently use Dropout or BatchNorm, developing this habit prevents errors if these layers are added later and the mode switch is forgotten.
+:::
+
+## 2.4.9 Lazy Modules: Deferring Input-Dimension Decisions
+
+Previously, when creating `nn.Linear`, we had to explicitly write `in_features`:
+
+```python
+nn.Linear(in_features=3, out_features=2)
+```
+
+This is reasonable because the weight shape of a linear layer is:
+
+$$
+W \in \mathbb{R}^{\text{out\_features} \times \text{in\_features}}
+$$
+
+If PyTorch does not know the last dimension of the input, it cannot create this weight matrix in advance.
+
+But in real models, some input dimensions are inconvenient to compute by hand. Especially in convolutional networks, after several layers of `Conv2d` and `Pooling`, the final feature-map size sometimes has to be derived step by step from the input size.
+
+For example, a CNN usually flattens the feature map and then connects it to a fully connected layer:
+
+```python
+x = self.features(x)
+x = x.flatten(start_dim=1)
+x = self.classifier(x)
+```
+
+Here, the `in_features` of `classifier` depends on the output shape of `features`. If we have to recompute this number every time we change the convolution structure or input image size, it becomes annoying.
+
+To solve this problem, PyTorch provides **Lazy Modules**. Their core idea is:
+
+> **Create the module first, but do not fully create its parameters yet; when the first real input is seen, initialize parameters according to the input shape.**
+
+The most commonly used one is `nn.LazyLinear`. It does not require us to specify `in_features` in advance; only `out_features` is needed:
+
+```{python}
+lazy_linear = nn.LazyLinear(out_features=2)
+print(lazy_linear)
+```
+
+At this point, the module still does not know the input dimension. Its parameters are uninitialized:
+
+```{python}
+for name, param in lazy_linear.named_parameters():
+    print(f'{name}: {param.__class__.__name__}')
+```
+
+This kind of parameter is not an ordinary `Parameter`, but an `UninitializedParameter`. It means the parameter belongs to the model, but its full shape is not known yet. Therefore, if we try to access its shape, an error occurs:
+
+```{python}
+try:
+    size = lazy_linear.weight.size()
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+When we pass input through it for the first time, `LazyLinear` infers `in_features` from the last dimension of the input and initializes the parameters:
+
+```{python}
+x = torch.randn(4, 3)
+y = lazy_linear(x)
+
+print(lazy_linear)
+print('Output shape:', y.shape)
+```
+
+Now inspect the parameter shapes:
+
+```{python}
+for name, param in lazy_linear.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+The shape of `weight` has become:
+
+$$
+(\text{out\_features}, \text{in\_features}) = (2, 3)
+$$
+
+That is, after `LazyLinear` first sees input of shape `(4, 3)`, it automatically infers `in_features = 3` and finishes parameter initialization. This is where the "lazy" in lazy module comes from: the module is not lazy about computation; **parameter initialization is deferred until the first forward pass.**
+
+Lazy modules are especially convenient in convolutional networks. For example, we can first write the convolutional feature extractor and then use `nn.LazyLinear` to automatically adapt to the flattened dimension:
+
+```{python}
+class LazyCNN(nn.Module):
+    def __init__(self, num_classes: int):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.LazyConv2d(8, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.LazyConv2d(16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+        )
+        self.classifier = nn.LazyLinear(num_classes)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.features(x)
+        x = x.flatten(start_dim=1)
+        x = self.classifier(x)
+        return x
+```
+
+When creating the model, we do not need to know the input dimension of `classifier`:
+
+```{python}
+lazy_cnn = LazyCNN(num_classes=10)
+print(lazy_cnn)
+```
+
+Only after the first forward pass is `classifier` concretely initialized:
+
+```{python}
+x = torch.randn(4, 1, 28, 28)
+y = lazy_cnn(x)
+print(lazy_cnn.classifier)
+```
+
+In this example, the input image size is $28 \times 28$. After two `MaxPool2d(kernel_size=2)` operations, the spatial size changes from $28 \times 28$ to $7 \times 7$, and the number of channels becomes 16. So the flattened dimension is:
+
+$$
+16 \times 7 \times 7 = 784
+$$
+
+`nn.LazyLinear` obtains this 784 automatically from the real input during the first forward pass.
+
+Besides `LazyLinear`, PyTorch also has lazy versions of convolution layers, such as:
+
+```python
+nn.LazyConv1d(out_channels, kernel_size)
+nn.LazyConv2d(out_channels, kernel_size)
+nn.LazyConv3d(out_channels, kernel_size)
+```
+
+Ordinary convolution layers require `in_channels`:
+
+```python
+nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3)
+```
+
+`LazyConv2d` can defer `in_channels` until the first forward pass:
+
+```{python}
+lazy_conv = nn.LazyConv2d(out_channels=16, kernel_size=3, padding=1)
+print(lazy_conv)
+
+x = torch.randn(4, 3, 32, 32)
+y = lazy_conv(x)
+
+print(lazy_conv)
+print('Output shape:', y.shape)
+```
+
+After first seeing input `(4, 3, 32, 32)`, `LazyConv2d` knows the input channel count is 3 and initializes the weight to the corresponding shape:
+
+```{python}
+for name, param in lazy_conv.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+Lazy modules are convenient, but there are a few things to watch for.
+
+First, before the first forward pass, lazy module parameters do not have real shapes. Therefore, operations that depend on parameter shapes cannot be done too early. For example, you cannot write complex logic based on `weight.shape` before initialization.
+
+Second, before saving a model, it is best to run one real batch or dummy batch through it so all lazy parameters are initialized. Otherwise, `state_dict()` will contain uninitialized parameters, making later loading and use more troublesome.
+
+```{python}
+model = LazyCNN(num_classes=10)
+
+x = torch.randn(1, 1, 28, 28)
+y = model(x)
+
+for key, value in model.state_dict().items():
+    print(f'{key}: {value.size()}')
+```
+
+Third, lazy modules mainly reduce the burden of manually computing input dimensions; they do not change the model structure. After the first forward pass, a lazy module becomes an ordinary module with fixed shapes. Later inputs must match the dimensions inferred the first time.
+
+For example, the earlier `LazyLinear` first saw an input whose last dimension was 3, so afterwards it can only accept inputs whose last dimension is 3:
+
+```{python}
+x1 = torch.randn(4, 3)
+y1 = lazy_linear(x1)
+
+try:
+    x2 = torch.randn(4, 5)
+    y2 = lazy_linear(x2)
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+So lazy modules are most suitable when:
+
+- You know the output dimension, such as the number of classes, hidden dimension, or convolution output channels.
+- You do not want to calculate the input dimension by hand, or it is naturally determined by earlier modules.
+- You are willing to run one forward pass before real training or saving to finish initialization.
+
+In summary, lazy modules are not a new computation method, but a more convenient module initialization method. They move some shape information from `__init__()` to the first `forward()`, so model code contains fewer hard-coded input dimensions.
+
+## 2.4.10 Putting These Concepts into One Model
+
+Now put the previous concepts into a slightly more complete model.
+
+This model contains:
+
+- Two linear layers as learnable submodules.
+- A Dropout to demonstrate training/evaluation behavior.
+- Input-normalization mean and std as buffers.
+- A non-persistent cache mask as a non-persistent buffer.
+
+```{python}
+class DemoNet(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int):
+        super().__init__()
+        self.register_buffer('mean', torch.zeros(input_dim))
+        self.register_buffer('std', torch.ones(input_dim))
+        self.register_buffer(
+            'cache_mask',
+            torch.ones(input_dim, dtype=torch.bool),
+            persistent=False,
+        )
+
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.dropout = nn.Dropout(p=0.5)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = (x - self.mean) / self.std
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
+```
+
+Create the model:
+
+```{python}
+demo = DemoNet(input_dim=3, hidden_dim=8, output_dim=2)
+```
+
+Inspect parameters:
+
+```{python}
+print('Parameters:')
+for name, param in demo.named_parameters():
+    print(f'{name}: {param.size()}')
+```
+
+Inspect buffers:
+
+```{python}
+print('Buffers:')
+for name, buffer in demo.named_buffers():
+    print(f'{name}: {buffer.size()}')
+```
+
+Inspect the state dict:
+
+```{python}
+print('State dict:')
+for key, value in demo.state_dict().items():
+    print(f'{key}: {value.size()}')
+```
+
+Notice that `cache_mask` is a buffer, but because `persistent=False`, it does not appear in `state_dict()`.
+
+Inspect submodules:
+
+```{python}
+print('Submodules:')
+for name, module in demo.named_modules():
+    print(repr(name), '->', module.__class__.__name__)
+```
+
+Together, these outputs show nn.Module's core management abilities:
+
+```text
+parameters()    -> find learnable parameters
+buffers()       -> find non-parameter state
+modules()       -> find submodule structure
+state_dict()    -> export saveable model state
+train()/eval()  -> switch module behavior
+```
+
+At this point, we can understand nn.Module more completely: it is not a single API, but the center of PyTorch's model system. As soon as an object inherits from nn.Module, it enters PyTorch's model-management system.
+
+## 2.4.11 Summary
+
+In this section, we started from a hand-written linear transformation and understood why nn.Module is needed.
+
+nn.Module is not only an object with `forward()`; it also manages parameters, buffers, and submodules inside the model. nn.Parameter represents model parameters that need to be updated by the optimizer; Buffer represents tensors that belong to model state and should be saved or moved across devices, but should not be updated by the optimizer.
+
+The relationship between nn.Module and nn.functional can be understood as: the former is a stateful layer or model, while the latter is a stateless function. Many modules call the corresponding functional operation inside `forward()`.
+
+We also saw that Module can contain Module, and PyTorch recursively manages parameters and buffers inside these submodules. Through `parameters()`, `buffers()`, `children()`, and `modules()`, we can inspect the internal structure of a model; through `state_dict()`, we can save and load model state.
+
+Finally, `train()` and `eval()` control module behavior, not whether Autograd records the computation graph. During validation and inference, we usually need both `model.eval()` and `torch.no_grad()` or `torch.inference_mode()`.
+
+So the core role of nn.Module is to organize scattered tensor computations into a real model: it knows which things should be learned, which things are only state, which layers belong to it, and how these states should be saved, loaded, and switched between behaviors.

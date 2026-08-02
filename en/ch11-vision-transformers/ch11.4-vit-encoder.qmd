@@ -1,0 +1,614 @@
+---
+author: jshn9515
+date: 2026-05-13
+date-modified: 2026-05-19
+open-graph:
+  title: ch11.4-vit-encoder
+  description: "11.4 ViT Encoder: Letting Patch Tokens Exchange Information"
+title: "11.4 ViT Encoder: Letting Patch Tokens Exchange Information"
+order: 4
+eval: false
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch11-vision-transformers/ch11.4-vit-encoder.ipynb){fig-align="left"}
+
+In the previous section, we completed the input construction of ViT. Given an image, ViT first cuts it into patches, obtains visual tokens through patch embedding, and then adds the class token and positional embedding:
+
+$$
+(B, C, H, W)
+\rightarrow
+(B, N, D)
+\rightarrow
+(B, N+1, D)
+$$
+
+Here, $N$ is the number of patch tokens, and the extra 1 comes from the class token.
+
+At this point, the image has already been translated into the sequence form familiar to Transformer. But the problem is not over yet.
+
+Patch embedding only turns each local image block into a vector. At this moment, each patch token mainly represents the local region corresponding to itself, and has not sufficiently fused information from other patches. For example, a patch representing a cat ear only knows the texture near itself; a patch representing the cat's body also only knows its own local content. For image classification, what we finally need is to judge the semantics of the whole image, rather than looking at one patch in isolation.
+
+So the problem that the ViT Encoder needs to solve is:
+
+> **How can these patch tokens fully exchange information with each other, and finally produce a representation of the whole image?**
+
+ViT's answer is direct: use a standard Transformer Encoder. Each encoder block consists of self-attention, an MLP, residual connections, and LayerNorm. Self-attention is responsible for establishing relationships among different patches, the MLP is responsible for applying nonlinear transformations to each token representation, and residual connections plus LayerNorm make deep networks easier to train.
+
+In this section, we start from this problem and implement the ViT Encoder step by step.
+
+```{python}
+import dnnlpy.nn as dnn
+import torch
+import torch.nn as nn
+from torch import Tensor
+from dnnlpy.models.vit import ViTEmbedding
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 11.4.1 Input and Output of the ViT Encoder
+
+The input of the ViT Encoder is the token sequence obtained in the previous section:
+
+$$
+Z_0 \in \mathbb{R}^{B \times (N+1) \times D}
+$$
+
+where $B$ is the batch size, $N$ is the number of patch tokens, and $D$ is the embedding dimension. This sequence contains $N$ patch tokens and 1 class token.
+
+The output of the Encoder is still a sequence with the same length:
+
+$$
+Z_L \in \mathbb{R}^{B \times (N+1) \times D}
+$$
+
+Here, $L$ denotes the number of encoder blocks.
+
+In other words, the ViT Encoder does not change the number of tokens, nor does it change the dimension of each token:
+
+$$
+(B, N+1, D) \rightarrow (B, N+1, D)
+$$
+
+What it truly changes is the content of each token. At input time, each patch token tends to represent a local image block; after multiple layers of self-attention, each token can fuse information from other patches and become a context-aware visual representation.
+
+For image classification, we usually take only the output of the class token:
+
+$$
+h_\mathrm{cls} = Z_L[:, 0, :]
+$$
+
+Then feed it into the classification head:
+
+$$
+\mathrm{logits} = h_\mathrm{cls} W + b
+$$
+
+So, from an overall perspective, the role of the ViT Encoder can be understood as:
+
+$$
+\text{patch token sequence}
+\rightarrow
+\text{contextualized token sequence}
+\rightarrow
+\text{image representation}
+$$
+
+where the final image representation is usually the output of the class token.
+
+## 11.4.2 Why Use an Encoder Here, Rather Than a Decoder?
+
+In the Transformer chapters, we have already seen the encoder and the decoder. Then why does ViT use a Transformer Encoder instead of a Transformer Decoder?
+
+The reason is that image classification is not an autoregressive generation task. For language generation, the model needs to predict the next token from left to right, so masked self-attention in the decoder must restrict the current position to seeing only past tokens. Otherwise, the model would peek at future answers.
+
+But image classification does not need this restriction. All patches in an image are given at the same time, and the model can allow any patch to interact directly with any other patch. For example, the upper-left patch can attend to the lower-right patch, and the center patch can also attend to edge patches. There is no issue of future tokens being unavailable.
+
+Therefore, ViT uses encoder-style bidirectional self-attention: **each token can attend to all tokens.**
+
+This is very similar to how BERT processes text understanding tasks. BERT's input is a whole sentence, and the model needs to understand each token in the sentence; ViT's input is a patch sequence of a whole image, and the model needs to understand the visual semantics jointly formed by these patches.
+
+So, a causal mask is usually not needed in the ViT Encoder. All patch tokens and the class token can interact with each other in self-attention.
+
+## 11.4.3 The Structure of a ViT Encoder Block
+
+A standard ViT Encoder Block can be written as:
+
+$$
+H = X + \operatorname{MultiheadSelfAttention}(\operatorname{LayerNorm}(X))
+$$
+
+$$
+Y = H + \operatorname{MLP}(\operatorname{LayerNorm}(H))
+$$
+
+This form is called a **Pre-Norm Transformer**, meaning layer norm is applied before entering attention or the MLP. The original ViT uses this structure. It is different from the **Post-Norm** structure of the original Transformer, where attention or MLP is applied first, and layer norm is applied afterward.
+
+In terms of module order, the computation flow of an encoder block is:
+
+```{mermaid}
+%%| eval: true
+%%| fig-height: 750px
+%%| fig-cap: "Figure 11.4.3: ViT Encoder model structure"
+
+---
+config:
+  flowchart:
+    wrappingWidth: 250
+---
+
+flowchart TD
+    X[Input]
+
+    X --> LN1[LayerNorm]
+    LN1 --> MSA[Multihead Self-Attention]
+    MSA --> ADD1((+))
+
+    X -. Residual .-> ADD1
+
+    ADD1 --> H[Hidden H]
+
+    H --> LN2[LayerNorm]
+    LN2 --> MLP[MLP]
+    MLP --> ADD2((+))
+
+    H -. Residual .-> ADD2
+
+    ADD2 --> OUT[Output]
+```
+
+This is very close to the Transformer Encoder we discussed earlier. The only difference is that the tokens are no longer words, but image patches.
+
+Intuitively, self-attention solves the problem of how tokens exchange information with one another, while the MLP solves the problem of how each token further transforms its own representation. The former mixes information along the sequence dimension, and the latter processes information along the feature dimension. Alternating and stacking these two components forms the main body of the ViT Encoder.
+
+### 11.4.3.1 Self-Attention: Letting Patches Interact Directly
+
+Suppose the input sequence is:
+
+$$
+X = [x_\mathrm{cls}, x_1, x_2, \dots, x_N]
+$$
+
+where $x_\mathrm{cls}$ is the class token, and $x_i$ is the $i$-th patch token.
+
+In self-attention, each token generates its own query, key, and value:
+
+$$
+Q = XW_Q, \quad K = XW_K, \quad V = XW_V
+$$
+
+Then it computes the pairwise relevance among tokens:
+
+$$
+\operatorname{Attention}(Q, K, V) =
+\operatorname{softmax}\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
+$$
+
+For ViT, the shape of the attention matrix is:
+
+$$
+(B, H, N+1, N+1)
+$$
+
+where $H$ is the number of attention heads. Each row in this matrix indicates how much a certain token attends to all other tokens.
+
+The most important token here is the class token. Because the class token also participates in self-attention, it can read information from all patch tokens in every layer:
+
+$$
+x_\mathrm{cls} \leftarrow \text{all patch tokens}
+$$
+
+After multiple encoder blocks, the class token gradually becomes a global image representation. This is why it can be used for classification at the end.
+
+Of course, patch tokens also interact with each other. A patch no longer represents only its own local region in isolation, but can adjust its representation according to the context of the whole image. For example, a local texture may mean different things in different contexts: the same yellow texture may be fur if it appears on an animal, but sand or desert if it appears in the background. Self-attention lets the model use other patches to determine the semantics of the current patch.
+
+### 11.4.3.2 MLP: Transforming Features for Each Token
+
+Self-attention is responsible for exchanging information among tokens, but it is not the whole encoder block. Each encoder block also has an MLP, also called a feed-forward network.
+
+The MLP in ViT usually consists of two linear layers and an activation function:
+
+$$
+\operatorname{MLP}(x) = W_2 \sigma(W_1 x + b_1) + b_2
+$$
+
+where $\sigma$ usually uses the `GELU` activation function.
+
+By default, the first linear layer expands the dimension from $D$ to a larger hidden dimension, commonly $4D$; the second linear layer projects the dimension back to $D$:
+
+$$
+D \rightarrow 4D \rightarrow D
+$$
+
+Note that the MLP acts independently on each token. That is, it does not directly mix different tokens together, but applies a nonlinear transformation to the feature dimension of each token.
+
+If we view the input as a tensor with shape $(B, N+1, D)$, then the shape change of the MLP is:
+
+$$
+(B, N+1, D) \rightarrow (B, N+1, 4D) \rightarrow (B, N+1, D)
+$$
+
+The sequence length does not change, and the embedding dimension at the end also does not change. Only the token representation becomes more expressive.
+
+We implement this MLP with PyTorch:
+
+```{python}
+class ViTMLP(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int,
+        hidden_dim: int | None = None,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        hidden_dim = hidden_dim or embed_dim * 4
+        self.net = nn.Sequential(
+            dnn.Linear(embed_dim, hidden_dim),
+            dnn.GELU(),
+            dnn.Dropout(dropout),
+            dnn.Linear(hidden_dim, embed_dim),
+            dnn.Dropout(dropout),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.net(x)
+```
+
+Test it:
+
+```{python}
+batch_size = 2
+num_tokens = 16 + 1
+embed_dim = 64
+
+x = torch.randn(batch_size, num_tokens, embed_dim)
+mlp = ViTMLP(embed_dim)
+out = mlp(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', out.shape)
+```
+
+We can see that the MLP does not change the final output shape.
+
+## 11.4.4 Implementing the ViT Encoder Block
+
+With the MLP, we can implement a complete ViT Encoder Block.
+
+Here we directly use the `MultiheadAttention` implemented in Chapter 8. At the same time, we use the Pre-Norm structure, meaning layer norm is applied before attention or MLP.
+
+```{python}
+class ViTEncoderLayer(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int = 12,
+        hidden_dim: int | None = None,
+        dropout: float = 0.0,
+        attn_dropout: float = 0.0,
+    ):
+        super().__init__()
+        hidden_dim = hidden_dim or embed_dim * 4
+
+        self.norm1 = dnn.LayerNorm(embed_dim)
+        self.attn = dnn.MultiheadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            dropout=attn_dropout,
+        )
+        self.dropout1 = dnn.Dropout(dropout)
+
+        self.norm2 = dnn.LayerNorm(embed_dim)
+        self.mlp = ViTMLP(
+            embed_dim=embed_dim,
+            hidden_dim=hidden_dim,
+            dropout=dropout,
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        attn_input = self.norm1(x)
+        attn_output, _ = self.attn(
+            attn_input,
+            attn_input,
+            attn_input,
+            need_weights=False,  # <1>
+        )
+        x = x + self.dropout1(attn_output)
+        x = x + self.mlp(self.norm2(x))
+        return x
+```
+
+1. The `MultiheadAttention` here returns two values: the first is the attention output, and the second is the attention weights. In most cases, we only need the attention output, so we set `need_weights=False`. If we want to visualize attention, we can set `need_weights=True`.
+
+This code corresponds exactly to the formulas above:
+
+$$
+H = X + \operatorname{MultiheadSelfAttention}(\operatorname{LayerNorm}(X))
+$$
+
+$$
+Y = H + \operatorname{MLP}(\operatorname{LayerNorm}(H))
+$$
+
+Test the shape:
+
+```{python}
+batch_size = 2
+num_tokens = 16 + 1
+embed_dim = 64
+
+block = ViTEncoderLayer(
+    embed_dim=embed_dim,
+    hidden_dim=embed_dim * 4,
+    num_heads=8,
+)
+
+x = torch.randn(batch_size, num_tokens, embed_dim)
+out = block(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', out.shape)
+```
+
+We can see that the input and output shapes of the ViT Encoder Block are exactly the same. This allows us to stack multiple blocks.
+
+## 11.4.5 Stacking Multiple Encoder Blocks
+
+A single encoder block can only perform one self-attention operation and one MLP transformation. To let the model build more complex visual representations layer by layer, ViT stacks multiple encoder blocks.
+
+Suppose the input of layer $\ell$ is $Z_{\ell-1}$ and the output is $Z_\ell$. Then the whole encoder can be written as:
+
+$$
+Z_\ell = \operatorname{EncoderBlock}_\ell(Z_{\ell-1}),
+\quad \ell = 1, 2, \dots, L
+$$
+
+Finally we get:
+
+$$
+Z_L = \operatorname{Encoder}(Z_0)
+$$
+
+In implementation, we can use `nn.ModuleList` to store multiple blocks:
+
+```{python}
+class ViTEncoder(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int = 12,
+        num_layers: int = 12,
+        hidden_dim: int | None = None,
+        dropout: float = 0.0,
+        attn_dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.layers = nn.ModuleList(
+            [
+                ViTEncoderLayer(
+                    embed_dim=embed_dim,
+                    num_heads=num_heads,
+                    hidden_dim=hidden_dim,
+                    dropout=dropout,
+                    attn_dropout=attn_dropout,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.norm = dnn.LayerNorm(embed_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        for layer in self.layers:
+            x = layer(x)
+        x = self.norm(x)
+        return x
+```
+
+The final `LayerNorm` is common in many ViT implementations. Because each block internally uses pre-norm, applying one final normalization after all blocks are stacked can make the output representation more stable.
+
+Test it:
+
+```{python}
+num_tokens = 16 + 1
+embed_dim = 64
+
+encoder = ViTEncoder(
+    embed_dim=embed_dim,
+    num_heads=8,
+    num_layers=4,
+)
+
+x = torch.randn(2, num_tokens, embed_dim)
+out = encoder(x)
+
+print('Input shape:', x.shape)
+print('Encoder output shape:', out.shape)
+```
+
+We can see that even after stacking multiple encoder layers, the shape still remains `(B, N+1, D)`.
+
+## 11.4.6 From Encoder Output to Classification Result
+
+The Encoder outputs the complete token sequence:
+
+$$
+Z_L = [z_\mathrm{cls}, z_1, z_2, \dots, z_N]
+$$
+
+For classification tasks, we usually take the first token, namely the output of the class token:
+
+$$
+z_\mathrm{cls} = Z_L[:, 0, :]
+$$
+
+Then attach a linear classification head:
+
+$$
+\mathrm{logits} = \operatorname{Linear}(z_\mathrm{cls})
+$$
+
+If the number of classes is $K$, then the output shape of the classification head is `(B, K)`.
+
+Below is the simplest classification head implemented with PyTorch:
+
+```{python}
+class ViTClassificationHead(nn.Module):
+    def __init__(self, embed_dim: int, num_classes: int):
+        super().__init__()
+        self.head = dnn.Linear(embed_dim, num_classes)
+
+    def forward(self, x: Tensor) -> Tensor:
+        cls_token = x[:, 0]
+        logits = self.head(cls_token)
+        return logits
+```
+
+Test it:
+
+```{python}
+num_classes = 10
+num_tokens = 16 + 1
+embed_dim = 64
+
+head = ViTClassificationHead(embed_dim, num_classes)
+
+x = torch.randn(2, num_tokens, embed_dim)
+logits = head(x)
+
+print('Encoder output shape:', x.shape)
+print('Logits shape:', logits.shape)
+```
+
+In this way, we complete the conversion from encoder output to classification logits.
+
+Of course, the class token is not the only choice. We can also average-pool all patch tokens:
+
+$$
+z_\mathrm{avg} = \frac{1}{N}\sum_{i=1}^{N} z_i
+$$
+
+and then use the averaged vector for classification. Many later ViT variants also use this method. But in the original ViT, the classic approach is still to use the class token.
+
+## 11.4.7 Connecting the Input Module, Encoder, and Classification Head
+
+Now, we have the three main parts of ViT:
+
+1. Input module: converts the image into a token sequence with class token and positional encoding;
+2. ViT Encoder: uses self-attention and MLP to fuse token information;
+3. Classification head: takes the class token output and maps it to class logits.
+
+We implement a complete simplified ViT with PyTorch:
+
+```{python}
+class ViTForImageClassification(nn.Module):
+    def __init__(
+        self,
+        image_size: int = 224,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        num_classes: int = 1000,
+        embed_dim: int = 768,
+        num_heads: int = 12,
+        num_layers: int = 12,
+        hidden_dim: int | None = None,
+        dropout: float = 0.0,
+        attn_dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.embedding = ViTEmbedding(
+            image_size=image_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
+            embed_dim=embed_dim,
+            dropout=dropout,
+        )
+        self.encoder = ViTEncoder(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            hidden_dim=hidden_dim,
+            dropout=dropout,
+            attn_dropout=attn_dropout,
+        )
+        self.head = ViTClassificationHead(
+            embed_dim=embed_dim,
+            num_classes=num_classes,
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.embedding(x)
+        x = self.encoder(x)
+        logits = self.head(x)
+        return logits
+```
+
+Test the output shape of the complete model:
+
+```{python}
+model = ViTForImageClassification(
+    image_size=32,
+    patch_size=16,
+    in_channels=3,
+    num_classes=10,
+    embed_dim=64,
+    num_heads=8,
+    num_layers=4,
+)
+
+x = torch.randn(2, 3, 32, 32)
+logits = model(x)
+
+print('Input shape:', x.shape)
+print('Logits shape:', logits.shape)
+```
+
+We can see that the input of ViT is `(B, C, H, W)`, and the output is `(B, num_classes)`. This is a minimal ViT classification model.
+
+## 11.4.8 Summary
+
+In this section, we completed the core part of ViT: **ViT Encoder**.
+
+The input of the ViT Encoder is the token sequence constructed in the previous section:
+
+$$
+(B, N+1, D)
+$$
+
+The sequence contains $N$ patch tokens and 1 class token. The Encoder does not change the sequence length or embedding dimension, but continuously updates token representations through multiple Transformer Encoder Blocks:
+
+$$
+(B, N+1, D) \rightarrow (B, N+1, D)
+$$
+
+Each encoder block mainly contains two parts:
+
+1. **Multi-Head Self-Attention**: lets patch tokens and the class token exchange information;
+2. **MLP**: applies nonlinear transformations to the feature dimension of each token.
+
+At the same time, layer norm and residual connections are used inside the block to stabilize training:
+
+$$
+H = X + \operatorname{MultiheadSelfAttention}(\operatorname{LayerNorm}(X))
+$$
+
+$$
+Y = H + \operatorname{MLP}(\operatorname{LayerNorm}(H))
+$$
+
+After multiple encoder layers, the output representation of the class token fuses information from the whole image. Finally, the classification head extracts the class token:
+
+$$
+h_\mathrm{cls} = Z_L[:, 0, :]
+$$
+
+and maps it to class logits:
+
+$$
+(B, D) \rightarrow (B, K)
+$$
+
+At this point, we have gone all the way from input to output, which forms the most basic Vision Transformer.
+
+However, the significance of ViT is not limited to image classification. In many practical applications, ViT is more often viewed as a general-purpose **visual backbone**. It converts an image into a group of high-level token representations, after which we can attach a classification head, detection head, segmentation head, or even the visual module in a multimodal model.
+
+Therefore, the core value of ViT lies in learning transferable visual representations. To make these representations sufficiently general, ViT is usually first pretrained on large-scale datasets and then fine-tuned according to specific tasks. In the next section, we will discuss why ViT is especially suitable as a backbone, and how pretraining and fine-tuning allow it to transfer to more vision tasks.

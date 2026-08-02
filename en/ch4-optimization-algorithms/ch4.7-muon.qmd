@@ -1,0 +1,429 @@
+---
+author: jshn9515
+date: 2026-06-05
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.7-muon
+  description: "4.7 Muon: Orthogonalized Updates for Matrix Parameters"
+title: "4.7 Muon: Orthogonalized Updates for Matrix Parameters"
+order: 7
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch4-optimization-algorithms/ch4.7-muon.ipynb){fig-align="left"}
+
+In the previous sections, we saw a fairly classic line of optimizer evolution.
+
+SGD updates parameters directly along the current mini-batch gradient; momentum further remembers past update directions, giving parameter updates inertia; Adagrad, RMSprop, and Adam start to care about the gradient scales of different parameters and adjust the effective learning rate for each parameter; AdamW then decouples weight decay from Adam's adaptive gradient update.
+
+These optimizers share one common feature: they mostly treat parameters as many independent scalars. Whether it is the first moment $m_t$ or the second moment $v_t$, the state is usually maintained elementwise. However, in neural networks, many important parameters are not isolated scalars, but matrices.
+
+For example, the weight of a linear layer can be written as:
+
+$$
+W \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}
+$$
+
+For such matrix parameters, is elementwise scaling already enough?
+
+This is exactly the starting point of Muon [@jordan2024Muon]:
+
+> **Since many parameters in neural networks are matrices, can we design an optimizer directly from the perspective of matrix updates?**
+
+Muon stands for **MomentUm Orthogonalized by Newton-Schulz**. From the name, we can already see its two core components:
+
+1. First, maintain a momentum direction just like momentum;
+2. Then, orthogonalize this matrix update direction.
+
+In this section, we will not treat Muon as a simple replacement for AdamW. Instead, we will view it as a modern optimizer direction after AdamW: an optimizer can not only adjust the learning rate of each parameter, but also directly change the geometric update direction of matrix parameters.
+
+```{python}
+from collections.abc import Iterable
+from typing import override
+
+import dnnlpy.optim as dopt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.7.1 Why Do We Still Need Optimizers After AdamW?
+
+AdamW is already very powerful. It can smooth noisy gradient, adaptively adjust step sizes for different parameters, and handle weight decay cleanly. Therefore, AdamW is a very common default choice in Transformers, ViTs, and many modern deep learning models.
+
+So why do people still design new optimizers? One important reason is that AdamW's adaptive scaling is mainly elementwise.
+
+For a parameter matrix $W$, AdamW maintains the first moment and second moment for each element:
+
+$$
+M_t \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}},
+\qquad
+V_t \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}
+$$
+
+Then the update at each position is roughly:
+
+$$
+\Delta W_t = - \eta \frac{\hat{M}_t}{\sqrt{\hat{V}_t} + \epsilon}
+$$
+
+This shows that AdamW pays close attention to how large a step each element should take.
+
+However, a matrix parameter is not just many scalars glued together. The weight matrix of a linear layer represents a linear transformation from the input space to the output space. Its rows, columns, singular values, and directional structure all affect the network representation.
+
+Therefore, a natural question is:
+
+> **For matrix parameters, can we do more than elementwise gradient scaling and instead directly process the entire matrix update direction?**
+
+Muon's answer is yes. It first obtains an update matrix similar to momentum, and then orthogonalizes this matrix so that the update direction becomes more balanced in the matrix sense.
+
+## 4.7.2 From Momentum to Matrix Updates
+
+Let us first recall the form of momentum.
+
+For an ordinary parameter $\theta$, momentum maintains a velocity, or momentum, term:
+
+$$
+B_t = \beta B_{t-1} + g_t
+$$
+
+Then it uses this velocity, or momentum, term to update the parameter:
+
+$$
+\theta_t = \theta_{t-1} - \eta B_t
+$$
+
+If the parameter is a matrix $W$, then the gradient is also a matrix:
+
+$$
+G_t = \nabla_W L(W_t)
+$$
+
+We can likewise maintain a matrix-form momentum buffer:
+
+$$
+B_t = \mu B_{t-1} + G_t
+$$
+
+If we directly use momentum, the update is:
+
+$$
+W_t = W_{t-1} - \eta B_t
+$$
+
+Muon's first step is the same as this: it first obtains an inertial matrix update direction $B_t$. But Muon does not directly use $B_t$ to update the parameter. Instead, it first applies an additional operation to $B_t$:
+
+$$
+O_t = \operatorname{Orthogonalize}(B_t)
+$$
+
+Finally, it uses the orthogonalized matrix $O_t$ to update the parameter:
+
+$$
+W_t = W_{t-1} - \eta O_t
+$$
+
+Therefore, the core of Muon can be written as:
+
+$$
+\text{Muon} = \text{Momentum} + \text{Orthogonalization}
+$$
+
+This step is very different from the previous optimizers. Adagrad, RMSprop, and Adam mainly ask: what scaling factor should each parameter element be multiplied by? Muon instead asks: for a matrix update direction, can we organize it into a better matrix direction before updating?
+
+## 4.7.3 What Exactly Does Orthogonalization Do?
+
+To understand Muon, the key is to understand what it means to "orthogonalize the update direction."
+
+First consider a matrix $B$. If it is an update direction, then directly using $B$ to update the parameter means fully trusting the original directions and scales inside this matrix. However, a matrix may be very strong in some directions and very weak in others. In other words, it may have highly unbalanced singular values.
+
+If we apply singular value decomposition to $B$:
+
+$$
+B = U \Sigma V^\top
+$$
+
+where $\Sigma$ stores the singular values. The larger a singular value is, the stronger the effect of the matrix in the corresponding direction.
+
+Muon's orthogonalization can be understood intuitively as preserving the main directional structure of the update matrix while making the singular values more balanced. Ideally, it wants to obtain something like:
+
+$$
+O = U V^\top
+$$
+
+This $O$ can be viewed as the orthogonalized version of $B$. It no longer preserves the large differences among the original singular values of $B$, and instead emphasizes the directions themselves.
+
+So intuitively, Muon does not simply move along the raw matrix direction of the momentum buffer. It first "organizes" this matrix direction so that the update is not overly concentrated in a few directions. This forms a contrast with Adam.
+
+Adam divides by the second moment elementwise:
+
+$$
+\frac{m_t}{\sqrt{v_t} + \epsilon}
+$$
+
+Muon orthogonalizes the whole matrix update:
+
+$$
+\operatorname{Orthogonalize}(B_t)
+$$
+
+The former is more like element-level scaling, while the latter is more like matrix-level geometric processing.
+
+Then, since ideal orthogonalization can be written with SVD as:
+
+$$
+B = U \Sigma V^\top, \qquad O = U V^\top
+$$
+
+why not directly perform SVD on every weight matrix?
+
+The reason is simple: it is too expensive.
+
+During neural network training, many matrices must be updated at every step. If we performed one SVD for every weight matrix at every step, the computational cost would be very high and training speed would suffer significantly. Therefore, Muon uses another approximate method that is more suitable for GPUs: **Newton-Schulz iteration**.
+
+Newton-Schulz iteration can gradually push a matrix toward an orthogonalized form using matrix multiplications. Matrix multiplication is very efficient on GPUs, so this is more suitable for deep learning training than doing exact SVD at every step. Its update rule is roughly:
+
+$$
+X_{k+1} = \frac{3}{2} X_k - \frac{1}{2} X_k X_k^\top X_k
+$$
+
+where $k$ is the iteration count, and $X_0$ is the initial matrix, usually some normalized version of $B_t$. After $k$ iterations, $X_k$ gradually approaches an orthogonalized matrix such as $U V^\top$.
+
+It is worth noting that the iteration above is the classic form of Newton-Schulz iteration, a cubic polynomial. In the Muon paper, the authors modify this classic form into the following quintic polynomial version:
+
+$$
+X_{k+1} = a X_k + b X_k X_k^\top X_k + c X_k X_k^\top X_k X_k^\top X_k
+$$
+
+where $a, b, c$ are hyperparameters. In the paper, they are set to 3.4445, -4.7750, and 2.0315, respectively. These hyperparameters are not derived from a strict theory, but tuned through experiments. Their goal is to make the matrix $X$ converge more stably and quickly to an approximately orthogonalized matrix in practical training.
+
+Overall, however, Muon's orthogonalization step is:
+
+> **Use Newton-Schulz iteration to approximate matrix orthogonalization, thereby avoiding expensive SVD at every step.**
+
+## 4.7.4 Is Muon Suitable for All Parameters?
+
+One very important limitation of Muon is that it is mainly used for two-dimensional weight matrices in hidden layers of neural networks.
+
+For example, the following parameters are relatively suitable for Muon:
+
+$$
+W \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}
+$$
+
+That is, the weight matrices in common linear layers.
+
+But many parameters are not suitable for direct use with Muon, such as:
+
+1. Bias parameters;
+2. Embedding parameters;
+3. Scale and shift parameters in LayerNorm or BatchNorm;
+4. Any parameter whose dimensionality is not two;
+5. Special parameters that we do not want to process with matrix orthogonalization.
+
+These parameters usually still use AdamW or other standard optimizers.
+
+Therefore, Muon does not simply replace AdamW entirely. A more common approach is:
+
+- Two-dimensional hidden layer weight matrices: use Muon;
+- Bias / Norm / Embedding and similar parameters: use AdamW.
+
+This is also the practice recommended by official PyTorch.
+
+## 4.7.5 PyTorch Implementation of Muon
+
+Next, we implement a very simplified Muon.
+
+First, we implement a simplified Newton-Schulz orthogonalization function:
+
+```{python}
+def newton_schulz_5(
+    X: Tensor,
+    ns_steps: int = 5,
+    ns_coefficients: tuple[float, float, float] = (3.4445, -4.7750, 2.0315),
+    eps: float = 1e-7,
+) -> Tensor:
+    if X.ndim != 2:
+        raise ValueError('Muon only supports 2D parameters.')
+
+    a, b, c = ns_coefficients
+    X = X / (X.norm() + eps)
+    should_transpose = X.size(0) > X.size(1)
+
+    if should_transpose:
+        X = X.T
+
+    for _ in range(ns_steps):
+        A = torch.mm(X, X.T)
+        B = torch.addmm(A, A, A, beta=b, alpha=c)
+        X = torch.addmm(X, B, X, beta=a)
+
+    if should_transpose:
+        X = X.T
+
+    return X
+```
+
+Then we implement the optimizer itself:
+
+```{python}
+class Muon(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1e-3,
+        weight_decay: float = 0.1,
+        momentum: float = 0.95,
+        nesterov: bool = True,
+        ns_coefficients: tuple[float, float, float] = (3.4445, -4.7750, 2.0315),
+        ns_steps: int = 5,
+        eps: float = 1e-7,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.momentum = momentum
+        self.nesterov = nesterov
+        self.ns_coefficients = ns_coefficients
+        self.ns_steps = ns_steps
+        self.eps = eps
+
+        self.momentum_buffers = [torch.zeros_like(p) for p in self.params]
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        for p, buffer in zip(self.params, self.momentum_buffers, strict=True):
+            if p.grad is None:
+                continue
+
+            # Decoupled weight decay: directly shrink parameters.
+            grad = p.grad
+            if self.weight_decay > 0:
+                p.mul_(1 - self.lr * self.weight_decay)
+
+            buffer.mul_(self.momentum).add_(grad)
+            if self.nesterov:
+                direction = grad + self.momentum * buffer
+            else:
+                direction = buffer
+
+            update = newton_schulz_5(
+                direction,
+                ns_steps=self.ns_steps,
+                ns_coefficients=self.ns_coefficients,
+                eps=self.eps,
+            )
+
+            p.sub_(update, alpha=self.lr)
+```
+
+The update process of this simplified Muon can be split into three steps:
+
+1. Read the current gradient grad;
+2. Update the momentum buffer;
+3. Orthogonalize the buffer, and then update the parameter.
+
+That is:
+
+$$
+\begin{aligned}
+B_t &= \mu B_{t-1} + G_t \\
+O_t &= \operatorname{Orthogonalize}(B_t) \\
+W_t &= W_{t-1} - \eta O_t
+\end{aligned}
+$$
+
+Now let us test this Muon implementation.
+
+Here, we design an ill-conditioned quadratic function whose curvature differs greatly across different directions. The minimum point of this `loss` is
+
+$$
+\theta^* = 
+\begin{bmatrix} 
+2.0 & 0.0 \\
+0.0 & -1.0
+\end{bmatrix}
+$$
+
+and the minimum value is 0.0.
+
+```{python}
+def loss_fn(theta: Tensor) -> Tensor:
+    target = torch.tensor(
+        [[2.0, 0.0], [0.0, -1.0]],
+        device=theta.device,
+        dtype=theta.dtype,
+    )
+    scale = torch.tensor(
+        [[0.1, 10.0], [10.0, 0.1]],
+        device=theta.device,
+        dtype=theta.dtype,
+    )
+    return 0.5 * (scale * (theta - target) ** 2).sum()
+
+
+theta = torch.tensor([[-5.0, 1.0], [1.0, 2.0]], requires_grad=True)
+optimizer1 = dopt.SGD([theta], lr=0.1)
+optimizer2 = Muon([theta], lr=0.2)
+
+sgd_history = dopt.run_optimizer(optimizer1, loss_fn, steps=80)
+muon_history = dopt.run_optimizer(optimizer2, loss_fn, steps=80)
+
+print('SGD:')
+print('Final theta:', sgd_history[-1])
+print('Final loss:', loss_fn(sgd_history[-1]).item())
+
+print('Muon:')
+print('Final theta:', muon_history[-1])
+print('Final loss:', loss_fn(muon_history[-1]).item())
+```
+
+We can see that our Muon implementation can successfully optimize this simple quadratic function, and the parameters gradually converge to the optimum.
+
+## 4.7.6 Differences Between Muon and AdamW
+
+Now we can compare Muon and AdamW side by side.
+
+AdamW's core states are the first moment and second moment for each parameter element:
+
+$$
+M_t, \quad V_t
+$$
+
+Its update is roughly:
+
+$$
+\Delta W_t = - \eta \frac{\hat{M}_t}{\sqrt{\hat{V}_t} + \epsilon}
+$$
+
+Muon's core state is a matrix-form momentum buffer:
+
+$$
+B_t
+$$
+
+Its update is roughly:
+
+$$
+\Delta W_t = - \eta \operatorname{Orthogonalize}(B_t)
+$$
+
+Therefore, the two focus on different things. AdamW focuses on: how much should each parameter element be scaled according to historical gradient scales? Muon focuses on: can the whole matrix update direction be orthogonalized into a more balanced direction?
+
+From the implementation perspective, AdamW needs to maintain the first moment and second moment for each parameter, so it usually has two optimizer states with the same shape as the parameter. Muon mainly maintains a momentum buffer, and additionally spends matrix multiplications on orthogonalization. In other words, Muon is not free; it shifts the design focus of the optimizer from elementwise second moments to matrix-level orthogonalization.
+
+## 4.7.7 Summary
+
+In this section, we started from the question of what comes after AdamW and introduced Muon.
+
+AdamW mainly adjusts parameter updates elementwise through first and second moments. It is very powerful and very commonly used. But neural networks contain a large number of two-dimensional weight matrices, and matrix parameters themselves have structures such as rows, columns, and singular values. Muon starts exactly from this perspective and tries to directly process the matrix update direction.
+
+The core of Muon can be summarized in two steps: first maintain a matrix-form momentum buffer just like momentum, then orthogonalize this buffer, and finally use the orthogonalized matrix to update the parameter. At the same time, to avoid expensive SVD at every step, Muon uses Newton-Schulz iteration to approximate orthogonalization. This allows it to be implemented efficiently on GPUs using matrix multiplications.
+
+However, Muon is mainly suitable for two-dimensional hidden layer weight matrices. Other parameters that are not two-dimensional still need to be handled by AdamW or other standard optimizers. Therefore, Muon is not a choice that replaces all optimizers, but a modern direction for designing optimizers by using matrix structure.
+
+At this point, we have gone all the way from SGD to AdamW and Muon. In the next section, we will return to a practical question: when facing different models, different tasks, and different training scales, how should we choose an optimizer?

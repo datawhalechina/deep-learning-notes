@@ -1,0 +1,642 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.3-softmax-cross-entropy
+  description: "3.3 Softmax and Cross Entropy: From Logits to Classification Loss"
+title: "3.3 Softmax and Cross Entropy: From Logits to Classification Loss"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch3-multi-layer-perceptron/ch3.3-softmax-cross-entropy.ipynb){fig-align="left"}
+
+In the previous two sections, we obtained the basic form of an MLP:
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \phi(H) \\
+Z &= AW_2 + b_2
+\end{aligned}
+$$
+
+Here, $Z$ is the output of the final layer of the model. For the MNIST classification task, each image belongs to one of 10 classes, so the final layer usually outputs 10 numbers:
+
+$$
+Z \in \mathbb{R}^{B \times 10}
+$$
+
+Here, $B$ is the batch size. For the $i$-th sample, the 10 numbers in $Z_i$ represent the scores assigned by the model to the 10 classes.
+
+However, these scores themselves are not probabilities, and they also cannot directly tell us how badly the model is wrong. To train a classification model, we need two more things:
+
+1. use **softmax** to convert class scores into a probability distribution;
+2. use **cross entropy** to measure the difference between the predicted probabilities and the true class.
+
+In this section, we will derive the forward and backward passes of softmax and cross entropy. They will be used later as the final-layer loss function when we implement an MLP by hand.
+
+```{python}
+import warnings
+from typing import override
+
+import numpy as np
+from dnnlpy.models.mlp import Module
+
+print('NumPy version:', np.__version__)
+```
+
+## 3.3.1 Logits: The Raw Output of a Classification Model
+
+The final layer of a classification model usually does not directly output probabilities. Instead, it outputs a group of real-valued scores. These scores are usually called **logits**.
+
+Suppose a batch contains $B$ samples, and each sample has $C$ classes. Then the logits can be written as:
+
+$$
+Z =
+\begin{bmatrix}
+z_{1,1} & z_{1,2} & \cdots & z_{1,C} \\
+z_{2,1} & z_{2,2} & \cdots & z_{2,C} \\
+\vdots & \vdots & \ddots & \vdots \\
+z_{B,1} & z_{B,2} & \cdots & z_{B,C}
+\end{bmatrix}
+\in \mathbb{R}^{B \times C}
+$$
+
+For MNIST, $C=10$. For example, the logits of one sample might be:
+
+```{python}
+logits = np.array([[1.2, -0.3, 2.1, 0.7]])
+```
+
+These numbers can be compared with each other, but they are not probabilities yet. There are two reasons:
+
+1. they can be negative;
+2. their sum is not necessarily equal to 1.
+
+In a classification task, we usually want to obtain a probability distribution: each class should correspond to a non-negative probability, and the probabilities over all classes should sum to 1. This is exactly what softmax does.
+
+## 3.3.2 Softmax: Converting Logits into a Probability Distribution
+
+For the logits of a single sample:
+
+$$
+z = [z_1, z_2, \dots, z_C]
+$$
+
+Softmax is defined as:
+
+$$
+\hat{y}_j = \frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)}
+$$
+
+Here, $\hat{y}_j$ represents the probability that the model predicts this sample belongs to class $j$.
+
+Because the exponential function is always positive, we have:
+
+$$
+\hat{y}_j > 0
+$$
+
+At the same time, the probabilities over all classes sum to:
+
+$$
+\sum_{j=1}^{C}\hat{y}_j = \sum_{j=1}^{C} \frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)} = 1
+$$
+
+Therefore, softmax converts an arbitrary group of real numbers into a valid probability distribution.
+
+Let's implement softmax with NumPy:
+
+```{python}
+def softmax_v1(logits: np.ndarray) -> np.ndarray:
+    exp_logits = np.exp(logits)
+    return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+
+
+probs = softmax_v1(logits)
+print('Predicted probabilities:', probs)
+print('Sum of probabilities:', probs.sum(axis=1))
+```
+
+Here, `axis=1` means summing along the class dimension. Since the shape of `logits` is `(B, C)`, softmax also normalizes each row independently.
+
+Note that the implementation above follows the mathematical formula of softmax exactly. In practice, however, we usually do not directly exponentiate logits when implementing softmax. This is because if some logits are very large, `np.exp` may overflow.
+
+For example:
+
+```{python}
+large_logits = np.array([[1000.0, 1001.0, 1002.0]])
+
+with warnings.catch_warnings(record=True) as warns:
+    probs = softmax_v1(large_logits)
+    print('Predicted probabilities:', probs)
+
+    for warn in warns:
+        print('RuntimeWarning:', warn.message)
+```
+
+A common trick is to first subtract the maximum value in each sample, and then apply softmax.
+
+$$
+\operatorname{softmax}(z) = \operatorname{softmax}(z - \max(z))
+$$
+
+This is because:
+
+$$
+\frac{\exp(z_j - m)}{\sum_{k=1}^{C}\exp(z_k - m)} =
+\frac{\exp(z_j)\exp(-m)}{\sum_{k=1}^{C}\exp(z_k)\exp(-m)} =
+\frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)}
+$$
+
+So subtracting the same constant does not change the result of softmax.
+
+A more stable implementation is:
+
+```{python}
+def softmax_v2(logits: np.ndarray) -> np.ndarray:
+    shifted_logits = logits - np.max(logits, axis=1, keepdims=True)
+    exp_logits = np.exp(shifted_logits)
+    return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+
+
+probs = softmax_v2(large_logits)
+print('Predicted probabilities:', probs)
+print('Sum of probabilities:', probs.sum(axis=1))
+```
+
+We will use this version later in our MLP implementation.
+
+## 3.3.3 Cross Entropy: Making the Probability of the Correct Class as Large as Possible
+
+After obtaining the predicted probabilities, we still need a loss function to measure the difference between the prediction and the true label.
+
+For a single sample, suppose the true class is $y$, and the predicted probability vector is:
+
+$$
+\hat{y} = [\hat{y}_1, \hat{y}_2, \dots, \hat{y}_C]
+$$
+
+The most commonly used loss function for classification tasks is cross entropy. For single-label classification tasks, where each sample has exactly one correct class, cross entropy is defined as:
+
+$$
+L = -\log \hat{y}_{y}
+$$
+
+Here, $\hat{y}$ is the probability vector after softmax, $y$ is the index of the true class, and $\hat{y}_{y}$ represents the probability assigned by the model to the true class. If the probability of the correct class is larger, the loss is smaller; if the probability of the correct class is smaller, the loss is larger. Therefore, in this setting, cross entropy is essentially penalizing the model for not being confident enough about the correct class.
+
+For example, if the probability of the correct class is 0.9:
+
+$$
+-\log(0.9) \approx 0.105
+$$
+
+If the probability of the correct class is 0.01:
+
+$$
+-\log(0.01) \approx 4.605
+$$
+
+This shows that the less the model believes in the correct answer, the larger the loss becomes.
+
+For a single-label binary classification task, cross entropy can also be written as:
+
+$$
+L = -[y\log \hat{y} + (1-y)\log(1-\hat{y})]
+$$
+
+You are probably already familiar with this formula. It is the loss function used in logistic regression. For multi-class classification, cross entropy is the simpler version above. The two are equivalent, but the multi-class version is more concise.
+
+For a batch, we usually average the losses over all samples:
+
+$$
+L = -\frac{1}{B}\sum_{i=1}^{B}\log \hat{y}_{i,y_i}
+$$
+
+Here, $y_i$ is the true class of the $i$-th sample.
+
+The NumPy implementation is:
+
+```{python}
+def cross_entropy(
+    probs: np.ndarray, targets: np.ndarray, eps: float = 1e-12
+) -> np.floating:
+    batch_size = probs.shape[0]
+    correct_probs = probs[np.arange(batch_size), targets]
+    return -np.mean(np.log(correct_probs + eps))
+
+
+logits = np.array(
+    [
+        [1.2, -0.3, 2.1, 0.7],
+        [-0.5, 2.3, 0.1, 1.0],
+    ]
+)
+targets = np.array([2, 1])
+
+probs = softmax_v2(logits)
+loss = cross_entropy(probs, targets)
+
+print('Predicted probabilities:\n', probs)
+print('Cross entropy loss:', loss)
+```
+
+Here, `eps` is a small constant used to avoid the case of `log(0)`.
+
+Here, `targets` is not a one-hot vector, but class indices. For example, `targets = [2, 1]` means that the first sample belongs to class 2, and the second sample belongs to class 1. This representation is more compact, and we will use it later when implementing softmax cross entropy.
+
+## 3.3.4 Understanding Cross Entropy with the One-Hot Form
+
+Although labels are usually represented as class indices in code, using one-hot vectors makes the derivation clearer.
+
+If the true class is class $y$, then the one-hot label can be written as:
+
+$$
+Y_j =
+\begin{cases}
+1, & j = y \\
+0, & j \ne y
+\end{cases}
+$$
+
+For example, if there are 4 classes in total and the true class is class 2, then the one-hot label is:
+
+$$
+Y = [0, 0, 1, 0]
+$$
+
+Note that here we assume class indices start from 0, so class 2 corresponds to the third position.
+
+For a single sample, the full cross entropy can be written as:
+
+$$
+L = -\sum_{j=1}^{C}Y_j\log \hat{Y}_j
+$$
+
+Since only the position of the correct class is 1 in a one-hot vector, and all other positions are 0, this formula is actually equivalent to:
+
+$$
+L = -\log \hat{Y}_{y}
+$$
+
+This is exactly the cross entropy we wrote earlier using class indices.
+
+For a batch:
+
+$$
+L = -\frac{1}{B}\sum_{i=1}^{B}\sum_{j=1}^{C} Y_{i,j}\log \hat{Y}_{i,j}
+$$
+
+where:
+
+$$
+Y \in \mathbb{R}^{B \times C}, \qquad \hat{Y} \in \mathbb{R}^{B \times C}
+$$
+
+Although this notation is more verbose than class indices, it makes the backward derivation more intuitive.
+
+## 3.3.5 The Backward Pass of Softmax
+
+Next, we derive the backward pass of softmax and cross entropy.
+
+First consider a single sample. The output of softmax is:
+
+$$
+\hat{y}_j = \frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)}
+$$
+
+Because the denominator of $\hat{y}_j$ contains all logits, $z_i$ affects not only $\hat{y}_i$, but also the probabilities of other classes. Therefore, the derivative of softmax is not a simple elementwise derivative, but a Jacobian matrix.
+
+The derivative of softmax can be split into two cases:
+
+$$
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\begin{cases}
+\hat{y}_j(1 - \hat{y}_j), & i=j \\
+-\hat{y}_j\hat{y}_i, & i \ne j
+\end{cases}
+$$
+
+It can also be written in a unified form:
+
+$$
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\hat{y}_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+This formula shows that softmax couples the gradients across different classes. When the logit of one class increases, it not only increases the probability of that class, but also lowers the probabilities of the other classes. Therefore, softmax is not an **elementwise activation function**. Its Jacobian matrix has off-diagonal entries, so the interactions among classes must be considered during backpropagation. The elementwise multiplication we used before no longer applies here.
+
+Let the upstream gradient be:
+
+$$
+g = \frac{\partial L}{\partial \hat{y}}
+= [g_1, g_2, \dots, g_C]
+$$
+
+where $g_j = \frac{\partial L}{\partial \hat{y}_j}$. What we actually want is:
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C}
+\frac{\partial L}{\partial \hat{y}_j}
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\sum_{j=1}^{C} g_j
+\frac{\partial \hat{y}_j}{\partial z_i}
+$$
+
+Substitute the derivative of softmax:
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C} g_j
+\hat{y}_j(\mathbb{1}(i=j)-\hat{y}_i)
+$$
+
+Split the summation:
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C} g_j\hat{y}_j\mathbb{1}(i=j) -
+\sum_{j=1}^{C} g_j\hat{y}_j\hat{y}_i
+$$
+
+In the first term, only when $j=i$ does $\mathbb{1}(i=j)=1$, so:
+
+$$
+\sum_{j=1}^{C} g_j\hat{y}_j\mathbb{1}(i=j) = g_i\hat{y}_i
+$$
+
+In the second term, $\hat{y}_i$ is independent of the summation index $j$, so it can be moved outside the summation:
+
+$$
+\sum_{j=1}^{C} g_j\hat{y}_j\hat{y}_i =
+\hat{y}_i \sum_{j=1}^{C}g_j\hat{y}_j
+$$
+
+Therefore:
+
+$$
+\frac{\partial L}{\partial z_i} =
+g_i\hat{y}_i - \hat{y}_i \sum_{j=1}^{C}g_j\hat{y}_j
+$$
+
+That is:
+
+$$
+\frac{\partial L}{\partial z_i} =
+\hat{y}_i \left(g_i - \sum_{j=1}^{C}g_j\hat{y}_j \right)
+$$
+
+Written in vector form:
+
+$$
+\frac{\partial L}{\partial z} =
+\hat{y} \odot \left(g - \sum_{j=1}^{C}g_j\hat{y}_j \right)
+$$
+
+The summation result here is a scalar, and it is broadcast to all class positions. For the batch version, if softmax is computed along the last dimension, the corresponding NumPy implementation is:
+
+```{python}
+def softmax_backward(grad: np.ndarray, probs: np.ndarray) -> np.ndarray:
+    dot = np.sum(grad * probs, axis=1, keepdims=True)
+    return probs * (grad - dot)
+```
+
+This step is very different from the backward pass of sigmoid, tanh, or ReLU. For an elementwise activation function, we can directly write:
+
+$$
+\frac{\partial L}{\partial x} =
+\frac{\partial L}{\partial y} \odot \phi'(x)
+$$
+
+This is because the Jacobian of an elementwise function is a diagonal matrix, and multiplying by the Jacobian is equivalent to elementwise multiplication.
+
+But softmax is not an elementwise function. Each $\hat{y}_i$ depends on the entire group of logits $z_1, z_2, \dots, z_C$, so its Jacobian has off-diagonal entries. For this reason, the backward pass of softmax cannot be written as simple elementwise multiplication:
+
+$$
+\frac{\partial L}{\partial z} \ne
+\frac{\partial L}{\partial \hat{y}}
+\odot \text{local gradient of softmax}
+$$
+
+It must consider the interactions among all classes within the same sample. The VJP formula above is essentially an efficient way to perform the VJP operation without explicitly constructing the Jacobian.
+
+However, even with this formula, implementing the backward pass of softmax separately is still somewhat cumbersome. Fortunately, in classification models, softmax is usually used together with cross entropy. When the two are combined, the gradient becomes extremely simple.
+
+## 3.3.6 The Backward Pass of Softmax + Cross Entropy
+
+For a single sample, cross entropy is:
+
+$$
+L = -\sum_{j=1}^{C} y_j \log \hat{y}_j
+$$
+
+where:
+
+$$
+\hat{y}_j = \operatorname{softmax}(z)_j
+$$
+
+We want to compute:
+
+$$
+\frac{\partial L}{\partial z_i}
+$$
+
+By the chain rule:
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C}
+\frac{\partial L}{\partial \hat{y}_j}
+\frac{\partial \hat{y}_j}{\partial z_i}
+$$
+
+First look at the first factor. Since only the position of the correct class is 1 in a one-hot label, and all other positions are 0, we have:
+
+$$
+\frac{\partial L}{\partial \hat{y}_j} =
+-\frac{y_j}{\hat{y}_j}
+$$
+
+Now substitute the derivative of softmax:
+
+$$
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\hat{y}_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+Then:
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C}
+\left(-\frac{y_j}{\hat{y}_j}\right)
+\hat{y}_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+Cancel $\hat{y}_j$:
+
+$$
+\frac{\partial L}{\partial z_i} =
+-\sum_{j=1}^{C}
+y_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+Expand it:
+
+$$
+\frac{\partial L}{\partial z_i} =
+-\sum_{j=1}^{C}y_j\mathbb{1}(i=j) +
+\sum_{j=1}^{C}y_j\hat{y}_i
+$$
+
+The first term is nonzero only when $j=i$, so:
+
+$$
+\sum_{j=1}^{C}y_j\mathbb{1}(i=j) = y_i
+$$
+
+In the second term, $\hat{y}_i$ is independent of $j$, so it can be factored out:
+
+$$
+\sum_{j=1}^{C}y_j\hat{y}_i =
+\hat{y}_i\sum_{j=1}^{C}y_j
+$$
+
+Since $y$ is a one-hot vector:
+
+$$
+\sum_{j=1}^{C}y_j = 1
+$$
+
+Therefore:
+
+$$
+\frac{\partial L}{\partial z_i} =
+\hat{y}_i - y_i
+$$
+
+Written in vector form:
+
+$$
+\frac{\partial L}{\partial z} =
+\hat{y} - y
+$$
+
+If the loss is averaged over a batch, we also need to divide by the batch size:
+
+$$
+\frac{\partial L}{\partial Z} =
+\frac{1}{B}(\hat{Y} - Y)
+$$
+
+This is the most important gradient formula for softmax + cross entropy. Its form is extremely simple:
+
+> **predicted probability minus true label.**
+
+If a class is the correct class, then the gradient at the corresponding position is:
+
+$$
+\hat{y}_y - 1
+$$
+
+If the model assigns too low a probability to the correct class, this value will be a large negative number, and the gradient update will push the logit of the correct class upward.
+
+For an incorrect class, the gradient at the corresponding position is:
+
+$$
+\hat{y}_j - 0 = \hat{y}_j
+$$
+
+If the model incorrectly assigns a high probability to a certain class, then the gradient for that class will be large, and the parameter update will push down its logit.
+
+## 3.3.7 NumPy Implementation of Softmax Cross Entropy
+
+In real code, we usually implement softmax, cross entropy, and the backward pass together.
+
+```{python}
+class CrossEntropyLoss(Module):
+    def __init__(self, eps: float = 1e-12):
+        super().__init__()
+        self.eps = eps
+
+    @override
+    def forward(self, logits: np.ndarray, targets: np.ndarray) -> np.floating:
+        probs = softmax_v2(logits)
+        self.ctx = (probs, targets)  # save input for backward
+        loss = cross_entropy(probs, targets, self.eps)
+        return loss
+
+    @override
+    def backward(self) -> np.ndarray:
+        assert self.ctx is not None, 'Must call forward before backward.'
+        probs, targets = self.ctx  # recover saved inputs
+
+        batch_size = probs.shape[0]
+        grad = probs.copy()
+        grad[np.arange(batch_size), targets] -= 1
+        return grad / batch_size
+```
+
+Let's verify its shape with a small example:
+
+```{python}
+loss_fn = CrossEntropyLoss()
+
+logits = np.array(
+    [
+        [1.2, -0.3, 2.1, 0.7],
+        [-0.5, 2.3, 0.1, 1.0],
+    ]
+)
+targets = np.array([2, 1])
+
+loss = loss_fn(logits, targets)
+dlogits = loss_fn.backward()
+
+print('Loss:', loss)
+print('Gradient shape:', dlogits.shape)
+print('Gradient:\n', dlogits)
+```
+
+The output `dlogits` has the same shape as the input `logits`, namely `(2, 4)`. This matches the requirement of backpropagation: the gradient of the loss with respect to logits must have the same shape as the logits themselves.
+
+## 3.3.8 Why Does PyTorch's CrossEntropyLoss Take Logits?
+
+In PyTorch, classification tasks are usually written as:
+
+```python
+loss_fn = nn.CrossEntropyLoss()
+loss = loss_fn(logits, targets)
+```
+
+Notice that `logits` here are the raw outputs of the model, not the probabilities after softmax.
+
+This is because `CrossEntropyLoss` already contains the combination of softmax and cross entropy internally. More precisely, it computes log softmax and negative log likelihood loss in a numerically stable way.
+
+Therefore, in PyTorch, we usually should not write:
+
+```python
+probs = torch.softmax(logits, dim=1)
+loss = loss_fn(probs, targets)  # not recommended
+```
+
+This is not only semantically incorrect, but may also introduce numerical stability issues.
+
+This is consistent with the NumPy implementation in this section. Although we introduced softmax and cross entropy separately for explanation, when actually implementing the loss function, we combine them into one module and let the forward and backward passes operate directly around logits.
+
+## 3.3.9 Summary
+
+In this section, we introduced the most commonly used output layer and loss function for classification models.
+
+The final layer of an MLP usually outputs logits, which are the raw scores for each class. Softmax converts logits into a probability distribution, making each class probability positive and making the probabilities over all classes sum to 1. Cross entropy measures how large the probability assigned to the correct class is: the larger the probability of the correct class, the smaller the loss; the smaller the probability of the correct class, the larger the loss.
+
+Most importantly, when softmax and cross entropy are combined, the backward formula becomes very simple:
+
+$$
+\frac{\partial L}{\partial Z} = \frac{1}{B}(\hat{Y} - Y)
+$$
+
+This gradient will serve as the upstream gradient for the final layer of the MLP and continue to be passed to the preceding linear layers and activation functions. In the next section, we will further derive the forward and backward passes of linear layers, so that the entire gradient chain of the MLP can be connected completely.

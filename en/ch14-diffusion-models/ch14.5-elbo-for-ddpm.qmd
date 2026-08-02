@@ -1,0 +1,297 @@
+---
+author: jshn9515
+date: 2026-04-02
+date-modified: 2026-04-04
+open-graph:
+  title: ch14.5-elbo-for-ddpm
+  description: "14.5 DDPM from a Variational Derivation: Where Does the ELBO Come From?"
+title: "14.5 DDPM from a Variational Derivation: Where Does the ELBO Come From?"
+order: 5
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch14-diffusion-models/ch14.5-elbo-for-ddpm.ipynb){fig-align="left"}
+
+In the previous sections, we understood DDPM from the perspectives of intuition and algorithm implementation. But many readers may have a new question:
+
+> **Are these just empirically useful tricks, or can they be rigorously derived from probabilistic modeling?**
+
+In this section, we will answer this question. We will see that behind DDPM, there is a very standard probabilistic modeling perspective:
+
+- We define a generative model with latent variables;
+- Because directly maximizing the data likelihood is difficult, we introduce the **ELBO (Evidence Lower Bound)**;
+- Then we use the special structure of the forward noising process to simplify this ELBO step by step;
+- The final training objective is closely related to the noise-prediction MSE we saw earlier.
+
+So DDPM did not invent a denoising loss out of nowhere. Instead, it can be naturally derived from the perspective of variational inference.
+
+## 14.5.1 Why Introduce the ELBO?
+
+Let us first recall the most fundamental goal of a generative model. Whether it is AE, VAE, or Diffusion, we ultimately hope the model can approximate the real data distribution $p_{\text{data}}(x)$. More specifically, we hope to maximize the log-likelihood of the observed data:
+
+$$
+\log p_\theta(x_0)
+$$
+
+Here, $x_0$ denotes the real sample, and $\theta$ denotes the model parameters[^1].
+
+The problem is that, in DDPM, we do not directly define a simple $p_\theta(x_0)$. Instead, we introduce a whole sequence of latent variables:
+
+$$
+x_1, x_2, \dots, x_T
+$$
+
+Then the whole generation process can be written as:
+
+$$
+p_\theta(x_{0:T}) = p(x_T)\prod_{t=1}^T p_\theta(x_{t-1}\mid x_t)
+$$
+
+Here, $p(x_T)$ is usually set to a standard Gaussian distribution; $p_\theta(x_{t-1}\mid x_t)$ is the reverse denoising distribution that the model needs to learn.
+
+After defining it this way, the marginal likelihood becomes:
+
+$$
+p_\theta(x_0) = \int p_\theta(x_{0:T})\,dx_{1:T}
+$$
+
+You can see that the problem suddenly becomes harder: because we need to integrate out all intermediate variables, and this is usually very difficult to compute directly. So at this point, a very familiar idea appears:
+
+> **Since directly maximizing $\log p_\theta(x_0)$ is difficult, optimize a lower bound of it instead.**
+
+Does this look very similar to the idea behind VAE? And this lower bound is the ELBO.
+
+[^1]: For why this can be written as maximizing log-likelihood rather than minimizing KL divergence, you can refer to the derivation in Section 13.2.2.
+
+## 14.5.2 What Is the Variational Distribution in DDPM?
+
+In VAE, we introduce an approximate posterior $q_\phi(z\mid x)$, and this approximate posterior is played by the encoder. The encoder maps the image into the latent variable $z$, and this process is the variational distribution $q$ we construct. In DDPM, the corresponding role is played by the forward noising process:
+
+$$
+q(x_{1:T}\mid x_0)=\prod_{t=1}^T q(x_t\mid x_{t-1})
+$$
+
+Each forward transition here is specified by us, for example:
+
+$$
+q(x_t\mid x_{t-1})=\mathcal{N}\Bigl(x_t;\sqrt{1-\beta_t}\,x_{t-1},\,\beta_t I\Bigr)
+$$
+
+This process has two important properties:
+
+1. It is completely known and does not need to be learned;
+2. It is easy to sample from and has good analytical properties.
+
+So in DDPM, the forward process is, on the one hand, the mechanism that turns data into noise. On the other hand, it also happens to serve as the auxiliary distribution $q$ in variational inference. So how does it do that?
+
+## 14.5.3 From Log-Likelihood to ELBO
+
+Now let us write the standard variational derivation.
+
+What we care about is:
+
+$$
+\log p_\theta(x_0)
+$$
+
+For any distribution $q(x_{1:T}\mid x_0)$, we have:
+
+$$
+\log p_\theta(x_0) =
+\log \int q(x_{1:T}\mid x_0)\frac{p_\theta(x_{0:T})}{q(x_{1:T}\mid x_0)}\,dx_{1:T}
+$$
+
+Because $\log$ is a concave function, according to Jensen's inequality:
+
+$$
+\log \mathbb{E}[Z] \ge \mathbb{E}[\log Z]
+$$
+
+we have:
+
+$$
+\log p_\theta(x_0) \ge \mathbb{E}_{q(x_{1:T}\mid x_0)}
+\left[\log \frac{p_\theta(x_{0:T})}{q(x_{1:T}\mid x_0)} \right]
+$$
+
+This is the ELBO:
+
+$$
+\mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(x_{1:T}\mid x_0)}
+\left[\log p_\theta(x_{0:T})-\log q(x_{1:T}\mid x_0)\right]
+$$
+
+So DDPM training can also be understood as maximizing a computable lower bound of the data log-likelihood.
+
+Up to this point, everything is still just the standard routine. The truly interesting part is that, because the forward process and the reverse process in DDPM both have special structures, this ELBO can be further decomposed into a set of more concrete terms.
+
+Now we expand the joint distribution:
+
+$$
+p_\theta(x_{0:T}) = p(x_T)\prod_{t=1}^T p_\theta(x_{t-1}\mid x_t)
+$$
+
+Meanwhile, the forward process is:
+
+$$
+q(x_{1:T}\mid x_0)=\prod_{t=1}^T q(x_t\mid x_{t-1})
+$$
+
+Substitute them back into the ELBO:
+
+$$
+\mathcal{L}_{\text{ELBO}} = \mathbb{E}_q
+\left[\log p(x_T)+\sum_{t=1}^T \log p_\theta(x_{t-1}\mid x_t) -
+\sum_{t=1}^T \log q(x_t\mid x_{t-1})\right]
+$$
+
+Next, by rearranging the terms, it can be rewritten into a standard form. In the DDPM literature, a common way to write it is to decompose the negative ELBO into three types of terms:
+
+$$
+L = L_0 + \sum_{t=2}^T L_{t-1} + L_T
+$$
+
+We can roughly understand them like this:
+
+- $L_0$: the reconstruction term, whether the model can restore the image;
+- $L_{t-1}$: the intermediate KL term, the gap between the model's learned reverse distribution and the true posterior;
+- $L_T$: the prior matching term, whether the final noise distribution is close to the standard Gaussian distribution.
+
+In other words, the learning objective of DDPM is not a black-box loss. It is made up of a series of very natural probabilistic constraints:
+
+1. At the end, it should be able to restore noise back into an image;
+2. The reverse distribution at each intermediate step should be close to the true posterior;
+3. The noise distribution at the final step should align with the standard Gaussian.
+
+The most important part here is the intermediate term. Its form is:
+
+$$
+D_\mathrm{KL}\Bigl(q(x_{t-1}\mid x_t, x_0) \;\|\; p_\theta(x_{t-1}\mid x_t)\Bigr)
+$$
+
+That is, given the current noisy image $x_t$ and the real clean image $x_0$, the forward process produces a true posterior $q(x_{t-1}\mid x_t, x_0)$; we hope the reverse distribution learned by the model, $p_\theta(x_{t-1}\mid x_t)$, can be as close to it as possible. For every time step, we hope the model approximates the optimal conditional distribution of “if I know the real image, how should this step move backward?” This turns reverse denoising into a very standard distribution fitting problem.
+
+So how does MSE come out of the KL term?
+
+## 14.5.4 Why Can the KL Term Become MSE?
+
+From Section 14.3.1, we know that the true posterior is a Gaussian distribution:
+
+$$
+q(x_{t-1}\mid x_t, x_0) =
+\mathcal{N}\bigl(x_{t-1};\tilde{\mu}_t(x_t,x_0),\,\tilde{\beta}_t I\bigr)
+$$
+
+Then a natural approach is to let the model also output a Gaussian distribution:
+
+$$
+p_\theta(x_{t-1}\mid x_t)
+\mathcal{N}\bigl(x_{t-1};\mu_\theta(x_t,t),\,\Sigma_\theta(x_t,t)\bigr)
+$$
+
+In this way, the intermediate KL term becomes the distance between two Gaussian distributions.
+
+In the most classic DDPM setting, the variance part is usually fixed or partially fixed:
+
+$$
+\Sigma_\theta(x_t,t) = \sigma_t^2 I
+$$
+
+So the model's main task focuses on learning the mean $\mu_\theta(x_t,t)$.
+
+In fact, if two Gaussians have the same covariance, the KL reduces to a quadratic term of the means plus a constant:
+
+$$
+D_\mathrm{KL}\Bigl(\mathcal{N}(\tilde{\mu}_t, \sigma_t^2 I) \;\|\;
+\mathcal{N}(\mu_\theta, \sigma^2_t I)\Bigr) \propto \frac{1}{2\sigma_t^2}\|
+\tilde{\mu}_t - \mu_\theta\|^2
+$$
+
+So minimizing the intermediate KL term is equivalent to making the model minimize:
+
+$$
+\|\tilde{\mu}_t(x_t,x_0) - \mu_\theta(x_t,t)\|^2
+$$
+
+That is, starting from the ELBO, what we first obtain is the squared error for mean matching.
+
+But we know that directly asking the model to predict the mean is less stable than asking the model to predict the noise. So we do not directly output $\mu_\theta(x_t,t)$. Instead, we let the model predict the noise $\epsilon_\theta(x_t,t)$, and then use it to construct the model mean:
+
+$$
+\mu_\theta(x_t,t) = \frac{1}{\sqrt{\alpha_t}}
+\Bigl(x_t-\frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}} \epsilon_\theta(x_t,t)\Bigr)
+$$
+
+We also write out the true mean:
+
+$$
+\tilde{\mu}_t(x_t,x_0) = \frac{1}{\sqrt{\alpha_t}}
+\Bigl(x_t-\frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}} \epsilon\Bigr)
+$$
+
+You will notice that the model-estimated mean and the true mean have exactly the same form, except that the true noise $\epsilon$ is replaced by the model-predicted noise $\epsilon_\theta(x_t,t)$. Because the formulas on both sides have the same form, $\tilde{\mu}_t - \mu_\theta$ ultimately differs only in the term $\epsilon - \epsilon_\theta(x_t,t)$. In this way, the intermediate KL term becomes:
+
+$$
+L_{t-1} = \mathbb{E}_{x_0,\epsilon,t}
+\left[\frac{\beta_t^2}{2\sigma_t^2\alpha_t(1-\bar{\alpha}_t)} \|
+\epsilon - \epsilon_\theta(x_t,t)\|^2\right] + C
+$$
+
+Here, $C$ is a constant independent of the model parameters $\theta$.
+
+In the paper and in actual implementations, the weight above is usually ignored first, or handled as a simple sampling average, giving:
+
+$$
+L_{\text{simple}} = \mathbb{E}_{x_0,\epsilon,t}
+\left[\|\epsilon - \epsilon_\theta(x_t,t)\|^2\right]
+$$
+
+Here, $x_t$ is sampled through the forward process:
+
+$$
+x_t = \sqrt{\bar{\alpha}_t} x_0 + \sqrt{1-\bar{\alpha}_t} \epsilon
+$$
+
+This is the most classic DDPM training objective.
+
+At this point, starting from the ELBO, we have rigorously derived the DDPM training objective. In the end, we can see that the process of maximizing the ELBO is equivalent to minimizing the MSE between the noise predicted by the model and the true noise. This is where the ELBO in DDPM comes from.
+
+## 14.5.5 Why Optimize Only the Intermediate Terms During Training?
+
+By this point, you probably have a question: we only optimized the intermediate KL terms, right? Then what about the reconstruction term at the beginning and the prior matching term at the end? Are they not important?
+
+Of course they are important. It is just that, in actual training, optimizing the intermediate KL terms has already been found to be enough. The reconstruction term $L_0$ and the prior matching term $L_T$, although theoretically they should also be optimized, do not provide a very obvious improvement to final performance, so many implementations simply ignore them.
+
+For example, the prior matching term:
+
+$$
+L_T = D_\mathrm{KL}\Bigl(q(x_T\mid x_0) \;\|\; p(x_T)\Bigr)
+$$
+
+Actually, in the forward noising process, it can be shown that as long as the noising chain is long enough, $q(x_T\mid x_0)$ will be very close to the standard Gaussian distribution $p(x_T)$. In other words, we only need to make sure the number of steps is long enough. There is basically no need for the model to learn this prior matching term.
+
+What about the reconstruction term? Its form is:
+
+$$
+L_0 = -\mathbb{E}_{q(x_{1:T}\mid x_0)} \left[\log p_\theta(x_0\mid x_1)\right]
+$$
+
+That is, it is the reconstruction error of restoring $x_0$ from $x_1$ during the sampling process. Although it is important, what truly determines whether the model can learn well is the intermediate KL terms. This is because they directly constrain the model's denoising ability at every step, while the reconstruction term only constrains the restoration ability at the final step. As long as the model learns denoising well at every step, the final restoration step will naturally be done well too. So in actual training, we usually put the reconstruction term aside and focus on optimizing the intermediate KL terms.
+
+Of course, our ELBO derivation here omits many intermediate steps. The full ELBO involves solving a very complicated integral, and there are many details that need to be handled. Here, we mainly want to give everyone a rough idea and show how the DDPM training objective is derived from the perspective of probabilistic modeling. For the complete derivation, you can refer to the survey article [@luo2022UnderstandingDiffusionModels], which contains a very detailed ELBO derivation and the related mathematical details.
+
+## 14.5.6 Summary
+
+In this section, we answered a key question: why can the DDPM training objective be connected to the ELBO?
+
+The core logic is as follows:
+
+1. We want to maximize the data likelihood $\log p_\theta(x_0)$;
+2. Because there is a whole latent-variable chain in the middle, solving it directly is difficult;
+3. So we introduce the forward noising distribution $q(x_{1:T}\mid x_0)$ and construct the ELBO;
+4. After expanding the ELBO, a series of KL terms between the true posterior and the model reverse distribution appear;
+5. Using the linear Gaussian structure of the forward process, these terms can be handled analytically;
+6. Finally, by parameterizing the model as noise prediction, we obtain the common MSE training objective.
+
+At this point, DDPM comes to an end. But are we finished? Of course not.
+
+Do you still remember the sampling process of DDPM? We add a little noise at every step. This noise guarantees the diversity of generated images, but it also brings some problems. For example, sampling is slow, generation quality can be unstable, and so on. Therefore, some researchers proposed a method that can sample without adding noise, called **DDIM (Denoising Diffusion Implicit Models)** [@song2022DDIM]. In the next section, we will look at how DDIM does this, and the relationship between DDIM and DDPM.

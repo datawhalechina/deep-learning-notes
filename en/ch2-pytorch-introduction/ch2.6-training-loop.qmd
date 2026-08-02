@@ -1,0 +1,478 @@
+---
+author: jshn9515
+date: 2026-05-23
+date-modified: 2026-05-28
+open-graph:
+  title: ch2.6-training-template
+  description: "2.6 Training Loop in PyTorch: Connecting Data, Models, and Optimizers"
+title: "2.6 Training Loop in PyTorch: Connecting Data, Models, and Optimizers"
+order: 6
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch2-pytorch-introduction/ch2.6-training-loop.ipynb){fig-align="left"}
+
+In the previous sections, we have separately introduced the most important components in PyTorch training:
+
+- `nn.Module` organizes model parameters and forward computation.
+- The loss function turns predictions and targets into a scalar loss.
+- The optimizer updates parameters according to gradients.
+- `state_dict` saves the state of modules and optimizers.
+
+But when writing real experiment code, we do not want to rewrite a training loop from scratch every time. Training code contains many fixed actions: setting random seeds, choosing a device, moving data to the device, switching between training and evaluation modes, and tracking loss and metrics. These operations are not complicated by themselves, but without a fixed template, it is easy to make mistakes later.
+
+So in this section, we will not start from "what is training." Instead, we will organize a training template that we will reuse later. It is not necessarily the only correct way to write training code, but it can serve as the default convention for later experiments.
+
+```{python}
+import random
+
+import dnnlpy
+import numpy as np
+import torch
+import torch.accelerator as accl
+import torch.nn as nn
+import torch.optim as optim
+import torch.utils.data as utils
+import torchvision.datasets as datasets
+import torchvision.transforms.v2 as v2
+from torch import Tensor
+from torch.types import Device
+from torchmetrics import Metric
+from torchmetrics.classification import MulticlassAccuracy
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 2.6.1 Why We Need a Training Template
+
+A minimal PyTorch training step usually looks like this:
+
+```python
+logits = model(X)
+loss = loss_fn(logits, y)
+
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+```
+
+These three lines are certainly the core. But these three lines alone are not enough. In real experiments, we also need to handle many boundary issues. For example:
+
+- Can random initialization and data shuffling be as consistent as possible each time we run the experiment?
+- If the current machine has a GPU, MPS, or another accelerator, how should the code automatically choose a device?
+- During training, how do we track loss over the entire epoch instead of only looking at the last batch?
+- During validation, how do we disable gradient recording to avoid wasting memory?
+- How should metrics such as accuracy and F1 accumulate across batches?
+
+These questions have nothing to do with the model structure itself, but almost every experiment encounters them.
+
+Therefore, we first organize these conventions into a fixed template. Later, when training MLPs, CNNs, Transformers, or other models, we only need to replace the model, dataset, and metrics; the overall training framework can remain the same.
+
+## 2.6.2 Fixing Random Seeds
+
+Deep learning experiments have many sources of randomness. For example:
+
+- Random initialization of model parameters.
+- Random splitting of datasets.
+- Random shuffling in `DataLoader`.
+- Random layers such as Dropout.
+- Nondeterministic implementations of some low-level operators.
+
+If we do not control this randomness, running the same code twice may produce slightly different results. This can be troublesome when comparing experiments, because it becomes hard to tell whether a change in the result comes from a model modification or from randomness.
+
+So in later experiments, we usually fix the random seed first:
+
+```{python}
+def set_seed(
+    seed: int | None = None,
+    *,
+    deterministic: bool = False,
+    benchmark: bool = False,
+    warn_only: bool = True,
+) -> torch.Generator:
+    """Seed Python, NumPy, and PyTorch random number generators."""
+    random.seed(seed)
+    np.random.seed(seed)
+
+    if seed is not None:
+        torch_rng = torch.manual_seed(seed)
+    else:
+        torch_rng = torch.default_generator
+
+    torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
+    torch.backends.cudnn.deterministic = deterministic
+    torch.backends.cudnn.benchmark = benchmark
+
+    return torch_rng
+```
+
+This sets the random seeds for Python, NumPy, and PyTorch.
+
+This line:
+
+```python
+torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
+```
+
+means to use deterministic algorithms as much as possible. We set `warn_only=True` because some operations may not have deterministic implementations. For teaching code, a warning is enough to remind us. If strict determinism is required, `warn_only` can be set to False, so any nondeterministic operation will directly raise an error.
+
+However, note that fixing random seeds does not mean results will be exactly identical in all environments. Different hardware, different PyTorch versions, and different low-level libraries may all introduce small differences. So more precisely, fixing random seeds is meant to make experiments **as reproducible as possible**, not to guarantee mathematical identity.
+
+Call it once first:
+
+```{python}
+torch_rng = set_seed(42)
+```
+
+## 2.6.3 Choosing a Compute Device
+
+Many older PyTorch tutorials choose the device like this:
+
+```python
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+```
+
+This pattern is common and easy to understand. But it only considers CUDA and CPU.
+
+PyTorch now provides a more unified `torch.accelerator` interface. Its goal is to bring CUDA, MPS, XPU, MTIA, and other accelerators under one entry point. This way, when writing code, we do not have to only focus on CUDA.
+
+We can write a small function:
+
+```{python}
+def get_default_device() -> torch.device:
+    device = accl.current_accelerator(check_available=True)
+    if device is not None:
+        return device
+    return torch.device('cpu')
+
+
+device = get_default_device()
+print('Using device:', device)
+```
+
+After getting a device, one sentence must be remembered:
+
+> **Wherever the model is, the data must be there too.**
+
+That is, if the model is on the GPU, the input data must be on the same GPU; if the model is on the CPU, the input data must also be on the CPU. Otherwise, PyTorch does not know where the computation should happen and will raise an error.
+
+The common pattern is:
+
+```python
+model = model.to(device)
+X = X.to(device)
+y = y.to(device)
+```
+
+The training template below will handle this directly inside the functions.
+
+## 2.6.4 Preparing a Very Small Classification Task
+
+To keep the focus on the training template itself, we use the MNIST dataset directly here.
+
+```{python}
+root = dnnlpy.get_data_root()
+transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+ds_rng = torch.Generator().manual_seed(42)
+
+train_ds = datasets.MNIST(root, train=True, transform=transform, download=True)
+train_ds, val_ds = utils.random_split(train_ds, [50000, 10000], generator=ds_rng)
+
+train_dl = utils.DataLoader(train_ds, batch_size=64, shuffle=True)
+val_dl = utils.DataLoader(val_ds, batch_size=128, shuffle=False)
+```
+
+There is a small detail here:
+
+```python
+generator = torch.Generator().manual_seed(42)
+```
+
+`random_split` itself is also random. Although we already fixed the global random seed with `torch.manual_seed()`, it depends on where the global RNG currently is. To make the data split unaffected by earlier operations such as model initialization, random tensors, or data augmentation, we pass it a separate `Generator`.
+
+Next, define a very small MLP:
+
+```{python}
+model = nn.Sequential(
+    nn.Flatten(),
+    nn.Linear(28 * 28, 128),
+    nn.ReLU(),
+    nn.Linear(128, 10),
+)
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+```
+
+The model finally outputs 10 logits, corresponding to the 10 digits. Because this is a multiclass classification task, the loss function uses `nn.CrossEntropyLoss`.
+
+## 2.6.5 Using TorchMetrics to Track Metrics
+
+During training, loss is the objective the optimizer truly optimizes. But when observing model performance, we often need other metrics, such as accuracy, precision, recall, F1, AUROC, and so on.
+
+The simplest accuracy can certainly be written manually:
+
+```python
+y_pred = logits.argmax(dim=1)
+accuracy = (y_pred == y).float().mean()
+```
+
+But this only works comfortably in very simple cases. In real tasks, metrics may need to accumulate across batches, and in distributed training they may need to synchronize across processes. At that point, handwritten metrics can quickly become troublesome.
+
+TorchMetrics [@TorchMetrics] solves this problem. It organizes metrics as objects similar to `nn.Module` and provides a unified interface:
+
+```text
+metric.update(...)   -> accumulate the current batch into internal state
+metric.compute()     -> compute the final metric from accumulated state
+metric.reset()       -> clear state and start the next round of accumulation
+```
+
+For example, multiclass accuracy can be defined like this:
+
+```{python}
+metric = MulticlassAccuracy(num_classes=3).to(device)
+```
+
+Another important feature of TorchMetrics is: **metrics are stateful.**
+
+For example, accuracy internally maintains states such as "number of correctly predicted samples" and "total number of samples." Each time a batch is processed, `update()` accumulates the current batch's statistics into the internal state. Only when `compute()` is called at the end do we get the accuracy for the whole epoch.
+
+Therefore, when using metrics, remember to call `reset()` at the right time. Otherwise, the statistics for this epoch may mix with the state from the previous epoch.
+
+## 2.6.6 One Training Epoch: train_one_epoch
+
+Now we write the logic for training one epoch as a function.
+
+```{python}
+def train_one_epoch(
+    model: nn.Module,
+    dataloader: utils.DataLoader[tuple[Tensor, Tensor]],
+    loss_fn: nn.Module,
+    optimizer: optim.Optimizer,
+    metric: Metric,
+    device: torch.device,
+) -> tuple[float, float]:
+    """Train a model for one epoch and return average loss and metric values."""
+    model.train()
+    metric.reset()
+
+    total_loss = 0.0
+
+    for X, y in dataloader:
+        X = X.to(device)
+        y = y.to(device)
+
+        logits = model(X)
+        loss = loss_fn(logits, y)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        metric.update(logits.detach(), y)
+
+    avg_loss = total_loss / len(dataloader)
+    avg_metric = metric.compute().item()
+    return avg_loss, avg_metric
+```
+
+There are several points in this function worth noting.
+
+First, the function starts by calling:
+
+```python
+model.train()
+```
+
+This puts the model into training mode. For `Linear` and `ReLU`, training mode and evaluation mode make no difference. But for modules like `Dropout` and `BatchNorm`, their behavior differs between training and evaluation. Therefore, placing `model.train()` inside the training function is safer.
+
+Second, in every batch we first move the data to the device obtained earlier:
+
+```python
+X = X.to(device)
+y = y.to(device)
+```
+
+This ensures that the input and model are on the same device and avoids errors in later computation.
+
+Then come the three core lines:
+
+```python
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+```
+
+As discussed earlier, gradients in PyTorch accumulate into parameters' `.grad` by default, so we must clear old gradients before each backward pass. Otherwise, the current batch's gradient will mix with the previous batch's gradient.
+
+Finally, when tracking loss, we write:
+
+```python
+total_loss += loss.item()
+```
+
+Here, we compute `total_loss` by simply averaging over batches. Strictly speaking, this is not very rigorous, because the final batch may have a different number of samples from earlier batches. For example, if there are 100 training samples and the batch size is 32, the first three batches have 32 samples each, but the last batch has only 4 samples. Directly averaging batch losses introduces a small error. A more rigorous approach is to multiply each batch's loss by the current batch size, accumulate into `total_loss`, and divide by the total number of samples at the end, or to set `drop_last=True` when using the DataLoader. But here we use the simple average to keep the code concise.
+
+## 2.6.7 One Validation Epoch: evaluate
+
+The validation loop is similar to the training loop, but it has three key differences:
+
+- Use `model.eval()` to put the model into evaluation mode.
+- Do not call `backward()` or `optimizer.step()`, because validation does not update parameters.
+- Use `torch.inference_mode()` to avoid recording the computation graph.
+
+```{python}
+def evaluate(
+    model: nn.Module,
+    dataloader: utils.DataLoader[tuple[Tensor, Tensor]],
+    loss_fn: nn.Module,
+    metric: Metric,
+    device: torch.device,
+) -> tuple[float, float]:
+    """Evaluate a model for one epoch and return average loss and metric values."""
+    model.eval()
+    metric.reset()
+
+    total_loss = 0.0
+
+    with torch.inference_mode():
+        for X, y in dataloader:
+            X = X.to(device)
+            y = y.to(device)
+
+            logits = model(X)
+            loss = loss_fn(logits, y)
+
+            total_loss += loss.item()
+            metric.update(logits, y)
+
+    avg_loss = total_loss / len(dataloader)
+    avg_metric = metric.compute().item()
+    return avg_loss, avg_metric
+```
+
+Here we use `torch.inference_mode()` because we are sure gradients will not be needed later.
+
+## 2.6.8 Connecting Training and Validation
+
+Finally, we write a simple `train_and_evaluate` function that connects multiple rounds of training and validation.
+
+```{python}
+def train_and_evaluate(
+    model: nn.Module,
+    train_dl: utils.DataLoader[tuple[Tensor, Tensor]],
+    val_dl: utils.DataLoader[tuple[Tensor, Tensor]],
+    loss_fn: nn.Module,
+    optimizer: optim.Optimizer,
+    train_metric: Metric,
+    val_metric: Metric,
+    metric_name: str,
+    num_epochs: int,
+    device: Device = None,
+) -> None:
+    """Train and validate a model for multiple epochs."""
+    if device is None:
+        device = dnnlpy.get_default_device()
+    else:
+        device = torch.device(device)
+
+    model.to(device)
+    train_metric.to(device)
+    val_metric.to(device)
+
+    for epoch in range(1, num_epochs + 1):
+        loss, score = train_one_epoch(
+            model=model,
+            dataloader=train_dl,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            metric=train_metric,
+            device=device,
+        )
+        val_loss, val_score = evaluate(
+            model=model,
+            dataloader=val_dl,
+            loss_fn=loss_fn,
+            metric=val_metric,
+            device=device,
+        )
+
+        w = len(str(num_epochs))
+        print(
+            f'Epoch [{epoch:{w}d}/{num_epochs:{w}d}] '
+            f'| loss: {loss:.4f} '
+            f'| {metric_name}: {score:.4f} '
+            f'| val_loss: {val_loss:.4f} '
+            f'| val_{metric_name}: {val_score:.4f}'
+        )
+```
+
+Here I pass separate metrics for training and validation:
+
+
+This is because metrics have their own internal state. Although we call `reset()` every time, training and validation are two different statistical processes, so keeping them separate is clearer.
+
+Now run the full template:
+
+```{python}
+torch_rng = set_seed(42)
+device = get_default_device()
+
+model = nn.Sequential(
+    nn.Flatten(),
+    nn.Linear(28 * 28, 128),
+    nn.ReLU(),
+    nn.Linear(128, 10),
+)
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+metric = MulticlassAccuracy(num_classes=10)
+val_metric = MulticlassAccuracy(num_classes=10)
+
+train_and_evaluate(
+    model=model,
+    train_dl=train_dl,
+    val_dl=val_dl,
+    loss_fn=loss_fn,
+    optimizer=optimizer,
+    train_metric=metric,
+    val_metric=val_metric,
+    metric_name='acc',
+    num_epochs=5,
+    device=device,
+)
+```
+
+If everything is normal, we should see the training loss decrease and accuracy increase.
+
+This is the basic structure many later experiments will use. We will not explain it from scratch every time, but the general flow will stay the same:
+
+1. First set the random seed and choose the device.
+2. Define the model, loss function, optimizer, and metric.
+3. Call `train_and_evaluate()` for training and validation.
+
+## 2.6.9 What This Template Does Not Handle
+
+The template in this section is intentionally kept simple. It already covers the most common structure for single-machine, single-device, ordinary supervised learning tasks, but it does not handle more complex training engineering issues, such as:
+
+- Automatic mixed precision training.
+- Gradient clipping.
+- Learning rate schedulers.
+- Checkpoint saving and resuming.
+- Multi-GPU / multi-process training.
+- Profiling and performance optimization.
+- `torch.compile` compilation optimization.
+
+These topics are certainly important, but they are not part of the minimal training template.
+
+In the next section, we will first discuss checkpoints: if training is interrupted halfway, which states should be saved so that training can continue?
+
+## 2.6.10 Summary
+
+In this section, we did not explain how to train a model from scratch. Instead, we organized a PyTorch training template that we will repeatedly use later.
+
+First, we used `set_seed` to control randomness uniformly, and used `torch.use_deterministic_algorithms` to reduce sources of nondeterminism as much as possible. Then, we used `torch.accelerator` to choose the currently available accelerator, so the code is not limited to CUDA. Next, we introduced `torchmetrics`, treating evaluation metrics such as accuracy as stateful objects too.
+
+In the training function, the core flow is still `zero_grad()`, `backward()`, and `step()`. However, complete training code also needs to handle model mode, device transfer, loss averaging, and metric state reset. The validation function needs to switch to `eval` mode and use `torch.inference_mode()` to disable unnecessary gradient recording.
+
+After understanding this template, when we train more complex models later, we will not need to repeatedly worry about the training loop itself. Instead, we can focus on model structure, loss functions, and experiment design.

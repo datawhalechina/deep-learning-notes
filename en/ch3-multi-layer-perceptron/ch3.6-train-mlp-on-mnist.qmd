@@ -1,0 +1,407 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.6-train-mlp-on-mnist
+  description: "3.6 Train MLP on MNIST with NumPy"
+title: "3.6 Train MLP on MNIST with NumPy"
+order: 6
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch3-multi-layer-perceptron/ch3.6-train-mlp-on-mnist.ipynb){fig-align="left"}
+
+In the previous section, we used NumPy to build a two-layer MLP that can run `forward`, `backward`, and `update`. However, the previous section only used a small randomly generated dataset, which can only check whether the model structure runs correctly. To truly train a neural network, we need to put it on a real dataset and repeatedly perform many parameter updates.
+
+In this section, we train the MLP implemented earlier on the MNIST dataset. To keep the focus on the neural network itself, we still use NumPy to implement the model, loss function, backpropagation, and parameter updates by hand. However, for reading the dataset, we can use the `MNIST` dataset provided by the `torchvision` library.
+
+The division of work in this section is:
+
+1. TorchVision helps us obtain the MNIST data;
+2. NumPy handles the core logic of model training;
+3. PyTorch Autograd is temporarily not involved in the training process.
+
+The complete training process can be written as:
+
+```text
+load data -> mini-batch -> forward -> loss -> backward -> update -> evaluate
+```
+
+This is exactly the basic workflow of a supervised learning training loop.
+
+```{python}
+from collections import defaultdict
+import math
+
+import dnnlpy
+import dnnlpy.models.mlp as mlp
+import matplotlib.pyplot as plt
+import numpy as np
+import torchvision.datasets as datasets
+
+rng = np.random.default_rng(42)
+print('Numpy version:', np.__version__)
+```
+
+## 3.6.1 Preparing the MNIST Dataset
+
+MNIST is a handwritten digit classification dataset. Each image has size $28 \times 28$, and the labels range from 0 to 9, giving 10 classes in total.
+
+For an MLP, we temporarily do not treat an image as a two-dimensional grid. Instead, we flatten each image into a vector of length 784:
+
+$$
+28 \times 28 = 784
+$$
+
+That is, the input shape received by the model is:
+
+$$
+X \in \mathbb{R}^{B \times 784}
+$$
+
+where $B$ is the batch size.
+
+Download and read MNIST:
+
+```{python}
+root = dnnlpy.get_data_root()
+train_ds = datasets.MNIST(root, train=True, download=True)
+test_ds = datasets.MNIST(root, train=False, download=True)
+```
+
+The image data read by TorchVision is stored in the `data` attribute, and the labels are stored in the `targets` attribute. To train with NumPy later, we convert them into NumPy arrays:
+
+```{python}
+X_train = train_ds.data.numpy()
+X_train = np.reshape(X_train, (-1, 28 * 28))
+X_train = X_train.astype(np.float32) / 255.0
+y_train = train_ds.targets.numpy()
+
+X_test = test_ds.data.numpy()
+X_test = np.reshape(X_test, (-1, 28 * 28))
+X_test = X_test.astype(np.float32) / 255.0
+y_test = test_ds.targets.numpy()
+
+print('X_train shape:', X_train.shape)
+print('y_train shape:', y_train.shape)
+print('X_test shape:', X_test.shape)
+print('y_test shape:', y_test.shape)
+```
+
+Here we do two things:
+
+1. Use `reshape(-1, 28 * 28)` to flatten each image into a 784-dimensional vector;
+2. Divide by 255.0 to scale pixel values from $[0, 255]$ to $[0, 1]$.
+
+Although this normalization is simple, it is very helpful for training. If the input values are too large, the logits output by the linear layers may also become very large, making training more unstable.
+
+We can visualize a few images:
+
+```{python}
+fig = plt.figure(1, figsize=(8, 2))
+axes = fig.subplots(1, 6)
+for i, ax in enumerate(axes.ravel()):
+    ax.imshow(X_train[i].reshape(28, 28), cmap='gray')
+    ax.axis('off')
+    ax.set_title(f'label: {y_train[i]}', fontsize=10)
+dnnlpy.set_matplotlib_format('highdpi')
+plt.show()
+```
+
+Note that although we flatten the images into vectors, this is only to fit the input format of an MLP. The original images are still two-dimensional; it is just that the MLP does not explicitly use this spatial structure. Later, when we discuss CNNs, we will reintroduce the concept of spatial structure.
+
+## 3.6.2 Mini-Batch Data Iteration
+
+When training neural networks, we usually do not feed all training data into the model at once. Instead, we split the data into many mini-batches.
+
+If the batch size is $B$, then one training step only uses:
+
+$$
+X_{\text{batch}} \in \mathbb{R}^{B \times 784}
+$$
+
+and the corresponding labels:
+
+$$
+y_{\text{batch}} \in \mathbb{R}^{B}
+$$
+
+This has several benefits:
+
+1. Each update requires less computation;
+2. The gradient contains some randomness, which helps training;
+3. It is closer to how training is done in practical deep learning frameworks.
+
+First, we write a simple mini-batch iterator:
+
+```{python}
+class DataLoader:
+    def __init__(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        batch_size: int,
+        shuffle: bool = True,
+    ):
+        self.X = X
+        self.y = y
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+    def __iter__(self):
+        indices = np.arange(len(self.X))
+
+        if self.shuffle:
+            rng.shuffle(indices)
+
+        for start in range(0, len(self.X), self.batch_size):
+            idx = indices[start : start + self.batch_size]
+            yield self.X[idx], self.y[idx]
+
+    def __len__(self):
+        return math.ceil(len(self.X) / self.batch_size)
+```
+
+At the beginning of each epoch, we shuffle the training set. This prevents the model from learning from the samples in exactly the same order in every epoch.
+
+## 3.6.3 Computing Accuracy
+
+In classification tasks, besides the loss, we often also care about accuracy.
+
+The model outputs logits:
+
+$$
+Z \in \mathbb{R}^{B \times 10}
+$$
+
+Each row corresponds to the scores of one image over the $10$ classes. The predicted class is the class with the largest score:
+
+$$
+\hat{y}_i = \arg\max_j Z_{i,j}
+$$
+
+The corresponding NumPy implementation is:
+
+```{python}
+def accuracy(logits: np.ndarray, labels: np.ndarray) -> float:
+    pred = np.argmax(logits, axis=1)
+    correct = np.sum(pred == labels)
+    return correct / len(labels)
+```
+
+Here we directly use `np.argmax` to obtain the predicted class, compare it with the true label, and compute the accuracy. Note that although `softmax` can convert logits into probabilities, it does not change the ranking of logits, so we can directly apply `np.argmax` to the logits.
+
+## 3.6.4 Training Loop
+
+Now that we have the mini-batch iterator and evaluation function, together with the model, loss function, and optimizer implemented earlier, we have all the components needed to train a neural network. Next, we can write the complete training loop.
+
+First, prepare the data loaders, model, loss function, and optimizer:
+
+```{python}
+train_dl = DataLoader(X_train, y_train, batch_size=128, shuffle=True)
+test_dl = DataLoader(X_test, y_test, batch_size=128, shuffle=False)
+
+model = mlp.MLP(input_dim=784, hidden_dim=256, num_classes=10)
+loss_fn = mlp.CrossEntropyLoss()
+optimizer = mlp.SGD(model.parameters(), lr=0.1)
+
+history = defaultdict(list)
+```
+
+The training step for each mini-batch is:
+
+```text
+forward -> loss -> backward -> update
+```
+
+The complete training code is as follows:
+
+```{python}
+num_epochs = 10
+
+for epoch in range(1, num_epochs + 1):
+    train_loss = 0.0
+    correct_samples = 0
+
+    for X, y in train_dl:
+        logits = model(X)
+        loss = loss_fn(logits, y)
+
+        dlogits = loss_fn.backward()
+        dx = model.backward(dlogits)
+
+        optimizer.step()
+        optimizer.zero_grad()
+
+        train_loss += loss.item()
+        correct_samples += np.sum(np.argmax(logits, axis=1) == y)
+
+    avg_train_loss = train_loss / len(train_dl)
+    avg_train_acc = correct_samples / len(train_ds)
+    history['loss'].append(avg_train_loss)
+    history['acc'].append(avg_train_acc)
+
+    test_loss = 0.0
+    correct_samples = 0
+
+    for X, y in test_dl:
+        logits = model(X)
+        loss = loss_fn(logits, y)
+
+        test_loss += loss.item()
+        correct_samples += np.sum(np.argmax(logits, axis=1) == y)
+
+    avg_test_loss = test_loss / len(test_dl)
+    avg_test_acc = correct_samples / len(test_ds)
+    history['test_loss'].append(avg_test_loss)
+    history['test_acc'].append(avg_test_acc)
+
+    n = len(str(num_epochs))
+    print(
+        f'Epoch [{epoch:{n}d}/{num_epochs:{n}d}] '
+        f'| loss: {avg_train_loss:.4f} '
+        f'| acc: {avg_train_acc:.4f} '
+        f'| test_loss: {avg_test_loss:.4f} '
+        f'| test_acc: {avg_test_acc:.4f}'
+    )
+```
+
+Although this code is not long, it already contains the core logic of training a neural network.
+
+For each mini-batch:
+
+1. `model(X)` computes the logits;
+2. `loss_fn(logits, y_batch)` computes the loss;
+3. `loss_fn.backward()` obtains the gradient with respect to the logits;
+4. `model.backward(dlogits)` propagates the gradient back to each parameter;
+5. `optimizer.step()` updates the parameters according to the gradients.
+
+In other words, we have implemented the most essential part of a PyTorch training loop.
+
+## 3.6.5 Observing the Training Curves
+
+After training is complete, we can plot the loss and accuracy.
+
+First, look at the loss on the training set and test set:
+
+```{python}
+fig = plt.figure(2, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+xticks = np.arange(1, num_epochs + 1)
+ax.plot(xticks, history['loss'], marker='o')
+ax.plot(xticks, history['test_loss'], marker='o')
+ax.grid(linestyle='--', alpha=0.7)
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Loss')
+ax.legend(['train_loss', 'test_loss'])
+ax.set_title('MLP Training Loss')
+plt.show()
+```
+
+Then look at the accuracy on the training set and test set:
+
+```{python}
+fig = plt.figure(2, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+xticks = np.arange(1, num_epochs + 1)
+ax.plot(xticks, history['acc'], marker='o')
+ax.plot(xticks, history['test_acc'], marker='o')
+ax.grid(linestyle='--', alpha=0.7)
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Accuracy')
+ax.legend(['train_acc', 'test_acc'])
+ax.set_title('MLP Training Accuracy')
+plt.show()
+```
+
+If training is normal, we usually observe that:
+
+1. Training loss gradually decreases;
+2. Training accuracy gradually increases;
+3. Testing accuracy also gradually increases, but it may not be exactly the same as training accuracy.
+
+This shows that the model has indeed learned some patterns that can distinguish digits through gradient descent.
+
+## 3.6.6 Inspecting Prediction Results
+
+Finally, we can randomly select a few test images and inspect the model's predictions.
+
+```{python}
+indices = rng.choice(len(X_test), size=10, replace=False)
+x_samples = X_test[indices]
+y_samples = y_test[indices]
+
+logits = model(x_samples)
+y_preds = np.argmax(logits, axis=1)
+```
+
+Visualize these samples:
+
+```{python}
+fig = plt.figure(3, figsize=(7, 3.2))
+axes = fig.subplots(2, 5)
+for i, ax in enumerate(axes.ravel()):
+    ax.imshow(x_samples[i].reshape(28, 28), cmap='gray')
+    ax.axis('off')
+    ax.set_title(f'Pred: {y_preds[i]}, Label: {y_samples[i]}', fontsize=10)
+fig.tight_layout()
+plt.show()
+```
+
+If the prediction is correct, `pred` and `label` will be the same. If the prediction is wrong, we can also observe what digit the model confused it with.
+
+This step is not required for training, but it is very useful because it helps us intuitively understand the model's behavior: which samples it handles well and which samples it handles poorly. From there, we can further analyze the model's limitations or think about how to improve it.
+
+## 3.6.7 Limitations of MLPs on Image Tasks
+
+At this point, we have used NumPy to handwrite an MLP that can be trained on MNIST. However, MLPs have an obvious problem when processing images: they directly flatten a $28 \times 28$ two-dimensional image into a 784-dimensional vector. Although this is simple, it loses the spatial structure in the image.
+
+For example, two neighboring pixels in the original image may still be adjacent after flattening, but the model itself does not know that they come from neighboring positions in a two-dimensional grid. For an MLP, the input is just an ordinary vector:
+
+$$
+X = [x_1, x_2, \dots, x_{784}]
+$$
+
+It does not explicitly use local regions, translation structure, or two-dimensional neighborhood relationships.
+
+This is why, when processing images later, we usually introduce models that are better suited to image structure, such as convolutional neural networks (CNNs) and Vision Transformers (ViTs). Still, when understanding the training mechanism of neural networks, an MLP remains one of the best starting points, because it already contains the core components of deep learning training:
+
+1. Learnable parameters;
+2. Forward propagation;
+3. Loss function;
+4. Backpropagation;
+5. Gradient descent updates;
+6. Evaluation on the training set and test set.
+
+## 3.6.8 Summary
+
+In this section, we put the NumPy MLP implemented earlier onto the MNIST dataset and completed a full training experiment.
+
+We first used `torchvision.datasets.MNIST` to read the data, then flattened the images into 784-dimensional vectors and normalized them to $[0, 1]$. After that, we handwrote a mini-batch iterator, an accuracy computation function, and a training loop.
+
+The training step for each mini-batch is:
+
+```text
+forward -> loss -> backward -> update
+```
+
+In code, this corresponds to:
+
+```python
+# forward
+logits = model(x)
+loss = loss_fn(logits, y)
+
+# backward
+dlogits = criterion.backward()
+model.backward(dlogits)
+
+# update
+optimizer.step()
+```
+
+This process does not use PyTorch Autograd. All gradients come from the backpropagation formulas we derived and implemented earlier. However, this raises a question:
+
+> **What if the gradients we computed are wrong?**
+
+In the next section, we will discuss a very practical gradient checking method: numerical gradient checking.

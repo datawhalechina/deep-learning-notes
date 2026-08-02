@@ -1,0 +1,21 @@
+---
+title: "Part 6: Generative Models"
+author: jshn9515
+date: 2026-05-05
+date-modified: today
+page-layout: full
+comments: false
+
+listing:
+  contents:
+    - "../ch13-autoencoders-and-vaes/*.qmd"
+    - "../ch14-diffusion-models/*.qmd"
+  sort: title asc
+  type: table
+  fields: [title, author, date]
+  date-format: iso
+
+open-graph:
+  title: part6-generative-models
+  description: "Part 6: Generative Models"
+---

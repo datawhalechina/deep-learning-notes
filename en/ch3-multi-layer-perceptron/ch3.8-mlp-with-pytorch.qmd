@@ -1,0 +1,516 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.8-mlp-with-pytorch
+  description: "3.8 Reimplementing MLP with PyTorch nn.Module"
+title: "3.8 Reimplementing MLP with PyTorch nn.Module"
+order: 8
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch3-multi-layer-perceptron/ch3.8-mlp-with-pytorch.ipynb){fig-align="left"}
+
+In the previous sections, we implemented a two-layer MLP from scratch with NumPy:
+
+$$
+X
+\rightarrow
+\operatorname{Linear}
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}
+\rightarrow
+\operatorname{SoftmaxCrossEntropy}
+\rightarrow
+L
+$$
+
+To train it, we manually completed:
+
+1. forward propagation;
+2. loss function computation;
+3. backpropagation;
+4. parameter updates;
+5. mini-batch training loop;
+6. numerical gradient checking.
+
+The benefit of doing this is that we can see every detail of neural network training clearly. But in real projects, we usually do not hand-write the backward pass for every layer. Instead, we let a deep learning framework handle it automatically.
+
+In this section, we return to PyTorch and reimplement the same MLP with `nn.Module`. The focus is not to learn a new model, but to compare it with the previous NumPy implementation and see which steps PyTorch automates for us.
+
+```{python}
+from collections import defaultdict
+
+import dnnlpy
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.utils.data as utils
+import torchvision.datasets as datasets
+import torchvision.transforms.v2 as v2
+from torch import Tensor
+
+torch.manual_seed(42)
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 3.8.1 Reviewing the Model Structure from the NumPy Version
+
+In the previous NumPy version, the structure of the two-layer MLP was:
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \operatorname{ReLU}(H) \\
+Z &= AW_2 + b_2
+\end{aligned}
+$$
+
+where:
+
+$$
+\begin{aligned}
+X &\in \mathbb{R}^{B \times 784} \\
+W_1 &\in \mathbb{R}^{784 \times H} \\
+b_1 &\in \mathbb{R}^{H} \\
+H &\in \mathbb{R}^{B \times H} \\
+A &\in \mathbb{R}^{B \times H} \\
+W_2 &\in \mathbb{R}^{H \times 10} \\
+b_2 &\in \mathbb{R}^{10} \\
+Z &\in \mathbb{R}^{B \times 10}
+\end{aligned}
+$$
+
+For MNIST, each image has size $28 \times 28$. After flattening, it becomes a 784-dimensional vector. The output layer has 10 neurons, corresponding to the 10 classes for digits 0 through 9.
+
+If we express the same structure in PyTorch, we can write:
+
+```{python}
+class MLP(nn.Module):
+    def __init__(
+        self,
+        input_dim: int = 784,
+        hidden_dim: int = 256,
+        num_classes: int = 10,
+    ):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_classes),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.net(x)
+```
+
+Here, `nn.Flatten()` corresponds to the image flattening step we manually performed in NumPy:
+
+$$
+(B, 1, 28, 28) \rightarrow (B, 784)
+$$
+
+`nn.Linear` corresponds to the `Linear` class we wrote earlier, and `nn.ReLU` corresponds to the `ReLU` class we wrote ourselves. In other words, the PyTorch version does not change the mathematical model. It simply wraps these basic modules for us.
+
+## 3.8.2 Checking the Model Output Shape
+
+First, let us use a mini-batch to check whether the model can perform a normal forward pass.
+
+```{python}
+model = MLP(input_dim=784, hidden_dim=256, num_classes=10)
+
+x = torch.randn(32, 1, 28, 28)
+logits = model(x)
+
+print('logits shape:', logits.shape)
+```
+
+Here, $B = 32$ is the batch size, and 10 is the number of classes. Notice that the output here is still called **logits**. It is not a probability distribution and has not gone through softmax.
+
+In PyTorch, we usually pass logits directly to `nn.CrossEntropyLoss`:
+
+```{python}
+loss_fn = nn.CrossEntropyLoss()
+
+y = torch.randint(10, size=(32,))
+loss = loss_fn(logits, y)
+
+print('loss:', loss.item())
+```
+
+This is the same objective function as the `CrossEntropyLoss` we implemented in NumPy earlier. The difference is:
+
+- in the NumPy version, we explicitly implemented softmax, cross entropy, and backward;
+- in the PyTorch version, `nn.CrossEntropyLoss` internally performs stable log-softmax and negative log likelihood computation for us.
+
+Therefore, in PyTorch, do not write this first:
+
+```python
+probs = logits.softmax(dim=1)
+loss = loss_fn(probs, y)
+```
+
+`nn.CrossEntropyLoss` expects logits, not probabilities after softmax.
+
+## 3.8.3 PyTorch Automatically Performs Backpropagation
+
+In the NumPy version, we needed to manually write:
+
+```python
+grad = loss_fn.backward()
+model.backward(grad)
+```
+
+That is, every layer had to implement its own `backward` method.
+
+In PyTorch, we only need:
+
+```python
+loss.backward()
+```
+
+This follows the computation graph that PyTorch automatically recorded during forward propagation and propagates gradients backward to all parameters that require gradients. For example:
+
+```{python}
+model = MLP()
+loss_fn = nn.CrossEntropyLoss()
+
+x = torch.randn(32, 1, 28, 28)
+y = torch.randint(10, size=(32,))
+
+logits = model(x)
+loss = loss_fn(logits, y)
+loss.backward()
+```
+
+After backpropagation, we can inspect the gradient of the first layer's weights:
+
+```{python}
+print('The shape of the first layer:', model.net[1].weight.grad.shape)
+```
+
+The first layer is:
+
+```python
+nn.Linear(784, 256)
+```
+
+So its weight shape is `(256, 784)`, and the corresponding gradient shape is also `(256, 784)`.
+
+Here we need to note a small difference. In the previous NumPy implementation, we wrote the weight matrix as:
+
+$$
+W \in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}}
+$$
+
+and wrote the forward propagation as:
+
+$$
+Y = XW + b
+$$
+
+But in PyTorch, the internal weight shape of `nn.Linear(in_features, out_features)` is:
+
+$$
+W \in \mathbb{R}^{D_{\text{out}} \times D_{\text{in}}}
+$$
+
+The forward propagation is equivalent to:
+
+$$
+Y = XW^\top + b
+$$
+
+So in PyTorch, `weight.shape` is `(out_features, in_features)`. This differs from the matrix orientation in our NumPy version, but it represents the same linear transformation.
+
+## 3.8.4 Updating Parameters with an Optimizer
+
+In the NumPy version, we wrote parameter updates ourselves:
+
+```python
+for param, grad in model.parameters():
+    param -= lr * grad
+```
+
+This is the most basic SGD:
+
+$$
+\theta \leftarrow \theta - \eta \frac{\partial L}{\partial \theta}
+$$
+
+In PyTorch, parameter updates are handled by an optimizer:
+
+```{python}
+model = MLP(input_dim=784, hidden_dim=256, num_classes=10)
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+```
+
+A single training step is usually written as:
+
+```{python}
+x = torch.randn(32, 1, 28, 28)
+y = torch.randint(10, size=(32,))
+
+optimizer.zero_grad()
+logits = model(x)
+loss = loss_fn(logits, y)
+loss.backward()
+optimizer.step()
+```
+
+There is a fixed order here:
+
+```text
+zero_grad -> forward -> loss -> backward -> step
+```
+
+where:
+
+- `optimizer.zero_grad()` clears the gradients accumulated from the previous iteration;
+- `model(x)` performs forward propagation;
+- `criterion(logits, y)` computes the loss;
+- `loss.backward()` automatically performs backpropagation;
+- `optimizer.step()` updates parameters according to the gradients.
+
+This corresponds one-to-one with the NumPy version, except that PyTorch wraps the details of backward computation and updates for us.
+
+## 3.8.5 Preparing the MNIST Dataset
+
+Next, we load MNIST in the standard PyTorch way.
+
+```{python}
+root = dnnlpy.get_data_root()
+transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+
+train_ds = datasets.MNIST(root, train=True, download=True, transform=transform)
+test_ds = datasets.MNIST(root, train=False, download=True, transform=transform)
+```
+
+`transform` converts each image into a Tensor with shape:
+
+$$
+(1, 28, 28)
+$$
+
+and scales pixel values to $[0, 1]$.
+
+Then we use `DataLoader` to construct mini-batches:
+
+```{python}
+train_dl = utils.DataLoader(train_ds, batch_size=128, shuffle=True)
+test_dl = utils.DataLoader(test_ds, batch_size=256, shuffle=False)
+```
+
+In the NumPy version, we sliced mini-batches manually with indices. In PyTorch, `DataLoader` automatically handles shuffling, batching, and iteration for us.
+
+## 3.8.6 Training a PyTorch MLP
+
+To let the code automatically choose a suitable accelerator, we can write:
+
+```{python}
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+Then we create the model, loss function, and optimizer:
+
+```{python}
+model = MLP(input_dim=784, hidden_dim=256, num_classes=10).to(device)
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+history = defaultdict(list)
+```
+
+The training loop is as follows:
+
+```{python}
+num_epochs = 10
+
+for epoch in range(1, num_epochs + 1):
+    model.train()
+
+    train_loss = 0.0
+    correct_samples = 0
+
+    for X, y in train_dl:
+        X = X.to(device)
+        y = y.to(device)
+
+        logits = model(X)
+        loss = loss_fn(logits, y)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        train_loss += loss.item()
+        correct_samples += (logits.argmax(dim=1) == y).sum().item()
+
+    avg_train_loss = train_loss / len(train_dl)
+    avg_train_acc = correct_samples / len(train_ds)
+    history['loss'].append(avg_train_loss)
+    history['acc'].append(avg_train_acc)
+
+    model.eval()
+    test_loss = 0.0
+    correct_samples = 0
+
+    for X, y in test_dl:
+        X = X.to(device)
+        y = y.to(device)
+
+        with torch.inference_mode():
+            logits = model(X)
+            loss = loss_fn(logits, y)
+
+        test_loss += loss.item()
+        correct_samples += (logits.argmax(dim=1) == y).sum().item()
+
+    avg_test_loss = test_loss / len(test_dl)
+    avg_test_acc = correct_samples / len(test_ds)
+    history['test_loss'].append(avg_test_loss)
+    history['test_acc'].append(avg_test_acc)
+
+    n = len(str(num_epochs))
+    print(
+        f'Epoch [{epoch:{n}d}/{num_epochs:{n}d}] '
+        f'| loss: {avg_train_loss:.4f} '
+        f'| acc: {avg_train_acc:.4f} '
+        f'| test_loss: {avg_test_loss:.4f} '
+        f'| test_acc: {avg_test_acc:.4f}'
+    )
+```
+
+This training loop is very similar to the NumPy version. The biggest differences are:
+
+- in the NumPy version, `backward` was written by hand;
+- in the PyTorch version, `loss.backward()` automatically performs backpropagation;
+- in the NumPy version, `param -= lr * grad` was written by hand;
+- in the PyTorch version, `optimizer.step()` automatically performs parameter updates.
+
+## 3.8.7 Visualizing the Training Process
+
+First, let us look at the loss on the training set and test set:
+
+```{python}
+fig = plt.figure(1, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+xticks = torch.arange(1, num_epochs + 1)
+ax.plot(xticks, history['loss'], marker='o')
+ax.plot(xticks, history['test_loss'], marker='o')
+ax.grid(linestyle='--', alpha=0.7)
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Loss')
+ax.legend(['train_loss', 'test_loss'])
+ax.set_title('MLP Training Loss')
+plt.show()
+```
+
+Then look at the accuracy on the training set and test set:
+
+```{python}
+fig = plt.figure(2, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+xticks = torch.arange(1, num_epochs + 1)
+ax.plot(xticks, history['acc'], marker='o')
+ax.plot(xticks, history['test_acc'], marker='o')
+ax.grid(linestyle='--', alpha=0.7)
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Accuracy')
+ax.legend(['train_acc', 'test_acc'])
+ax.set_title('MLP Training Accuracy')
+plt.show()
+```
+
+If training is normal, the loss will gradually decrease and the accuracy will gradually increase.
+
+Of course, we can also visualize the model's predictions:
+
+```{python}
+indices = torch.randperm(len(test_ds))[:10]
+x_samples = torch.stack([test_ds[i][0] for i in indices])
+y_samples = torch.tensor([test_ds[i][1] for i in indices])
+
+model.cpu().eval()
+with torch.inference_mode():
+    logits = model(x_samples)
+    y_preds = logits.argmax(dim=1)
+
+fig = plt.figure(3, figsize=(7, 3.2))
+axes = fig.subplots(2, 5)
+for i, ax in enumerate(axes.ravel()):
+    ax.imshow(x_samples[i].reshape(28, 28), cmap='gray')
+    ax.axis('off')
+    ax.set_title(f'Pred: {y_preds[i]}, Label: {y_samples[i]}', fontsize=10)
+fig.tight_layout()
+plt.show()
+```
+
+## 3.8.8 Correspondence Between the NumPy Implementation and the PyTorch Implementation
+
+At this point, we have implemented the same MLP in two ways. Their correspondence can be summarized as follows:
+
+::: {.list-table}
+Table 1: Correspondence between the handwritten NumPy version and the PyTorch version
+
+- - Handwritten NumPy version
+  - PyTorch version
+
+- - Linear.forward
+  - nn.Linear
+
+- - ReLU.forward
+  - nn.ReLU
+
+- - CrossEntropyLoss.forward
+  - nn.CrossEntropyLoss
+
+- - handwritten backward
+  - loss.backward()
+
+- - param -= lr * grad
+  - optimizer.step()
+
+- - handwritten mini-batch indexing
+  - DataLoader
+
+- - handwritten evaluation loop
+  - model.eval() + torch.no_grad()
+:::
+
+So PyTorch does not change the mathematical nature of neural network training. It mainly automates three things for us:
+
+1. automatically recording the computation graph;
+2. automatically computing gradients;
+3. managing parameters and optimizers through a unified interface.
+
+This is also why the handwritten NumPy version earlier was important: it is the foundation of all neural network training. Once you understand the handwritten version, PyTorch code will no longer make `loss.backward()` feel like a black box.
+
+## 3.8.9 Summary
+
+In this section, we reimplemented the two-layer MLP from earlier using PyTorch `nn.Module`.
+
+In the NumPy version, we needed to implement `Linear`, `ReLU`, and `CrossEntropyLoss` ourselves, and write `backward` for every layer. In the PyTorch version, these modules are already wrapped as `nn.Linear`, `nn.ReLU`, and `nn.CrossEntropyLoss`, while backpropagation is automatically handled by `loss.backward()`.
+
+However, the mathematical structure behind the two versions is the same: the input passes through linear layers and nonlinear activation functions to produce logits, cross entropy measures the gap between predictions and labels, and parameters are finally updated along the gradient direction.
+
+At this point, we have completed the full training process of an MLP:
+
+$$
+\text{data}
+\rightarrow
+\text{forward}
+\rightarrow
+\text{loss}
+\rightarrow
+\text{backward}
+\rightarrow
+\text{update}
+$$
+
+Congratulations! You have learned how to build a basic neural network and understand every step of training. In later sections, we will continue to introduce more model components and training techniques on top of this foundation. But no matter how complex a model becomes, it essentially evolves from this basic training process. Once you understand it, you understand the core of deep learning.
