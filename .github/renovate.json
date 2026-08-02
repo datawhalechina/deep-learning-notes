@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "rangeStrategy": "replace",
+  "timezone": "America/New_York",
+  "assignees": ["jshn9515"],
+  "addLabels": ["dependencies", "python"],
+  "packageRules": [
+    {
+      "groupName": "PyTorch packages",
+      "matchPackageNames": ["torch", "torchvision", "torchaudio"]
+    },
+    {
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["patch"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "enabled": false
+    }
+  ]
+}

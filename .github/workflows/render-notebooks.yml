@@ -1,0 +1,173 @@
+name: Convert and Package Notebooks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "zh/**"
+      - "en/**"
+      - "_quarto-jupyter.yml"
+      - "utils/clean_attachments.py"
+      - "utils/add_image_attrs.py"
+      - ".github/workflows/render-notebooks.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-zh-notebooks:
+    name: Render Chinese Notebooks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
+          src: zh/
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Convert zh qmd to ipynb
+        shell: bash
+        run: quarto render zh/ --profile jupyter
+
+      - name: Package zh notebooks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "_jupyter/zh" ] && [ "$(find _jupyter/zh -type f | wc -l)" -gt 0 ]; then
+            tar -czf dnnl-zh.tar.gz -C _jupyter zh
+          fi
+
+      - name: Generate zh package attestation
+        if: ${{ hashFiles('dnnl-zh.tar.gz') != '' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: dnnl-zh.tar.gz
+
+      - name: Upload zh artifact
+        if: ${{ hashFiles('_jupyter/zh/**/*.ipynb') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: dnnl-zh.tar.gz
+          archive: false
+
+      - name: Notify dnnl-notebooks zh sync
+        if: ${{ hashFiles('dnnl-zh.tar.gz') != '' }}
+        run: |
+          curl --fail-with-body -X POST \
+            -H "Authorization: Bearer ${{ secrets.DNNL_SYNC1_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/jshn9515/dnnl-notebooks/dispatches \
+            -d '{
+              "event_type": "sync-dnnl-zh",
+              "client_payload": {
+                "source_repo": "jshn9515/deep-learning-notes",
+                "run_id": "${{ github.run_id }}",
+                "artifact_name": "dnnl-zh.tar.gz",
+                "archive_name": "dnnl-zh.tar.gz",
+                "lang": "zh"
+              }
+            }'
+
+      - name: Upload zh Notebooks to GitHub Release
+        if: ${{ github.event_name == 'release' && hashFiles('dnnl-zh.tar.gz') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dnnl-zh.tar.gz \
+            --clobber
+
+  render-en-notebooks:
+    name: Render English Notebooks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
+          src: en/
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: 3.14
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Convert en qmd to ipynb
+        shell: bash
+        run: quarto render en/ --profile jupyter
+
+      - name: Package en notebooks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "_jupyter/en" ] && [ "$(find _jupyter/en -type f | wc -l)" -gt 0 ]; then
+            tar -czf dnnl-en.tar.gz -C _jupyter en
+          fi
+
+      - name: Generate en package attestation
+        if: ${{ hashFiles('dnnl-en.tar.gz') != '' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: dnnl-en.tar.gz
+
+      - name: Upload en artifact
+        if: ${{ hashFiles('_jupyter/en/**/*.ipynb') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: dnnl-en.tar.gz
+          archive: false
+
+      - name: Notify dnnl-notebooks en sync
+        if: ${{ hashFiles('dnnl-en.tar.gz') != '' }}
+        run: |
+          curl --fail-with-body -X POST \
+            -H "Authorization: Bearer ${{ secrets.DNNL_SYNC1_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/jshn9515/dnnl-notebooks/dispatches \
+            -d '{
+              "event_type": "sync-dnnl-en",
+              "client_payload": {
+                "source_repo": "jshn9515/deep-learning-notes",
+                "run_id": "${{ github.run_id }}",
+                "artifact_name": "dnnl-en.tar.gz",
+                "archive_name": "dnnl-en.tar.gz",
+                "lang": "en"
+              }
+            }'
+
+      - name: Upload en Notebooks to GitHub Release
+        if: ${{ github.event_name == 'release' && hashFiles('dnnl-en.tar.gz') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dnnl-en.tar.gz \
+            --clobber

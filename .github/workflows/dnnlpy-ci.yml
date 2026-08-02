@@ -1,0 +1,105 @@
+name: Test and Build dnnlpy package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dnnlpy/**"
+      - "pyproject.toml"
+      - ".github/workflows/dnnlpy-ci.yml"
+  pull_request:
+    paths:
+      - "dnnlpy/**"
+      - "pyproject.toml"
+      - ".github/workflows/dnnlpy-ci.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: dnnlpy-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dnnlpy-ci:
+    name: dnnlpy-ci (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Lint check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: check --output-format=github
+          src: >-
+            dnnlpy/src
+            dnnlpy/tests
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
+          src: >-
+            dnnlpy/src
+            dnnlpy/tests
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            dnnlpy/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          uv python install ${{ matrix.python-version }}
+          uv venv --python ${{ matrix.python-version }} .venv
+          uv pip install --python .venv --torch-backend cpu -e "dnnlpy[test]"
+
+      - name: Test dnnlpy package
+        run: .venv/bin/python -m pytest dnnlpy/tests
+
+      - name: Build dnnlpy package
+        run: uv build dnnlpy --out-dir dist
+
+      - name: Generate package attestation
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.whl
+
+      - name: Upload package artifact
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: dnnlpy-package-py${{ matrix.python-version }}
+          path: |
+            dist/*.tar.gz
+            dist/*.whl
+          if-no-files-found: error
+
+      - name: Upload dnnlpy wheels to GitHub Release
+        if: >-
+          ${{ github.event_name == 'release'
+              && matrix.python-version == '3.14'
+              && hashFiles('dist/**') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/*.whl \
+            dist/*.tar.gz \
+            --clobber
