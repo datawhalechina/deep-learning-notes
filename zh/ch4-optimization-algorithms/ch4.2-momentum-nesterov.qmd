@@ -1,0 +1,438 @@
+---
+author: jshn9515
+date: 2026-05-29
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.2-momentum-nesterov
+  description: "4.2 Momentum 与 Nesterov Momentum"
+title: "4.2 Momentum 与 Nesterov Momentum"
+order: 2
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.2-momentum-nesterov.ipynb){fig-align="left"}
+
+上一节我们从梯度下降讲到 mini-batch SGD。SGD 的更新规则非常简单：
+
+$$
+\theta_{t+1} = \theta_t - \eta g_t
+$$
+
+其中，$g_t$ 是当前 mini-batch 上的梯度。
+
+这个公式的直觉很清楚：当前梯度指向损失上升最快的方向，所以我们沿着负梯度方向走一步。但是，SGD 有一个明显的问题：
+
+> **每一步都只相信当前 mini-batch 的梯度。**
+
+如果当前 mini-batch 的梯度方向比较准确，更新就比较顺；如果当前 mini-batch 带有噪声，更新方向就会抖动。深度学习中的损失曲面通常又很复杂，有些方向很陡，有些方向很平。SGD 在陡峭方向上可能来回震荡，在平缓方向上又前进得很慢。
+
+这一节我们要看的 **Momentum** [@Ilya2013Momentum]，就是为了解决这个问题提出的一个非常自然的想法：
+
+> **不要只看当前这一步的梯度，也参考过去一段时间的更新方向。**
+
+```{python}
+from collections.abc import Iterable
+from pprint import pprint
+from typing import override
+
+import dnnlpy
+import dnnlpy.optim as dopt
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch import Tensor
+
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.2.1 SGD 为什么会抖动？
+
+为了理解 momentum，我们先看 SGD 在什么情况下会表现不好。
+
+考虑一个二维参数：
+
+$$
+\theta = (x, y)
+$$
+
+假设损失函数的形状像一个狭长的山谷。沿着 $x$ 方向，损失变化很快；沿着 $y$ 方向，损失变化很慢。这样的损失曲面在神经网络训练中并不少见。
+
+如果我们用 SGD 更新参数，负梯度方向未必总是正好沿着山谷底部前进。由于某些方向很陡，梯度可能主要指向山谷两侧，于是参数会在两侧来回震荡。与此同时，真正应该前进的方向反而走得很慢。这就好比一个人在狭长的山谷里下山，每一步都只根据脚下的坡度决定方向。由于两侧很陡，他可能不断撞向左边、再撞向右边，虽然总体在下降，但路线非常曲折。
+
+我们可以用一个简单的二次函数模拟这种情况：
+
+$$
+L(\theta) = 0.1(x - 2)^2 + 2.0(y + 1)^2
+$$
+
+这里 $y$ 方向更陡，$x$ 方向更平缓。最小值在 $(-2, 1)$。
+
+先定义损失函数：
+
+```{python}
+def loss_fn(theta: Tensor) -> Tensor:
+    x, y = theta[0], theta[1]
+    return 0.1 * (x - 2) ** 2 + 2.0 * (y + 1) ** 2
+```
+
+运行 SGD 并画出更新轨迹：
+
+```{python}
+theta = torch.tensor([-5.0, 2.0], requires_grad=True)
+optimizer = dopt.SGD([theta], lr=0.4)
+history = dopt.run_optimizer(optimizer, loss_fn, steps=40)
+
+x = torch.linspace(-6.5, 5.5, 200)
+y = torch.linspace(-3.5, 2.5, 200)
+X, Y = torch.meshgrid(x, y, indexing='ij')
+Z = 0.1 * (X - 2) ** 2 + 2.0 * (Y + 1) ** 2
+
+fig = plt.figure(1)
+ax = fig.add_subplot(1, 1, 1)
+ax.contourf(X, Y, Z, levels=25, cmap='YlGnBu')
+ax.plot(
+    history[:, 0],
+    history[:, 1],
+    color='#EC705B',
+    marker='o',
+    markersize=3,
+    markerfacecolor='#C0392B',
+    markeredgecolor='white',
+    markeredgewidth=0.5,
+)
+ax.set_xlabel(r'$\theta_1$')
+ax.set_ylabel(r'$\theta_2$')
+ax.set_title('SGD on a Narrow Valley')
+plt.show()
+```
+
+从图中可以看到，参数不是平滑地向最低点移动，而是在两侧陡峭的山坡上来回摆动。这种摆动会浪费很多更新步数（实际上，如果你把学习率改成 0.5，甚至不会收敛）。
+
+这就引出了一个问题：如果很多步的梯度都大致指向同一个方向，我们能不能让参数在这个方向上越走越快？如果某个方向的梯度来回反复，我们能不能抵消掉这种震荡？
+
+Momentum 正是这样做的。
+
+## 4.2.2 Momentum：让更新方向具有惯性
+
+Momentum 的核心想法很简单：
+
+> **当前更新方向不只由当前梯度决定，也由过去的更新方向决定。**
+
+在普通 SGD 中，每一步的更新方向是 $-g_t$。Momentum 会额外维护一个变量 $v_t$，它可以理解成参数更新的“速度”或者“动量”。每一步，我们先更新这个动量：
+
+$$
+v_t = \beta v_{t-1} + g_t
+$$
+
+然后用这个动量更新参数：
+
+$$
+\theta_{t+1} = \theta_t - \eta v_t
+$$
+
+这里的 $\beta$ 通常叫做 momentum coefficient，常见取值是 0.9。
+
+这个公式的直觉是：
+
+- $g_t$ 是当前梯度；
+- $v_{t-1}$ 是过去梯度方向的累计；
+- $\beta$ 控制过去方向保留多少。
+
+如果连续很多步的梯度方向相似，那么这些梯度会不断累积，$v_t$ 会变大，参数在这个方向上前进得更快；如果某个方向的梯度一会儿为正、一会儿为负，那么这些梯度会相互抵消，$v_t$ 在这个方向上不会积累太多，震荡就会减弱。
+
+所以 momentum 同时做了两件事儿：
+
+1. 在一致的方向上加速；
+2. 在反复震荡的方向上平滑。
+
+这就是为什么 momentum 经常被解释成“惯性”。普通 SGD 每一步都重新决定方向，而 momentum 像是一个有速度的小球。它不会因为当前一步的梯度稍微变了一下就立刻急转弯，而是会保留过去的运动趋势。
+
+## 4.2.3 从指数加权平均看 Momentum
+
+上面的公式是：
+
+$$
+v_t = \beta v_{t-1} + g_t
+$$
+
+如果把它展开，可以看到 $v_t$ 包含了过去很多步的梯度：
+
+$$
+v_t = g_t + \beta g_{t-1} + \beta^2 g_{t-2} + \beta^3 g_{t-3} + \cdots
+$$
+
+也就是说，momentum 不是只看当前梯度，而是看过去梯度的加权和。越近的梯度权重越大，越早的梯度权重越小。
+
+这和我们在训练时的直觉是一致的：
+
+- 当前 mini-batch 的梯度很重要；
+- 最近几步的梯度也很有参考价值；
+- 很久以前的梯度应该逐渐淡出。
+
+所以 momentum 可以理解为对梯度方向做了一种平滑。它把带噪声的单步梯度，变成了更稳定的累计方向。这样，在狭长的山谷里，参数就不会来回震荡，而是会沿着山谷底部更平滑地前进。
+
+实际上，如果假设某一段时间里梯度方向差不多，每一步的梯度都是同一个向量 $g$，上面的式子会化简成一个几何级数：
+
+$$
+v_t \approx g \times (1 + \beta + \beta^2 + \cdots)
+= g \times \frac{1}{1-\beta},
+\quad \beta \in [0,1)
+$$
+
+这说明，在连续很多步的梯度方向一致的情况下，momentum 会让参数更新的速度大约是普通 SGD 的 $\frac{1}{1 - \beta}$ 倍。以 $\beta=0.9$ 为例，这个加速因子就是 10。所以，在使用 momentum 时，学习率通常需要调小一些。
+
+此外，有些教材会把 momentum 写成另一种形式：
+
+$$
+\begin{aligned}
+v_t &= \beta v_{t-1} + \eta g_t \\
+\theta_{t+1} &= \theta_t - v_t
+\end{aligned}
+$$
+
+这和前面的写法有细微的不同。前一种写法中，$v_t$ 累积的是梯度，学习率 $\eta$ 在最后更新参数时才乘上；后一种写法中，梯度先乘以学习率，再被累积进 $v_t$，因此 $v_t$ 本身就表示一次参数更新的步长。如果学习率 $\eta$ 在训练过程中保持不变，并且初始 $v_0 = 0$，这两种写法本质上只是差一个常数缩放，最终得到的参数更新是等价的。PyTorch 采用的是前一种写法。
+
+不过，不管怎么写，核心思想都是：
+
+> **Momentum 会把过去的梯度方向累积起来，用一个更平滑、更有惯性的方向更新参数。**
+
+## 4.2.4 Momentum 与 SGD 的轨迹对比
+
+我们可以在前面狭长山谷的例子上实现 momentum，观察它和普通 SGD 的区别。
+
+我们先实现一个简单的 `SimpleSGDWithMomentum` 优化器：
+
+```{python}
+class SimpleSGDWithMomentum(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1e-3,
+        momentum: float = 0.0,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.momentum = momentum
+        self.velocity = [torch.zeros_like(p) for p in self.params]
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        for p, v in zip(self.params, self.velocity, strict=True):
+            if p.grad is None:
+                continue
+
+            v.mul_(self.momentum).add_(p.grad)
+            p.sub_(v, alpha=self.lr)
+```
+
+然后比较普通 SGD 和 momentum 的轨迹：
+
+::: {.callout-note}
+注意，当设置 momentum 时，学习率通常需要调小一些。以 `momentum=0.9` 为例，学习率通常需要比普通 SGD 小一个数量级，因此我们这里把 SGD + momentum 的学习率设置为 0.04，而普通 SGD 的学习率设置为 0.4。
+:::
+
+```{python}
+theta1 = torch.tensor([-5.0, 2.0], requires_grad=True)
+theta2 = torch.tensor([-5.0, 2.0], requires_grad=True)
+optimizer1 = dopt.SGD([theta1], lr=0.4)
+optimizer2 = SimpleSGDWithMomentum([theta2], lr=0.04, momentum=0.9)
+
+sgd_history = dopt.run_optimizer(optimizer1, loss_fn, steps=40)
+momentum_history = dopt.run_optimizer(optimizer2, loss_fn, steps=40)
+
+fig = plt.figure(2)
+ax = fig.add_subplot(1, 1, 1)
+ax.contourf(X, Y, Z, levels=25, cmap='YlGnBu')
+ax.plot(
+    sgd_history[:, 0],
+    sgd_history[:, 1],
+    color='#EC705B',
+    marker='o',
+    markersize=3,
+    markerfacecolor='#C0392B',
+    markeredgecolor='white',
+    markeredgewidth=0.5,
+)
+ax.plot(
+    momentum_history[:, 0],
+    momentum_history[:, 1],
+    color='#4B96EB',
+    marker='o',
+    markersize=3,
+    markerfacecolor='#2A74C8',
+    markeredgecolor='white',
+    markeredgewidth=0.5,
+)
+ax.set_xlabel(r'$\theta_1$')
+ax.set_ylabel(r'$\theta_2$')
+ax.legend(['SGD', 'Momentum'])
+ax.set_title('SGD vs Momentum Trajectory')
+plt.show()
+```
+
+Momentum 的轨迹通常更有连续性。它不会像普通 SGD 那样完全由当前梯度决定，而是带着过去的方向继续前进。当然，这并不意味着 momentum 一定每次都更稳定。如果学习率太大，或者 $\beta$ 太接近 1，惯性也可能过强，导致参数冲过低点并产生更大的震荡。所以 momentum 不是取消了学习率调参，而是改变了梯度更新方向的方式。
+
+## 4.2.5 PyTorch 中的 Momentum
+
+在 PyTorch 中，`optim.SGD` 本身就支持 momentum。只需要设置 `momentum` 参数：
+
+```{python}
+model = nn.Linear(6, 1)
+optimizer = optim.SGD(
+    model.parameters(),
+    lr=0.1,
+    momentum=0.9,
+)
+```
+
+这个 optimizer 仍然叫 `SGD`，但它已经不是最朴素的 SGD 了。它会为每个参数维护一个 momentum buffer，也就是我们前面说的动量变量。
+
+训练循环本身和之前一样：
+
+```{python}
+x = torch.randn(32, 6)
+y = torch.randn(32, 1)
+
+pred = model(x)
+loss = F.mse_loss(pred, y)
+
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+
+print('Loss:', loss.item())
+```
+
+也就是说，优化器内部会在 `optimizer.step()` 里完成 momentum 更新。对于使用者来说，接口仍然是清空梯度、反向传播、更新参数。
+
+如果我们想观察 optimizer 维护的状态，可以查看 `state_dict()`。在真正调用一次 `step()` 之后，PyTorch 会为参数创建对应的 momentum buffer：
+
+```{python}
+state = optimizer.state_dict()['state']
+pprint(state)
+```
+
+这也说明，momentum 和普通 SGD 的一个重要区别是：
+
+> **Momentum 优化器有状态。**
+
+普通 SGD 只需要当前参数和当前梯度，而 momentum 还需要记住过去累积的速度。因此，在保存模型 checkpoint 时，不能只保存模型参数，也应该保存 optimizer 的状态。否则恢复训练后，momentum buffer 会丢失，训练轨迹会发生变化。
+
+## 4.2.6 Nesterov Momentum：先往前看一眼
+
+Momentum 的想法是让参数带着惯性往前走。但这也带来一个问题：如果惯性太强，参数可能冲过头。等参数真的冲过头了，才发现前方的损失曲面变陡了，才开始减速，这时可能已经浪费了几步。那么，有没有办法提前感知到前方的变化，从而调整速度呢？
+
+这就是 **Nesterov Momentum** [@Ilya2013Momentum]。它的核心思想是：
+
+> **既然我们大概率会沿着惯性方向往前走，那不如先在“往前看一步”的位置估计梯度。**
+
+也就是说，普通 momentum 问的是，我现在站在 $\theta_t$，这里的梯度是什么？而 Nesterov momentum 问的是，按照当前惯性，我马上会走到前面某个位置。那前面那个位置的梯度是什么？
+
+这样，Nesterov momentum 就可以更早感知到前方的变化。如果前方损失曲面开始变陡，或者方向需要调整，它可以提前修正速度，而不是等参数真的冲过去之后再反应。
+
+一种常见写法是：
+
+$$
+\begin{aligned}
+\tilde{\theta}_t &= \theta_t - \eta \beta v_{t-1} \\
+g_t &= \nabla_\theta L(\tilde{\theta}_t) \\
+v_t &= \beta v_{t-1} + g_t \\
+\theta_{t+1} &= \theta_t - \eta v_t
+\end{aligned}
+$$
+
+这里的 $\tilde{\theta}_t$ 就是一个 lookahead 的位置。我们先根据上一轮的动量方向，估计参数接下来可能到达的位置；然后在这个位置计算梯度 $g_t$，再用它更新动量和参数。
+
+不过，需要注意的是，深度学习框架中的 Nesterov momentum 通常不会真的先把参数移动到 $\tilde{\theta}_t$，再重新做一次 forward 和 backward。这是因为在 PyTorch 的训练流程里，梯度是在调用 `loss.backward()` 时算好的，而 `optimizer.step()` 发生在反向传播之后。也就是说，当优化器开始更新参数时，`p.grad` 已经存在了，它通常就是在当前参数 $\theta_t$ 上计算出来的梯度。
+
+因此，PyTorch 采用的是一种更适合框架实现的 Nesterov 形式。它先像普通 momentum 一样更新动量：
+
+$$
+v_t = \beta v_{t-1} + g_t
+$$
+
+然后不直接使用 $v_t$ 更新参数，而是使用下面这个修正后的方向：
+
+$$
+\beta v_t + g_t
+$$
+
+这就相当于，在当前梯度的基础上，额外加上一个 $\beta v_t$ 的修正项，这个修正项可以看作是对下一步惯性方向的提前修正。因为 $v_t$ 是累积到当前步的动量，所以 $\beta v_t$ 可以理解为下一步将要更新的惯性方向。
+
+这样，参数更新就可以写成：
+
+$$
+\theta_{t+1} = \theta_t - \eta (\beta v_t + g_t)
+$$
+
+和普通 momentum 对比一下：
+
+$$
+\theta_{t+1} = \theta_t - \eta v_t
+$$
+
+这就是它 lookahead 的实现方式。
+
+对应到代码，普通 momentum 通常写成：
+
+```python
+v.mul_(self.momentum).add_(p.grad)
+p.sub_(self.lr * v)
+```
+
+而 PyTorch 风格的 Nesterov momentum 可以写成：
+
+```python
+v.mul_(self.momentum).add_(p.grad)
+p.sub_(self.lr * (self.momentum * v + p.grad))
+```
+
+所以，显式 lookahead 版本强调先移动到 $\tilde{\theta}_t$，再在那里算梯度。而 PyTorch 风格的实现是在已有梯度的基础上，构造一个 Nesterov 修正后的更新方向。它更适合常规的训练流程。
+
+在 PyTorch 中启用 Nesterov momentum 也很简单：
+
+```{python}
+optimizer = optim.SGD(
+    model.parameters(),
+    lr=0.1,
+    momentum=0.9,
+    nesterov=True,
+)
+```
+
+需要注意的是，PyTorch 要求使用 Nesterov momentum 时 `momentum` 必须为正，并且 `dampening` 要为 0。对初学者来说，不需要一开始纠结这些实现细节，只要记住 `nesterov=True` 表示使用 Nesterov 风格的动量修正就行了。
+
+## 4.2.7 Momentum 的作用与局限
+
+Momentum 是 SGD 的一个重要改进。它没有改变沿着梯度下降的基本方向，但改变了每一步使用的方向：不再只看当前梯度，而是把过去的梯度方向也纳入考虑。
+
+它的主要作用可以概括为：
+
+1. **减少震荡**：如果某个方向的梯度来回变化，momentum 会让正负方向相互抵消，从而减弱震荡。
+2. **加速一致方向**：如果很多步的梯度方向都相似，momentum 会不断积累这个方向，让参数更新更快。
+3. **引入优化器状态**：由于 momentum 需要维护速度变量，因此 optimizer 不再是无状态的更新规则。
+
+但是，momentum 仍然有一个重要限制：
+
+> **所有参数仍然共享同一个全局学习率。**
+
+也就是说，momentum 可以平滑方向、积累方向，但它并不会自动判断某个参数应该用大一点的学习率，另一个参数应该用小一点的学习率。但是，在复杂模型中，不同参数的梯度尺度可能差别很大。有些参数频繁收到大梯度，有些参数梯度长期很小。如果所有参数都使用同一个学习率，训练可能仍然不够灵活。
+
+这就引出了下一类优化器：自适应学习率方法。以 Adagrad 为起点的优化器会问：既然不同参数的梯度历史不同，能不能为每个参数单独调整学习率？
+
+这正是下一节要讨论的问题。
+
+## 4.2.8 本章小结
+
+这一节我们从 SGD 的局限出发，引出了 momentum。
+
+普通 SGD 每一步只使用当前 mini-batch 的梯度，因此更新方向容易受到噪声影响。在狭长的损失曲面中，SGD 可能在陡峭方向上来回震荡，而在真正需要前进的方向上移动缓慢。
+
+Momentum 的核心思想是让参数更新具有惯性。它维护一个速度变量，把过去的梯度方向累积起来。这样，在梯度方向持续一致的方向上，参数会加速前进；在梯度方向反复变化的方向上，震荡会被部分抵消。
+
+Nesterov momentum 则进一步提出：既然参数会沿着惯性方向前进，不如先在前方位置计算梯度，从而提前感知方向变化。它可以看作是对普通 momentum 的一种“提前看”的修正。
+
+不过，momentum 和 Nesterov momentum 仍然使用全局学习率。它们解决的是更新方向太杂乱、缺少惯性的问题，而不是不同参数是否应该有不同学习率的问题。下一节我们会看到，Adagrad 正是从这个问题出发，开始为每个参数引入自适应学习率。

@@ -1,0 +1,488 @@
+---
+author: jshn9515
+date: 2026-03-19
+date-modified: 2026-05-23
+open-graph:
+  title: ch2.1-automatic-differentiation
+  description: "2.1 Automatic Differentiation in PyTorch: From Forward Computation to Backpropagation"
+title: "2.1 PyTorch 中的自动微分：从前向计算到反向传播"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch2-pytorch-introduction/ch2.1-automatic-differentiation.ipynb){fig-align="left"}
+
+在 1.3 节里，我们已经从计算图的角度理解了反向传播：一个损失值之所以会变化，是因为它依赖了前面的一系列计算；沿着这条依赖链往回走，就能知道每个参数应该承担多少责任。
+
+这一节，我们把这个问题放到 PyTorch 里重新看一遍。
+
+训练模型时，我们写的其实只是普通的前向计算：矩阵乘法、加法、激活函数、损失函数。可是当我们调用 `loss.backward()` 时，PyTorch 却能自动算出每个参数的梯度。那么问题是：
+
+> **PyTorch 到底是怎么知道梯度该往哪里传的？**
+
+答案不是符号求导。PyTorch 不会先把整张神经网络推导成一个巨大的数学表达式，再对这个表达式求导。它做的事情更像是：**前向传播时顺手记账，反向传播时沿着账本回溯。**
+
+也就是说：
+
+- 前向传播时，PyTorch 记录每个张量是由什么操作得到的；
+- 反向传播时，PyTorch 从输出往回走，用每个操作自己的局部求导规则，把梯度一层层传回去。
+
+这一节我们就从一个很小的例子开始，看看这本账是如何建立、如何回溯，又会带来哪些常见的使用规则。
+
+```{python}
+import warnings
+
+import torch
+import torch.autograd.functional as AF
+from torch import Tensor
+from torch.testing import assert_close
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 2.1.1 计算图是运行时生成的
+
+假设我们有一个很简单的函数：
+
+$$
+z = \sin(x \cdot y)
+$$
+
+我们可以把它拆解成几个基本的运算步骤：
+
+1. 计算向量内积：$q = x \cdot y$；
+2. 计算正弦函数：$z = \sin(q)$。
+
+然后，我们告诉 PyTorch，在接下来的计算中，我们希望得到 `z` 关于 `x` 和 `y` 的梯度。
+
+```{python}
+x = torch.arange(1.0, 5.0, requires_grad=True)
+y = torch.arange(5.0, 9.0, requires_grad=True)
+```
+
+这里的 `requires_grad=True` 可以理解成一种声明：这些变量需要被追责。之后，只要某个结果是由它们参与计算得到的，它就会自动带上可导属性，并在背后记录我是谁算出来的，依赖了谁。
+
+现在做两步普通的前向计算：先算点积，再取正弦。
+
+```{python}
+q = x.dot(y)
+z = q.sin()
+print('z.requires_grad:', z.requires_grad)
+```
+
+到这里你看到的依然只是数值计算，但 PyTorch 已经做了两件事：
+
+1. `z` 会自动变成需要梯度的结果（因为它依赖了需要梯度的 `x` 和 `y`）。
+2. `q` 和 `z` 的产生过程会被记录下来：`z` 由 `sin` 得到，`q` 由 `dot` 得到，而 `q` 又依赖 `x` 和 `y`。
+
+```{python}
+print('z.grad_fn:', z.grad_fn.name())
+print('q.grad_fn:', q.grad_fn.name())
+print('x.grad_fn:', x.grad_fn)
+print('y.grad_fn:', y.grad_fn)
+```
+
+`z` 和 `q` 都有 `grad_fn`，说明它们是由其他变量计算得到的结果。`x` 和 `y` 没有 `grad_fn`，因为它们是我们直接创建出来的叶子节点。由于我们不需要对叶子节点求导，所以它们的 `grad_fn` 是 `None`。
+
+这里我们还需要注意一件事：**可求导不等于已经有梯度。**在你调用反向传播之前，梯度并不会凭空出现。
+
+```{python}
+print('x.grad:', x.grad)
+print('y.grad:', y.grad)
+```
+
+`x.grad` 和 `y.grad` 此时都是 `None`，而不是 0。原因也很简单：梯度是一种反向回溯的产物，只有当你明确发起回溯（比如调用 `backward()`）时，PyTorch 才会沿着刚才记录的依赖关系，把梯度算出来并写回到叶子节点上。如果不调用，PyTorch 就不会去算梯度，自然也不会给你填上数值。
+
+所以，到这里为止，PyTorch 做的事情可以概括为：
+
+> **前向传播负责计算数值，同时记录依赖关系；梯度要等到反向传播时才会真正出现。**
+
+## 2.1.2 backward()：从输出往回传梯度
+
+上一节我们只做了前向计算，但 PyTorch 已经把依赖关系悄悄记录好了。现在我们真正关心的是：当你调用 `backward()` 时，框架究竟做了什么？算出来的梯度又是否可信？
+
+还是沿用上面的例子：
+
+$$
+z = \sin(q), \quad q = x \cdot y
+$$
+
+如果我们手算梯度，就会得到：
+
+$$
+\frac{\partial z}{\partial x}
+= \frac{\partial z}{\partial q} \cdot \frac{\partial q}{\partial x}
+= \cos(q) \cdot y
+$$
+
+$$
+\frac{\partial z}{\partial y}
+= \frac{\partial z}{\partial q} \cdot \frac{\partial q}{\partial y}
+= \cos(q) \cdot x
+$$
+
+好的，现在让 PyTorch 来算。我们已经有了输出 `z`，直接调用：
+
+```{python}
+z.backward()
+```
+
+这行代码的意思是：从 `z` 出发，沿着前向传播时记录的计算图反向回溯，把梯度传回所有需要梯度的叶子节点。此时 `.grad` 不再是 `None`，梯度已经被写回到了 `x`、`y` 这两个叶子节点上。
+
+```{python}
+print('x.grad:', x.grad)
+print('y.grad:', y.grad)
+```
+
+从直觉上我们可以这样理解 `backward()` 的过程：
+
+1. 从输出 `z` 出发，找到它的 `grad_fn`，知道它是由 `sin` 得到的；
+2. 根据 `sin` 的求导规则，调用 SinBackward0，把这个梯度传回 `q`；
+3. 继续往回走，找到 `q` 的 `grad_fn`，知道它是由 `dot` 得到的；
+4. 根据 `dot` 的求导规则，调用 DotBackward0，把这些梯度传回 `x` 和 `y`。
+
+这里的 SinBackward0 和 DotBackward0 是 PyTorch 内部实现的反向传播函数，它们知道如何根据输入和输出的数值来计算局部梯度，并把它们传回去。
+
+我们可以手算验证一下结果是否一致。
+
+```{python}
+expected_x_grad = y * x.dot(y).cos()
+expected_y_grad = x * x.dot(y).cos()
+
+assert_close(x.grad, expected_x_grad)
+assert_close(y.grad, expected_y_grad)
+```
+
+这就是自动微分的核心。PyTorch 并不需要提前写出完整的全局导数公式，它只需要知道每个操作的局部求导规则，然后在反向传播时把这些规则按照计算图连接起来。
+
+如果再深入一点，其实 PyTorch 也把这条回溯链暴露了一部分给我们。比如：
+
+```{python}
+node_q = z.grad_fn.next_functions[0][0]
+node_x = node_q.next_functions[0][0]
+node_y = node_q.next_functions[1][0]
+
+print('z ->', z.grad_fn.name())
+print('q ->', node_q.name())
+print('x ->', node_x.name())
+print('y ->', node_y.name())
+```
+
+这里的 `grad_fn.next_functions` 会指向它的上游依赖。也就是说，为了计算 `z` 的梯度，在拿到 `z` 的 `grad_fn` 以后，反向传播接下来应该去找谁，沿着哪些输入回溯。
+
+例如，在 SinBackward0 节点中，`next_functions` 会指向 DotBackward0 节点，因为 SinBackward0 的输入是 `q`，而 `q` 是通过 DotBackward0 计算得到的。同样地，在 DotBackward0 节点中，`next_functions` 会指向输入节点 `x` 和 `y`。AccumulateGrad 是一个特殊节点，每个需要梯度的叶子节点前都会有一个 AccumulateGrad 节点，负责把得到的梯度累加到叶子节点的 `.grad` 属性中。这也就是为什么 `x.grad`、`y.grad` 最终会在调用 `backward()` 后出现。
+
+## 2.1.3 非标量为什么不能直接 backward()？
+
+上面的例子里，`z` 是一个标量，所以我们可以理直气壮地写 `z.backward()`。但是，如果输出是一个向量或者矩阵，事情就不一样了。我们会立刻撞到 PyTorch 的一条看起来很不讲理的限制：
+
+```{python}
+x = torch.arange(1.0, 5.0, requires_grad=True)
+y = torch.arange(5.0, 9.0, requires_grad=True)
+Z = x.outer(y)
+
+try:
+    Z.backward()
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+这个错误看起来有点奇怪：明明 `Z` 也是由 `x` 和 `y` 算出来的，为什么不能反向传播？原因是：**非标量输出的反向传播需要先指定一个上游梯度方向。**
+
+对于标量 `z`，从输出出发时，默认有：
+
+$$
+\frac{\partial z}{\partial z} = 1
+$$
+
+所以 `z.backward()` 没有歧义。
+
+但如果输出是一个矩阵 `Z`，我们到底想求什么？是想求每个元素 $Z_{ij}$ 分别对 `x` 的梯度？还是想先把所有元素加起来，再求这个和对 `x` 的梯度？还是想对不同元素加不同权重？这些选择都会得到不同的结果。因此，PyTorch 需要我们明确告诉它：从输出端传回来的梯度是什么。
+
+例如，如果我们传入一个全 1 的张量：
+
+```{python}
+x = torch.arange(1.0, 5.0, requires_grad=True)
+y = torch.arange(5.0, 9.0, requires_grad=True)
+
+Z = x.outer(y)
+Z.backward(gradient=torch.ones_like(Z))
+
+print('x.grad:', x.grad)
+print('y.grad:', y.grad)
+```
+
+这等价于先把 `Z` 的所有元素求和，然后对这个标量调用 `backward()`：
+
+```{python}
+x = torch.arange(1.0, 5.0, requires_grad=True)
+y = torch.arange(5.0, 9.0, requires_grad=True)
+
+Z = x.outer(y)
+loss = Z.sum()
+loss.backward()
+
+print('x.grad:', x.grad)
+print('y.grad:', y.grad)
+```
+
+所以，可以用一句话记住这个规则：
+
+> **标量输出默认从 1 开始反传；非标量输出需要我们自己给出从输出端传回来的梯度。**
+
+这也是为什么深度学习训练里通常会把损失函数设计成一个标量。只要最终得到的是一个标量 `loss`，训练循环里就可以直接写 `loss.backward()`，不需要担心上游梯度的问题。
+
+## 2.1.4 高阶导数：让求导过程也变成计算的一部分
+
+到目前为止，我们见到的都是一阶梯度：给定一个标量输出，我们求它对输入的梯度。这些梯度会被写回到叶子节点的 `.grad` 属性中。但有时候我们会需要更高阶的信息，比如计算 Hessian 矩阵，或者用在一些正则项里。
+
+那么这件事的关键点在于：如果你想对梯度再求导，那么求梯度这件事本身也必须是可微的。这就是 `create_graph=True` 的含义。在计算一阶导数时，不仅算出数值，还要把算出这个导数的过程记录成新的计算图。
+
+可能这时候很多人就会有疑惑，为什么不用 `backward()` 呢？因为 `backward()` 的设计目标是训练模型：我们把梯度累积进叶子张量的 `.grad` 属性中，并且默认释放图来节省内存。但是，在做高阶导时，我们更希望：
+
+- 梯度作为一个张量返回（方便继续算）
+- 必要时保留 / 构建计算图（方便再求导）
+
+因此更常用的是 `torch.autograd.grad`。
+
+```{python}
+x = torch.tensor(2.0, requires_grad=True)
+y = torch.tensor(4.0, requires_grad=True)
+z = x.mul(y).sin()
+
+dzdx, dzdy = torch.autograd.grad(z, (x, y), create_graph=True)
+
+print('dz/dx:', dzdx)
+print('dz/dy:', dzdy)
+```
+
+这里最重要的一行是 `create_graph=True`。如果没有它，`dz/dx` 和 `dz/dy` 会被当成纯数值结果，不再保留它是怎么得到的，那我们就没法再对它求导。`dz/dx` 和 `dz/dy` 的输出都包含了一个 `grad_fn`，说明他们允许自身被求导。
+
+在计算高阶导数时，我们有时候希望在同一个计算图中前后对不同变量分别求导。但是，PyTorch 在调用一次 `backward()` 后默认会释放计算图来节省内存，这就导致我们无法在同一个图里连续求导。如果我们确实需要在**同一次前向计算得到的图上**反复做反向传播，可以通过设置 `retain_graph=True` 来保留图。
+
+```{python}
+x = torch.tensor(2.0, requires_grad=True)
+y = torch.tensor(4.0, requires_grad=True)
+z = x.mul(y).sin()
+
+dzdx, dzdy = torch.autograd.grad(z, (x, y), create_graph=True)
+print('dz/dx:', dzdx)
+print('dz/dy:', dzdy)
+
+(d2zdx2,) = torch.autograd.grad(dzdx, x, retain_graph=True)
+(d2zdy2,) = torch.autograd.grad(dzdy, y)
+print('d2z/dx2:', d2zdx2)
+print('d2z/dy2:', d2zdy2)
+```
+
+不过更常见的做法是，重新执行一次前向传播来得到一张新的计算图。`retain_graph=True` 通常是当我们确实要在同一个计算图上做多次梯度计算时才用，比如高阶导数实验或者某些正则项的计算。
+
+## 2.1.6 VJP 和 JVP：真正计算的不是完整 Jacobian
+
+目前为止我们一直在说“求梯度”。但对一般函数来说，它们的导数其实是一个 Jacobian。
+
+假设：
+
+$$
+f: \mathbb{R}^n \to \mathbb{R}^m
+$$
+
+那么它的 Jacobian 是：
+
+$$
+J = \frac{\partial f}{\partial x} \in \mathbb{R}^{m \times n}
+$$
+
+问题是，在深度学习里，$m$ 和 $n$ 往往都很大。显式构造完整 Jacobian 通常既没有必要，也非常昂贵。因此，自动微分系统更常计算的是 Jacobian 和向量的乘积。
+
+### 2.1.6.1 VJP：向量-雅可比积
+
+反向模式自动微分计算的是 **VJP (vector-Jacobian product)**：
+
+$$
+v^\top J \in \mathbb{R}^n
+$$
+
+这里的 $v$ 可以理解为从输出端传回来的上游梯度。
+
+如果我们有一个标量损失：
+
+$$
+L = \mathcal{L}(f(x))
+$$
+
+那么反向传播本质上就是把：
+
+$$
+\frac{\partial L}{\partial f}
+$$
+
+作为上游梯度传回来，最终得到：
+
+$$
+\frac{\partial L}{\partial x} =
+\frac{\partial L}{\partial f}
+\frac{\partial f}{\partial x}
+$$
+
+也就是一个 VJP。
+
+```{python}
+def vjp_func(x: Tensor, y: Tensor):
+    return x.dot(y).sin()
+
+
+x = torch.arange(1.0, 5.0)
+y = torch.arange(5.0, 9.0)
+output = AF.vjp(vjp_func, (x, y))
+
+print('func(x,y):', output[0])
+print('VJP output:', output[1])
+```
+
+这也是为什么反向模式特别适合神经网络训练：模型参数很多，但最终损失通常是一个标量。我们不需要完整 Jacobian，只需要这个标量损失对所有参数的梯度。
+
+### 2.1.6.2 JVP：雅可比-向量积
+
+正向模式自动微分计算的是 **JVP (Jacobian-vector product)**：
+
+$$
+Ju \in \mathbb{R}^m
+$$
+
+这里的 $u$ 是输入方向。它回答的问题是：
+
+> **如果输入沿着方向 $u$ 发生一个很小的变化，输出会如何变化？**
+
+这在做系统敏感性分析、微分方程与偏微分方程，以及一些物理/科学计算中非常常见。
+
+```{python}
+def jvp_func(x: Tensor, y: Tensor):
+    return x.dot(y).sin()
+
+
+x = torch.arange(1.0, 5.0)
+y = torch.arange(5.0, 9.0)
+u_x = torch.full_like(x, 0.1)
+u_y = torch.full_like(y, 0.2)
+output = AF.jvp(jvp_func, (x, y), (u_x, u_y))
+
+print('func(x,y):', output[0])
+print('JVP output:', output[1])
+```
+
+那么，什么时候用 JVP，什么时候用 VJP 呢？一般来说：
+
+- 反向模式（VJP）适合输出维度小、输入维度大的情况，比如神经网络训练；
+- 正向模式（JVP）适合输入维度小、输出维度大的情况，比如科学计算。
+
+所以，我们会看到一个很经典的判断：如果输出是标量或低维向量，而且输入维度很大，那么反向模式（VJP）更合适；如果输入维度相对较小，输出维度很大，那么正向模式（JVP）可能更合适。
+
+## 2.1.7 反向传播中的几个常见问题
+
+理解了计算图以后，我们再来看看 PyTorch 反向传播中的几个常见问题。它们都和我们前面说的“前向传播记录依赖关系，反向传播沿着图回溯”这个机制有关，以及 PyTorch 在设计上为了节省内存和提高效率做的一些默认行为。
+
+```{python}
+x = torch.arange(1.0, 5.0, requires_grad=True)
+y = torch.arange(5.0, 9.0, requires_grad=True)
+```
+
+#### **1. 重复调用 backward()**
+
+默认情况下，PyTorch 在一次反向传播结束后，会释放计算图中用于反向传播的中间结果。所以，如果我们对同一个输出连续调用两次 `backward()`，就会出错。
+
+```{python}
+z = x.dot(y).sin()
+z.backward()
+
+try:
+    z.backward()
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+如果确实要在同一张图上反向传播多次，可以使用 `retain_graph=True`。
+
+```{python}
+z = x.dot(y).sin()
+z.backward(retain_graph=True)
+z.backward()  # This works because we retained the graph
+```
+
+#### **2. 梯度会累积**
+
+还有一个更容易被忽略的现象：`.grad` 里的梯度默认是累积的，而不是覆盖的。
+
+```{python}
+x.grad = None  # Clear the gradient before starting
+print('Before backward:', x.grad)
+
+z1 = x.dot(y)
+z1.backward()
+print('After first backward:', x.grad)
+
+z2 = x.dot(y)
+z2.backward()
+print('After second backward:', x.grad)
+```
+
+第二次的梯度会加到第一次的结果上。这就是为什么训练循环里通常要先写 `zero_grad()`，把之前的梯度清零，否则当前 batch 的梯度会和前一个 batch 的梯度混在一起，导致优化器更新出问题。
+
+#### **3. 中间节点默认不保存梯度信息**
+
+只有叶子节点会存储梯度信息。中间节点的梯度不会被存储，因为如果每个中间变量都存梯度，显存会直接爆炸。而且训练真正需要的是参数梯度，而不是所有中间量的梯度。因此尝试访问它们的 `.grad` 属性会返回 `None`，并引发 `UserWarning`。
+
+```{python}
+q = x.dot(y)
+z = q.sin()
+z.backward()
+
+with warnings.catch_warnings(record=True) as warns:
+    print('q.grad:', q.grad)
+    for warn in warns:
+        print('UserWarning:', warn.message)
+```
+
+如果我们确实需要查看中间节点的梯度，可以调用 `retain_grad()`：
+
+```{python}
+q = x.dot(y)
+q.retain_grad()
+
+z = q.sin()
+z.backward()
+
+print('q.grad:', q.grad)
+```
+
+这在调试或者理解反向传播时很有用，但在普通训练中通常没有必要，因为保存所有中间梯度会增加显存开销。
+
+#### **4. 原地操作可能破坏反向传播**
+
+PyTorch 中很多带下划线的操作是原地操作，比如 `add_()`、`relu_()`。它们会直接修改张量本身，而不是创建新张量。这有时可以节省内存，但也可能破坏反向传播需要的中间信息。
+
+```{python}
+z = x.dot(y)
+
+try:
+    x.relu_()
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+这里的报错是因为我们试图对需要梯度的叶子张量做原地修改。因此，在反向传播过程中，我们应该尽量避免使用原地操作，或者确保它们不会修改反向传播需要的中间变量。
+
+```{python}
+z = x.dot(y)
+x = x.relu()
+z.backward()
+```
+
+## 2.1.8 本章小结
+
+这一节我们从一个简单函数出发，观察了 PyTorch 自动微分的基本机制。前向传播时，PyTorch 会一边计算结果，一边动态记录计算图；调用 `backward()` 时，它会从输出沿着计算图反向传播，把梯度累积到需要梯度的叶子张量的 `.grad` 中。
+
+对于标量输出，`backward()` 可以默认从 1 开始反传；对于非标量输出，我们需要显式提供上游梯度，或者先把输出规约成一个标量。在常规训练中，我们通常使用 `loss.backward()` 计算参数梯度；如果需要直接得到梯度张量，或者继续构造高阶导数，则可以使用 `torch.autograd.grad`，并在需要时设置 `create_graph=True`。
+
+最后，我们还区分了 VJP 和 JVP。深度学习训练里最常见的是反向模式自动微分，也就是 VJP，因为模型参数通常很多，而最终优化的损失通常是一个标量。
+
+到这里，我们已经知道了 PyTorch 是如何记录计算图、如何反向传播、以及梯度最终会保存在哪里。不过，在实际训练和推理中，并不是所有计算都需要被 Autograd 记录。例如，模型评估时不需要保存反向传播所需的中间结果，手动更新参数时通常也不希望这一步继续进入计算图。下一节我们就进一步讨论 PyTorch 中控制梯度记录的几种上下文，包括 `torch.no_grad()`、`torch.inference_mode()`、`torch.enable_grad()`，以及它们和 `requires_grad` 之间的关系。

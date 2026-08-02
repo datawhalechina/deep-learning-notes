@@ -1,0 +1,307 @@
+---
+author: jshn9515
+date: 2026-06-05
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.8-optimizer-practice
+  description: "4.8 Optimizer Map: When to Use Which Optimization Algorithm"
+title: "4.8 优化器地图：不同优化算法该在什么时候使用"
+order: 8
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.8-optimizer-practice.ipynb){fig-align="left"}
+
+前面几节里，我们沿着一条比较清晰的主线，依次介绍了 SGD、momentum、Adagrad、RMSprop、Adadelta、Adam、AdamW 和 Muon。
+
+如果只看公式，这些优化器很容易混在一起：有的维护动量，有的维护平方梯度，有的做权重衰减，有的做矩阵正交化。但是在真实训练中，我们更关心的问题是：
+
+> **我现在训练这个模型，应该先用哪个优化器？**
+
+这一节不再继续推导新的更新公式，而是把常见优化器放到同一张地图里。我们会先用一张表对比它们的核心思想、状态开销和适用场景，然后再按任务类型总结：什么时候优先选 AdamW，什么时候可以考虑 SGD + momentum，什么时候 Adagrad、SparseAdam、Adafactor、LBFGS 或 Muon 更合适。
+
+需要注意的是，优化器选择没有绝对答案。一个优化器是否好用，往往和模型结构、数据规模、batch size、学习率调度、weight decay、训练轮数以及实现细节一起决定。因此，这一节的目标不是给出唯一标准答案，而是帮助我们形成一个合理的默认选择顺序。
+
+## 4.8.1 PyTorch 中的优化器总览表
+
+PyTorch 的 `torch.optim` 里有很多优化器，例如 SGD、Adam、AdamW、RMSprop、Adagrad、Adadelta、SparseAdam、Adamax、NAdam、RAdam、Adafactor、LBFGS、Rprop、ASGD 和 Muon。
+
+但是，**一个优化器被框架收录，并不代表它在现代深度学习里都很常用。**
+
+有些优化器是深度学习训练的主线，比如 SGD + momentum、Adam 和 AdamW。它们经常出现在 CNN、Transformer、ViT、LLM 等模型的训练配置中。
+
+有些优化器是特定场景工具。比如 Adagrad 适合稀疏特征，SparseAdam 适合 sparse gradients，Adafactor 适合显存压力很大的大矩阵参数，LBFGS 适合小规模、全 batch、需要精细优化的任务。
+
+还有一些优化器更像是历史分支或 Adam 家族变体。比如 Adamax、NAdam、RAdam 都有明确动机，但在很多现代训练方案里，它们并不是默认首选。
+
+下面这张表总结了本章和 PyTorch 中常见优化器的定位。
+
+::: {.list-table}
+表 1：PyTorch 中常见优化器对比
+
+- - 优化器
+  - 核心思想
+  - 额外状态开销
+  - 适合场景
+  - 是否建议作为主线默认选择
+
+- - SGD
+  - 直接沿负梯度方向更新参数
+  - 无
+  - 理解优化算法的起点，简单 baseline
+  - 教学必须讲，实践中需配合 momentum
+
+- - SGD + momentum
+  - 对梯度方向做指数滑动平均，让更新具有惯性
+  - 约 1 倍参数量
+  - CNN、经典视觉模型、希望状态开销较低的训练
+  - 常见，尤其在视觉任务中
+
+- - Nesterov momentum
+  - 在惯性方向上提前看一步，再计算修正方向
+  - 约 1 倍参数量
+  - Momentum 的改进版，部分视觉 recipe 会用
+  - 可选，不是必须默认
+
+- - Adagrad
+  - 累计历史平方梯度，为每个参数缩放学习率
+  - 约 1 倍参数量
+  - 稀疏特征、在线学习、推荐系统早期场景
+  - 特定场景有价值
+
+- - RMSprop
+  - 用平方梯度的滑动平均替代 Adagrad 的完整累计
+  - 约 1 倍参数量
+  - RNN、强化学习、Adam 之前的自适应优化
+  - 现在较少作为默认首选
+
+- - Adadelta
+  - RMSprop 思路上进一步使用历史更新量尺度
+  - 约 2 倍参数量
+  - 历史意义较强；少调学习率的早期尝试
+  - 不建议优先尝试
+
+- - Adam
+  - 一阶动量 + 二阶矩自适应缩放
+  - 约 2 倍参数量
+  - 通用深度学习训练；很多旧代码默认选择
+  - 常见，但现代训练常优先 AdamW
+
+- - AdamW
+  - Adam + 解耦 weight decay
+  - 约 2 倍参数量
+  - Transformer、ViT、LLM、微调任务
+  - 现代默认起点之一
+
+- - Adamax
+  - Adam 的无穷范数版本
+  - 约 2 倍参数量
+  - Adam 原论文中的变体；少数实验对比
+  - 了解即可
+
+- - NAdam
+  - Adam + Nesterov Momentum
+  - 约 2 倍参数量
+  - 想尝试 Adam 的 Nesterov 变体时
+  - 了解即可
+
+- - RAdam
+  - 修正 Adam 早期自适应学习率方差过大的问题
+  - 约 2 倍参数量
+  - 不想或不能精细调 warmup 时可尝试
+  - 可作为 Adam 变体了解
+
+- - SparseAdam
+  - Adam 的 sparse gradient 版本
+  - 只对稀疏更新部分维护状态
+  - Sparse embedding、稀疏梯度参数
+  - 特定场景工具
+
+- - Adafactor
+  - 对二阶矩做行列分解，降低状态显存
+  - 小于 1 倍或接近子线性状态
+  - 大 Transformer、大矩阵参数、显存紧张
+  - 大模型场景可考虑
+
+- - LBFGS
+  - 拟牛顿方法，近似利用二阶信息
+  - 多组历史向量
+  - 小模型、全 batch、风格迁移、精细拟合
+  - 特殊用途
+
+- - Rprop
+  - 只使用梯度符号调整每个参数步长
+  - 约 1 倍参数量
+  - 早期全 batch 神经网络训练
+  - 现代 mini-batch 深度学习中少用
+
+- - ASGD
+  - 对 SGD 参数轨迹做平均
+  - 较低
+  - 传统随机优化、凸优化或部分浅层模型
+  - 深度学习主线较弱
+
+- - Muon
+  - 对矩阵参数的 momentum update 做正交化
+  - 约 1 倍参数量，加 Newton-Schulz 计算
+  - Hidden-layer 2D 权重矩阵，尤其 Transformer / MLP 矩阵参数
+  - 新方向，适合实验性使用
+:::
+
+这张表可以先记住一个大方向：
+
+- 不知道从哪里开始：AdamW；
+- 训练经典 CNN baseline：SGD + momentum 或 AdamW；
+- 遇到稀疏特征：Adagrad / SparseAdam；
+- 大模型显存压力大：Adafactor；
+- 小规模全 batch 精细优化：LBFGS；
+- 想尝试现代矩阵优化方向：Muon + AdamW 混合。
+
+接下来，我们就来详细拆解一下这些优化器。
+
+## 4.8.2 最常见的现代默认选择：AdamW
+
+如果现在训练一个 Transformer、ViT 或大多数需要 fine-tuning 的预训练模型，AdamW 通常是最稳的起点。这是因为 AdamW 刚好解决了两个现实问题：
+
+第一，AdamW 本身对学习率比较不敏感，训练早期通常比纯 SGD 更容易启动。它用一阶矩平滑梯度方向，又用二阶矩缩放不同参数的有效学习率，因此很适合参数量大、梯度尺度差异明显的模型。
+
+第二，AdamW 把 weight decay 从 Adam 的梯度更新中解耦出来。L2 正则和 weight decay 在普通 SGD 中可以等价，但在 Adam 这类自适应优化器中并不等价。AdamW 的做法是把权重衰减作为独立的参数收缩步骤，而不是混入一阶矩和二阶矩估计中。
+
+所以，在现代模型里，AdamW 经常搭配：
+
+```text
+AdamW + weight decay + warmup + cosine decay / linear decay
+```
+
+这个组合尤其常见于 Transformer 和 ViT 训练。原始 Transformer 使用 Adam 并配合 warmup 和学习率衰减。后来的 BERT、ViT、CLIP、MAE、LLM fine-tuning 等训练中，AdamW 或 AdamW 风格的解耦 weight decay 已经非常常见。
+
+因此，一个简单实践建议是：
+
+> **如果你不知道该选什么优化器，先用 AdamW。**
+
+然后再调学习率、weight decay、warmup ratio 和 scheduler，而不是一开始就在十几个优化器之间反复切换。
+
+## 4.8.3 经典视觉模型：SGD + Momentum 仍然重要
+
+虽然 AdamW 是现代默认起点之一，但这不代表 SGD + momentum 已经过时。
+
+在经典 CNN 训练里，SGD + momentum 仍然非常常见。很多 ResNet、VGG、DenseNet 这类视觉模型的训练都使用 SGD + momentum，再配合 weight decay 和学习率衰减。
+
+在经典 ImageNet 训练配置里，经常能看到类似：
+
+```text
+SGD + momentum=0.9 + weight_decay=1e-4 + step / cosine learning rate schedule
+```
+
+SGD + momentum 的优势是状态开销低，更新规则简单，并且在传统视觉分类训练中有大量成熟经验。它的劣势是学习率、scheduler、训练轮数通常需要更仔细地调。如果直接用一个随便设置的学习率，它可能比 AdamW 更难启动。
+
+因此，对视觉任务可以这样理解：
+
+- 训练经典 CNN baseline：SGD + momentum 是非常强的选择。
+- 训练 ViT / Transformer-style 视觉模型：AdamW 通常更自然。
+- 微调大视觉模型：AdamW 和 SGD 都可能有效，具体取决于 recipe。
+
+一些视觉微调研究也会把 SGD 和 AdamW 作为两个最常见的比较对象，因为二者在状态开销、调参习惯和泛化表现上各有特点。SGD 仍然是很多经典视觉训练方案的 baseline。
+
+## 4.8.4 稀疏特征与稀疏梯度：Adagrad 和 SparseAdam
+
+Adagrad 今天不一定是通用深度学习训练的默认选择，但它在稀疏特征场景中非常有代表性。
+
+Adagrad 的核心特点是：对每个参数累计历史平方梯度。一个参数被频繁更新，它的累计量会变大，有效学习率会变小；一个参数很少被更新，它的累计量增长慢，因此仍然可以保持较大的有效学习率。
+
+这对稀疏特征很有用。比如推荐系统、广告点击率预测、词袋特征、某些 sparse embedding 场景里，很多特征并不是每个 batch 都出现。如果所有参数共享同一个学习率，罕见特征可能学得很慢；Adagrad 则可以让这些不常出现的参数在出现时仍然有较大的更新幅度。Adagrad 原论文的动机之一就是利用历史梯度几何信息，让稀疏场景中的更新更有信息量。
+
+SparseAdam [@kingma2017Adam] 则是另一个特殊工具。它不是说模型本身一定稀疏，而是要求梯度是稀疏的。典型例子是 sparse embedding：每一步只更新这次 batch 中出现的少量 embedding 行。SparseAdam 可以只对这些出现的稀疏梯度位置维护和更新 Adam 状态。
+
+所以可以这样选：
+
+- 输入特征非常稀疏：可以考虑 Adagrad。
+- 参数梯度本身是 sparse tensor：可以考虑 SparseAdam。
+- 普通神经网络：通常不优先选 Adagrad / SparseAdam。
+
+## 4.8.5 RMSprop 和 Adadelta：现在更多是理解 Adam 的铺垫
+
+RMSprop 和 Adadelta 都是 Adagrad 之后的重要改进。
+
+Adagrad 的问题是历史平方梯度累计只增不减，所以有效学习率会越来越小。RMSprop 把完整累计改成指数滑动平均，让旧梯度逐渐被遗忘。Hinton 早期课程中对 RMSprop 的解释就是：用最近梯度大小的 running average 来缩放每个权重的学习率。
+
+Adadelta 同样是为了解决 Adagrad 学习率持续衰减的问题，并进一步希望减少手动设置全局学习率的依赖。Zeiler 的 Adadelta 论文把它描述为一种 per-dimension learning rate method，使用一阶信息、额外开销较小，并且试图减少学习率调参。
+
+但从现代实践来看，它们不再是最常见默认选择。
+
+RMSprop 仍然会在一些强化学习、RNN 或较老的代码中见到；Adadelta 更多是历史意义和教学意义。它们最重要的作用，是帮助我们理解 Adam：
+
+- Momentum 提供一阶方向平滑；
+- RMSprop 提供二阶尺度缩放；
+- Adam 把一阶动量和二阶矩缩放结合起来，形成了现代深度学习训练中非常强大的优化器。
+
+所以在实践选择时，RMSprop 和 Adadelta 通常不会作为第一优先级。
+
+## 4.8.6 大模型显存压力：Adafactor
+
+AdamW 的一个现实问题是显存开销大。
+
+对于每个参数，AdamW 通常要维护一阶矩 $m_t$ 和二阶矩 $v_t$。如果模型有几十亿参数，optimizer state 本身就会占用非常可观的显存。即使参数可以用混合精度存储，优化器状态也常常是大模型训练中的重要显存来源。
+
+Adafactor 的动机就是减少这种状态开销。它不是为每个矩阵参数维护完整的二阶矩矩阵，而是用行统计和列统计来近似，从而让二阶矩估计的存储成本低于完整参数量。Adafactor [@shazeer2018Adafactor] 论文中指出，Adafactor 可以在训练 Transformer 模型时达到类似 Adam 的效果，同时显著降低优化器辅助存储。
+
+因此，Adafactor 适合这样理解：它不是普通小模型训练的默认选择，而是显存紧张场景下的省显存优化器。如果你只是在单卡上训练一个小 MLP 或 CNN，没有必要优先考虑 Adafactor。AdamW 更简单、更常见、调参经验更多。但如果模型非常大，optimizer state 成为瓶颈，Adafactor 就是一个值得知道的工具。
+
+## 4.8.7 LBFGS：小规模精细优化
+
+LBFGS 和前面这些一阶优化器不太一样。它属于拟牛顿方法，试图通过保存若干历史梯度和参数变化，近似二阶曲率信息。
+
+听起来它似乎更高级，但它并不是现代大规模深度学习训练的默认选择。原因是现代训练通常依赖 noisy mini-batch gradient，而 LBFGS 更适合比较稳定的全 batch 或小规模优化问题。
+
+在 PyTorch 里，LBFGS 常见于一些特殊任务，比如风格迁移、PINN、需要对少量参数做精细拟合的问题。
+
+可以这样总结：
+
+- 大规模神经网络训练：通常不用 LBFGS；
+- 小模型 + 全 batch + 目标函数相对平滑：可以考虑 LBFGS；
+- 需要精细优化某个输入或少量参数：LBFGS 有时很好用。
+
+此外，由于 LBFGS 需要多次评估目标函数和梯度，它的实际使用也比较麻烦。在 LBFGS 的 `step()` 函数中，我们需要提供一个 `closure()` 函数，让 PyTorch 可以多次计算梯度，这在很多训练循环里并不常见。因此，LBFGS 更多是一个特殊工具，而不是主线默认选择。
+
+## 4.8.8 Adam 家族变体：Adamax、NAdam 和 RAdam
+
+Adam 之后出现了很多变体。PyTorch 中常见的包括 Adamax、NAdam 和 RAdam。
+
+Adamax [@kingma2017Adam] 是 Adam 原论文中提出的变体，可以看成基于无穷范数的 Adam。它的理论来源很清楚，但在现代训练方案里很少作为默认选择。
+
+NAdam [@dozat2016NAdam] 是 Adam 和 Nesterov momentum 的结合。它的直觉也很自然：既然 momentum 可以用 Nesterov 实现提前看，那么 Adam 的一阶动量也可以引入类似思想。但在很多现代训练场景里，NAdam 并没有明显优于 Adam 或 AdamW，因此也不是默认首选。
+
+RAdam [@liu2020RAdam] 则试图修正 Adam 训练早期自适应学习率方差较大的问题。RAdam 原论文认为，warmup 在 Adam / RMSprop 等自适应优化器中能稳定训练，部分原因是早期自适应学习率的方差较大。RAdam 通过加入修正项来缓解这个问题。
+
+这些变体都值得知道，但不建议一开始优先尝试。更合理的顺序是：
+
+- 先用 AdamW，配合合理的 warmup 和 scheduler；
+- 如果确实遇到早期训练不稳定，再考虑 RAdam 等变体；
+- Adamax / NAdam 更多作为 Adam 家族补充理解，不必优先尝试。
+
+## 4.8.9 Muon：现代矩阵优化方向
+
+Muon 是本章最后一个比较新的优化器。它和 AdamW、RMSprop、Adagrad 的思路不完全一样。
+
+前面的自适应优化器主要在做一件事：根据历史梯度统计调整每个参数的有效学习率。Muon 更关注矩阵参数的更新方向。它先像 momentum 一样得到一个更新矩阵，然后用 Newton-Schulz 迭代对这个更新矩阵做近似正交化，再把处理后的更新应用到参数上。
+
+因此，Muon 的使用方式和 AdamW 很不一样。Muon 主要适合 hidden-layer 的二维权重矩阵，尤其是 Transformer 和 MLP 中的大矩阵参数。其他参数类型，比如偏置项、normalization 参数、embedding 以及其他非二维参数，往往不适合 Muon 的矩阵正交化处理，仍然需要 AdamW 或 Adam 这类标准优化器来更新。
+
+如果你想在自己的实验里尝试 Muon，最好先保留 AdamW baseline，并清楚区分哪些参数交给 Muon，哪些参数交给 AdamW。
+
+## 4.8.10 本章小结
+
+这一章，我们从最基础的梯度下降开始，逐步讨论了神经网络参数到底如何更新。
+
+SGD 告诉我们，训练可以看成不断沿着 mini-batch 梯度下降。Momentum 进一步引入惯性，让更新方向不只依赖当前 batch。Adagrad、RMSprop 和 Adadelta 则开始为不同参数设置不同的有效学习率。Adam 把一阶动量和二阶矩缩放结合起来，AdamW 又把 weight decay 从 Adam 的自适应更新中解耦出来。Muon 则代表了一个新的方向：对矩阵参数的更新方向本身做结构化处理。
+
+从实践角度看，优化器不是越新越好，也不是越快越好。更重要的是：
+
+```text
+模型结构是什么？
+梯度是 dense 还是 sparse？
+显存瓶颈在哪里？
+有没有成熟的训练方案？
+学习率、weight decay 和 scheduler 是否已经合理？
+```
+
+因此，选择优化器时不要只看名字，而要看它解决的是哪一个问题。

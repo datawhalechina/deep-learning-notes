@@ -1,0 +1,429 @@
+---
+author: jshn9515
+date: 2026-06-05
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.7-muon
+  description: "4.7 Muon: Orthogonalized Matrix Updates"
+title: "4.7 Muon：矩阵参数的正交化更新"
+order: 7
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.7-muon.ipynb){fig-align="left"}
+
+前面几节里，我们看到了一条比较经典的优化器演化线。
+
+SGD 直接沿着当前 mini-batch 梯度更新参数；momentum 进一步记住过去的更新方向，让参数更新具有惯性；Adagrad、RMSprop 和 Adam 则开始关心不同参数的梯度尺度，为每个参数调整有效学习率；AdamW 又把 weight decay 从 Adam 的自适应梯度更新中解耦出来。
+
+这些优化器有一个共同特点：它们主要把参数看成很多独立的标量。无论是一阶矩 $m_t$，还是二阶矩 $v_t$，通常都是逐元素维护的。但是，在神经网络里，很多重要参数并不是孤立的标量，而是一个个矩阵。
+
+例如，一个线性层的权重可以写成：
+
+$$
+W \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}
+$$
+
+对于这样的矩阵参数，逐元素缩放是不是已经足够了？
+
+Muon [@jordan2024Muon] 的出发点就是这个问题：
+
+> **既然神经网络里大量参数是矩阵，那我们能不能直接从矩阵更新的角度设计优化器？**
+
+Muon 的全称是 **MomentUm Orthogonalized by Newton-Schulz**。从名字就能看出它的两个核心组成部分：
+
+1. 先像 momentum 一样维护一个动量方向；
+2. 再对这个矩阵更新方向做正交化处理。
+
+这一节我们不把 Muon 当成 AdamW 的简单替代品，而是把它看作 AdamW 之后的一个现代优化器方向：优化器不只是调节每个参数的学习率，也可以直接改变矩阵参数的几何更新方向。
+
+```{python}
+from collections.abc import Iterable
+from typing import override
+
+import dnnlpy.optim as dopt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.7.1 为什么还需要 AdamW 之后的优化器？
+
+AdamW 已经非常强大。它能平滑 noisy gradient，能为不同参数自适应调整步长，还能清晰地处理 weight decay。因此，在 Transformer、ViT 和很多现代深度学习模型中，AdamW 都是非常常见的默认选择。
+
+那为什么还会有人继续设计新的优化器？一个重要原因是：AdamW 的自适应缩放主要是逐元素的。
+
+对于参数矩阵 $W$，AdamW 会为每个元素维护一阶矩和二阶矩：
+
+$$
+M_t \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}},
+\qquad
+V_t \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}
+$$
+
+然后每个位置的更新大致是：
+
+$$
+\Delta W_t = - \eta \frac{\hat{M}_t}{\sqrt{\hat{V}_t} + \epsilon}
+$$
+
+这说明 AdamW 很关注每个元素该走多大一步。
+
+但是，矩阵参数不只是很多标量拼在一起。一个线性层的权重矩阵表示的是从输入空间到输出空间的线性变换。它的行、列、奇异值、方向结构都会影响网络表示。
+
+因此，一个自然的问题是：
+
+> **对于矩阵参数，我们能不能不只逐元素缩放梯度，而是直接处理整个矩阵更新方向？**
+
+Muon 的答案是：可以。它先得到一个类似 momentum 的更新矩阵，然后把这个矩阵正交化，让更新方向在矩阵意义上更加均衡。
+
+## 4.7.2 从 Momentum 到矩阵更新
+
+我们先回忆一下 momentum 的形式。
+
+对于普通参数 $\theta$，momentum 会维护一个速度（动量）项：
+
+$$
+B_t = \beta B_{t-1} + g_t
+$$
+
+然后用这个速度（动量）项更新参数：
+
+$$
+\theta_t = \theta_{t-1} - \eta B_t
+$$
+
+如果参数是矩阵 $W$，梯度也是一个矩阵：
+
+$$
+G_t = \nabla_W L(W_t)
+$$
+
+我们同样可以维护一个矩阵形式的 momentum buffer：
+
+$$
+B_t = \mu B_{t-1} + G_t
+$$
+
+如果直接使用 momentum，那么更新就是：
+
+$$
+W_t = W_{t-1} - \eta B_t
+$$
+
+Muon 的第一步和这里一样，先得到一个带有惯性的矩阵更新方向 $B_t$。但 Muon 不会直接把 $B_t$ 用来更新参数，而是会先对 $B_t$ 做一个额外处理：
+
+$$
+O_t = \operatorname{Orthogonalize}(B_t)
+$$
+
+最后用正交化后的矩阵 $O_t$ 更新参数：
+
+$$
+W_t = W_{t-1} - \eta O_t
+$$
+
+因此，可以把 Muon 的核心写成：
+
+$$
+\text{Muon} = \text{Momentum} + \text{Orthogonalization}
+$$
+
+这一步和前面几个优化器很不一样。Adagrad、RMSprop、Adam 主要是在问：每个参数元素应该乘上多大的缩放系数？而 Muon 则在问：对于一个矩阵更新方向，我们能不能把它整理成一个更好的矩阵方向再更新？
+
+## 4.7.3 正交化到底在做什么？
+
+要理解 Muon，关键是理解“正交化更新方向”是什么意思。
+
+先考虑一个矩阵 $B$。如果它是一个更新方向，那么直接使用 $B$ 更新参数，相当于完全相信这个矩阵里原始的方向和尺度。但是，一个矩阵可能在某些方向上特别强，在另一些方向上特别弱。换句话说，它可能有非常不均衡的奇异值。
+
+如果我们把 $B$ 做奇异值分解：
+
+$$
+B = U \Sigma V^\top
+$$
+
+其中，$\Sigma$ 里存放的是奇异值。奇异值越大，说明这个矩阵在对应方向上的作用越强。
+
+Muon 的正交化可以直观理解成：保留更新矩阵的主要方向结构，但把奇异值变得更均衡。理想情况下，它希望得到类似：
+
+$$
+O = U V^\top
+$$
+
+这个 $O$ 可以看成 $B$ 的正交化版本。它不再保留 $B$ 原本那些大小差异很大的奇异值，而是更强调方向本身。
+
+所以，从直觉上说，Muon 不只是沿着 momentum buffer 的原始矩阵方向走，而是先把这个矩阵方向“整理”一下，让更新不要过度集中在少数方向上。这就和 Adam 的思想形成了一个对比。
+
+Adam 是逐元素地除以二阶矩：
+
+$$
+\frac{m_t}{\sqrt{v_t} + \epsilon}
+$$
+
+Muon 则是对整个矩阵更新做正交化：
+
+$$
+\operatorname{Orthogonalize}(B_t)
+$$
+
+前者更像是元素级缩放，后者更像是矩阵级几何处理。
+
+那么，既然理想的正交化可以通过 SVD 写成：
+
+$$
+B = U \Sigma V^\top, \qquad O = U V^\top
+$$
+
+那为什么不直接对每个权重矩阵做 SVD 呢？
+
+原因很简单：太贵了。
+
+神经网络训练中，每一步都要更新大量矩阵。如果每个 step 都对每个权重矩阵做一次 SVD，计算成本会非常高，训练速度会受到很大影响。因此，Muon 使用的是另一种更适合 GPU 的近似方法：**Newton-Schulz iteration**。
+
+Newton-Schulz 迭代可以用矩阵乘法逐步把一个矩阵推向正交化形式。矩阵乘法在 GPU 上非常高效，因此它比每一步都做精确 SVD 更适合深度学习训练。它的更新方法大致是：
+
+$$
+X_{k+1} = \frac{3}{2} X_k - \frac{1}{2} X_k X_k^\top X_k
+$$
+
+其中，$k$ 是迭代次数，$X_0$ 是初始矩阵（通常是 $B_t$ 的某种归一化版本）。经过 $k$ 次迭代后，$X_k$ 会逐渐接近 $U V^\top$ 这样的正交化矩阵。
+
+需要注意的是，上面的迭代是 Newton-Schulz 迭代的经典形式，是一个三次多项式。在 Muon 论文中，作者对这个经典形式进行了一定修改，改成下面这种五次多项式的版本：
+
+$$
+X_{k+1} = a X_k + b X_k X_k^\top X_k + c X_k X_k^\top X_k X_k^\top X_k
+$$
+
+其中，$a, b, c$ 是超参数。在论文中，分别取 3.4445、-4.7750 和 2.0315。这些超参数没有严格的理论推导，而是通过实验调优得到的。它们的目标就是让矩阵 $X$ 在实际训练中能够更稳定、更快地收敛到一个近似正交化矩阵。
+
+不过，总的来说，Muon 的正交化步骤就是：
+
+> **用 Newton-Schulz 迭代近似矩阵正交化，从而避免每一步都做昂贵的 SVD。**
+
+## 4.7.4 Muon 适合所有参数吗？
+
+Muon 一个非常重要的限制是：它主要用于神经网络 hidden layer 的二维权重矩阵。
+
+例如，下面这些参数比较适合用 Muon：
+
+$$
+W \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}
+$$
+
+也就是常见线性层里的权重矩阵。
+
+但很多参数并不适合直接用 Muon，例如：
+
+1. Bias 参数；
+2. Embedding 参数；
+3. LayerNorm 或 BatchNorm 的 scale、shift 参数；
+4. 任何维度不是二维的参数；
+5. 不希望被矩阵正交化处理的特殊参数。
+
+这些参数通常仍然使用 AdamW 或其他标准优化器。
+
+所以，Muon 不是简单地把 AdamW 整体替换掉。更常见的思路是：
+
+- 二维 hidden layer 权重矩阵：使用 Muon；
+- Bias / Norm / Embedding 等参数：使用 AdamW。
+
+这也是 PyTorch 官方推荐的做法。
+
+## 4.7.5 Muon 的 PyTorch 实现
+
+接下来，我们实现一个非常简化的 Muon。
+
+首先实现一个简化版 Newton-Schulz 正交化函数：
+
+```{python}
+def newton_schulz_5(
+    X: Tensor,
+    ns_steps: int = 5,
+    ns_coefficients: tuple[float, float, float] = (3.4445, -4.7750, 2.0315),
+    eps: float = 1e-7,
+) -> Tensor:
+    if X.ndim != 2:
+        raise ValueError('Muon only supports 2D parameters.')
+
+    a, b, c = ns_coefficients
+    X = X / (X.norm() + eps)
+    should_transpose = X.size(0) > X.size(1)
+
+    if should_transpose:
+        X = X.T
+
+    for _ in range(ns_steps):
+        A = torch.mm(X, X.T)
+        B = torch.addmm(A, A, A, beta=b, alpha=c)
+        X = torch.addmm(X, B, X, beta=a)
+
+    if should_transpose:
+        X = X.T
+
+    return X
+```
+
+然后实现优化器本身：
+
+```{python}
+class Muon(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1e-3,
+        weight_decay: float = 0.1,
+        momentum: float = 0.95,
+        nesterov: bool = True,
+        ns_coefficients: tuple[float, float, float] = (3.4445, -4.7750, 2.0315),
+        ns_steps: int = 5,
+        eps: float = 1e-7,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.momentum = momentum
+        self.nesterov = nesterov
+        self.ns_coefficients = ns_coefficients
+        self.ns_steps = ns_steps
+        self.eps = eps
+
+        self.momentum_buffers = [torch.zeros_like(p) for p in self.params]
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        for p, buffer in zip(self.params, self.momentum_buffers, strict=True):
+            if p.grad is None:
+                continue
+
+            # Decoupled weight decay: directly shrink parameters.
+            grad = p.grad
+            if self.weight_decay > 0:
+                p.mul_(1 - self.lr * self.weight_decay)
+
+            buffer.mul_(self.momentum).add_(grad)
+            if self.nesterov:
+                direction = grad + self.momentum * buffer
+            else:
+                direction = buffer
+
+            update = newton_schulz_5(
+                direction,
+                ns_steps=self.ns_steps,
+                ns_coefficients=self.ns_coefficients,
+                eps=self.eps,
+            )
+
+            p.sub_(update, alpha=self.lr)
+```
+
+这个简化版 Muon 的更新过程可以分成三步：
+
+1. 读取当前梯度 grad；
+2. 更新 momentum buffer；
+3. 对 buffer 做正交化，再更新参数。
+
+也就是：
+
+$$
+\begin{aligned}
+B_t &= \mu B_{t-1} + G_t \\
+O_t &= \operatorname{Orthogonalize}(B_t) \\
+W_t &= W_{t-1} - \eta O_t
+\end{aligned}
+$$
+
+现在我们来测试一下这个 Muon 实现。
+
+这里，我们设计了一个病态的二次函数，它在不同方向上的曲率差异很大。这个 `loss` 的最小点在
+
+$$
+\theta^* = 
+\begin{bmatrix} 
+2.0 & 0.0 \\
+0.0 & -1.0
+\end{bmatrix}
+$$
+
+最小值是 0.0。
+
+```{python}
+def loss_fn(theta: Tensor) -> Tensor:
+    target = torch.tensor(
+        [[2.0, 0.0], [0.0, -1.0]],
+        device=theta.device,
+        dtype=theta.dtype,
+    )
+    scale = torch.tensor(
+        [[0.1, 10.0], [10.0, 0.1]],
+        device=theta.device,
+        dtype=theta.dtype,
+    )
+    return 0.5 * (scale * (theta - target) ** 2).sum()
+
+
+theta = torch.tensor([[-5.0, 1.0], [1.0, 2.0]], requires_grad=True)
+optimizer1 = dopt.SGD([theta], lr=0.1)
+optimizer2 = Muon([theta], lr=0.2)
+
+sgd_history = dopt.run_optimizer(optimizer1, loss_fn, steps=80)
+muon_history = dopt.run_optimizer(optimizer2, loss_fn, steps=80)
+
+print('SGD:')
+print('Final theta:', sgd_history[-1])
+print('Final loss:', loss_fn(sgd_history[-1]).item())
+
+print('Muon:')
+print('Final theta:', muon_history[-1])
+print('Final loss:', loss_fn(muon_history[-1]).item())
+```
+
+可以看到，我们实现的 Muon 能够成功地优化这个简单的二次函数，参数逐渐收敛到最优点。
+
+## 4.7.6 Muon 和 AdamW 的区别
+
+现在我们可以把 Muon 和 AdamW 放在一起对比。
+
+AdamW 的核心状态是每个参数元素的一阶矩和二阶矩：
+
+$$
+M_t, \quad V_t
+$$
+
+它的更新大致是：
+
+$$
+\Delta W_t = - \eta \frac{\hat{M}_t}{\sqrt{\hat{V}_t} + \epsilon}
+$$
+
+Muon 的核心状态是矩阵形式的 momentum buffer：
+
+$$
+B_t
+$$
+
+它的更新大致是：
+
+$$
+\Delta W_t = - \eta \operatorname{Orthogonalize}(B_t)
+$$
+
+所以二者的关注点不同。AdamW 关注的是：每个参数元素应该根据历史梯度尺度缩放多少？Muon 关注的是：整个矩阵更新方向能不能被正交化成一个更均衡的方向？
+
+从实现上看，AdamW 需要为每个参数维护一阶矩和二阶矩，因此通常有两份和参数同形状的 optimizer state。Muon 主要维护 momentum buffer，再额外花费矩阵乘法进行正交化。也就是说，Muon 不是没有代价，而是把优化器设计的重点从逐元素二阶矩转向了矩阵级正交化。
+
+## 4.7.7 本章小结
+
+这一节我们从 AdamW 之后的问题出发，介绍了 Muon。
+
+AdamW 主要通过一阶矩和二阶矩逐元素地调整参数更新。它非常强大，也非常常用。但神经网络里有大量二维权重矩阵，而矩阵参数本身带有行、列、奇异值等结构。Muon 正是从这个角度出发，尝试直接处理矩阵更新方向。
+
+Muon 的核心可以概括为两步：先像 momentum 一样维护矩阵形式的动量 buffer，再对这个 buffer 做正交化处理，最后用正交化后的矩阵更新参数。同时，为了避免每一步都做昂贵的 SVD，Muon 使用 Newton-Schulz 迭代近似正交化。这使它能够在 GPU 上用矩阵乘法高效实现。
+
+不过，Muon 主要适合二维 hidden layer 权重矩阵。其他任何不是二维的参数仍然需要用 AdamW 或其他标准优化器处理。因此，Muon 不是一个替换所有优化器的选择，而是一个利用矩阵结构设计优化器的现代方向。
+
+到这里，我们已经从 SGD 一路走到了 AdamW 和 Muon。下一节，我们会回到实践问题：面对不同模型、不同任务和不同训练规模时，应该如何选择优化器？

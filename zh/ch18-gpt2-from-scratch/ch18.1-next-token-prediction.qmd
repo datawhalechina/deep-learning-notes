@@ -1,0 +1,457 @@
+---
+author: jshn9515
+date: 2026-06-18
+date-modified: 2026-06-21
+open-graph:
+  title: ch18.1-next-token-prediction
+  description: "18.1 What Language Models Predict: Next-Token Prediction"
+title: "18.1 语言模型在预测什么：Next-Token Prediction"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch18-gpt2-from-scratch/ch18.1-next-token-prediction.ipynb){fig-align="left"}
+
+在第 8 章里，我们已经从 attention 一路讲到了 Transformer decoder。我们知道，decoder 中的 masked self-attention 有一个非常关键的限制：
+
+> **当前位置只能看到自己和之前的位置，不能看到未来。**
+
+当时我们主要从模型结构上理解这个限制：为了进行自回归生成，decoder 不能提前偷看答案。但如果继续往下问，就会遇到一个更根本的问题：
+
+> **GPT 这样的语言模型，到底在训练什么？**
+
+语言模型最基础的训练目标是 **next-token prediction**：根据已经出现的 token，预测紧接着出现的下一个 token。
+
+这句话听起来很简单，甚至有些过于简单。模型只是预测下一个 token，为什么最后却能写文章、写代码、回答问题，甚至表现出一定的推理能力？这一节先不急着实现完整 GPT，而是把这个训练目标、数据形式和损失函数连成一条完整的链路。
+
+后面整章的内容，本质上都围绕同一个条件概率展开：
+
+$$
+p(x_{t+1} \mid x_{\le t})
+$$
+
+```{python}
+import torch
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 18.1.1 从一段文本到 Next-Token Prediction
+
+假设我们有一句很短的文本：
+
+```text
+I love deep learning
+```
+
+在送进模型之前，文本会先经过 tokenizer，被切成一串 token。为了暂时忽略 tokenizer 的细节，我们直接把每个单词看作一个 token：
+
+```text
+[I, love, deep, learning]
+```
+
+把它记为：
+
+$$
+x_1, x_2, x_3, x_4
+$$
+
+其中：
+
+$$
+x_1 = \text{I}, \quad
+x_2 = \text{love}, \quad
+x_3 = \text{deep}, \quad
+x_4 = \text{learning}
+$$
+
+语言模型并不是把整句话当成一个单独的分类任务，而是把它拆成多个连续的预测任务：
+
+$$
+\begin{aligned}
+&p(x_2 \mid x_1) \\
+&p(x_3 \mid x_1, x_2) \\
+&p(x_4 \mid x_1, x_2, x_3)
+\end{aligned}
+$$
+
+也就是：
+
+```text
+I                 -> love
+I love            -> deep
+I love deep       -> learning
+```
+
+模型每次读取一段前缀，然后预测它后面的下一个 token。
+
+对于一段长度为 $T$ 的序列，一次前向传播通常不只产生一个监督信号，而是可以同时训练多个位置：
+
+$$
+x_1 \to x_2, \quad
+x_{1:2} \to x_3, \quad
+\dots, \quad
+x_{1:T-1} \to x_T
+$$
+
+因此，一段文本并不只是一个训练样本。序列中的几乎每个位置，都可以贡献一次 next-token prediction 的训练信号。
+
+从概率角度看，自回归语言模型是在学习整段序列的联合概率。对于 token 序列：
+
+$$
+x_1, x_2, \dots, x_T
+$$
+
+根据概率的链式法则：
+
+$$
+p(x_1, x_2, \dots, x_T)
+= \prod_{t=1}^{T} p(x_t \mid x_{<t})
+$$
+
+其中：
+
+$$
+x_{<t} = x_1, x_2, \dots, x_{t-1}
+$$
+
+第一个 token 没有普通意义上的前文，因此有些模型会显式加入 beginning-of-sequence token：
+
+$$
+x_{<1} = \langle \mathrm{bos} \rangle
+$$
+
+也有训练流程直接从连续文本中截取片段，不显式使用 `<bos>`。无论具体实现如何，核心目标都没有变化：
+
+> **用前面的 token 预测后面的 token。**
+
+## 18.1.2 输入与标签：把同一条序列错开一位
+
+Next-token prediction 在代码中最直接的体现，就是输入和标签来自同一条 token 序列，但整体错开一位。
+
+假设一段 token id 是：
+
+```text
+[10, 25, 31, 7, 42]
+```
+
+训练时可以拆成：
+
+```text
+input_ids = [10, 25, 31, 7]
+labels    = [25, 31, 7, 42]
+```
+
+也就是：
+
+$$
+\begin{aligned}
+\text{input\_ids}_t &= x_t \\
+\text{labels}_t &= x_{t+1}
+\end{aligned}
+$$
+
+```{python}
+token_ids = torch.tensor([10, 25, 31, 7, 42])
+
+input_ids = token_ids[:-1]
+labels = token_ids[1:]
+
+print('Input_ids:', input_ids)
+print('Labels:', labels)
+```
+
+这里并不是让模型在位置 $t$ 预测当前输入的 $x_t$，而是让它根据截至当前位置的上下文预测 $x_{t+1}$。
+
+如果目标仍然是当前 token，那么 Transformer 很容易直接从当前位置的 token embedding 中抄答案。这种任务无法迫使模型学习文本如何继续展开。语言模型真正需要学习的是：
+
+> **给定到目前为止的上下文，接下来最可能出现什么？**
+
+因此，第 $t$ 个 hidden state 可以使用：
+
+$$
+x_1, x_2, \dots, x_t
+$$
+
+但它对应的监督目标是：
+
+$$
+x_{t+1}
+$$
+
+这也解释了 causal mask 为什么不可缺少。没有 causal mask，第 $t$ 个位置可能直接看到未来的 $x_{t+1}$。训练 loss 也许会很低，但模型实际上只是偷看了答案，并没有学会真正的自回归生成。
+
+## 18.1.3 从 Logits 到 Cross Entropy
+
+语言模型在每个位置并不会直接输出一个 token id，而是会对词表中的所有 token 给出一组分数。
+
+假设词表大小为 $V$，那么位置 $t$ 的输出是：
+
+$$
+z_t \in \mathbb{R}^{V}
+$$
+
+这个向量叫做 **logits**。Logits 可以是任意实数，本身并不是概率。经过 softmax 后，才得到下一个 token 的概率分布：
+
+$$
+p(x_{t+1} = v \mid x_{\le t})
+= \frac{\exp(z_{t,v})}{\sum_{j=1}^{V} \exp(z_{t,j})}
+$$
+
+例如，给定上下文 `I love`，模型可能输出：
+
+```text
+P(deep)     = 0.60
+P(machine)  = 0.20
+P(neural)   = 0.08
+P(cat)      = 0.0001
+...
+```
+
+如果真实的下一个 token 是 `deep`，训练就会推动模型进一步提高 `deep` 的概率。
+
+因此，语言模型训练可以看成在每个序列位置上进行一次词表分类。第 $t$ 个位置的负对数似然损失为：
+
+$$
+\ell_t = -\log p(x_{t+1} \mid x_{\le t})
+$$
+
+对整段序列取平均，可以写成：
+
+$$
+\mathcal{L}
+= -\frac{1}{T-1}
+\sum_{t=1}^{T-1}
+\log p(x_{t+1} \mid x_{\le t})
+$$
+
+对于一个 batch，输入和标签的形状通常都是：
+
+$$
+X, Y \in \mathbb{R}^{B \times T}
+$$
+
+其中，$B$ 是 batch size，$T$ 是 context length。模型输出 logits：
+
+$$
+Z \in \mathbb{R}^{B \times T \times V}
+$$
+
+其中，$V$ 是 vocab size。
+
+在计算交叉熵时，可以把前两个维度展平：
+
+$$
+(B, T, V) \to (BT, V)
+$$
+
+标签则变成：
+
+$$
+(B, T) \to (BT)
+$$
+
+```{python}
+B, T, V = 2, 4, 10
+
+logits = torch.randn(B, T, V)
+labels = torch.randint(V, (B, T))
+
+loss = F.cross_entropy(
+    logits.reshape(B * T, V),
+    labels.reshape(B * T),
+)
+print('Loss:', loss.item())
+```
+
+这已经非常接近真正 GPT 的训练过程。完整模型所做的，只是把：
+
+```text
+input_ids -> logits
+```
+
+这一部分替换成多层 decoder-only Transformer。标签右移和 cross entropy 的计算方式并没有发生实质性变化。
+
+## 18.1.4 一条 Token Stream 如何变成训练 batch
+
+真实训练时，我们通常不会每次只输入一句边界清晰的自然语言句子。更常见的做法是先把大量文档编码成 token，再将它们组织成较长的 token stream，最后从中切出固定长度的训练片段。
+
+假设 token stream 是：
+
+```text
+[3, 8, 1, 4, 9, 2, 6, 5, 7, 0, 11, 13, ...]
+```
+
+当 block size 为 4 时，可以从某个位置切出：
+
+```text
+input:  [3, 8, 1, 4]
+label:  [8, 1, 4, 9]
+```
+
+也可以从另一个位置切出：
+
+```text
+input:  [2, 6, 5, 7]
+label:  [6, 5, 7, 0]
+```
+
+把多个窗口堆叠起来，就得到：
+
+$$
+X =
+\begin{bmatrix}
+3 & 8 & 1 & 4 \\
+2 & 6 & 5 & 7
+\end{bmatrix}
+$$
+
+$$
+Y =
+\begin{bmatrix}
+8 & 1 & 4 & 9 \\
+6 & 5 & 7 & 0
+\end{bmatrix}
+$$
+
+$X$ 和 $Y$ 的形状都是 $(B, T)$，区别只在于 $Y$ 是原始 token stream 中相对于 $X$ 向右移动一位的窗口。
+
+::: {.callout-tip}
+这里的 block size 就是我们常说的**上下文窗口（context length）**。GPT-2 的 block size 是 1024，GPT-3 的 block size 是 2048，GPT-4 的 block size 是 8192。训练时，block size 越大，模型就越能学习长距离依赖，但同时也会增加训练的计算成本和显存占用。
+:::
+
+下面写一个最小的 batch 采样函数：
+
+```{python}
+def get_batch(
+    token_ids: Tensor,
+    block_size: int,
+    batch_size: int,
+) -> tuple[Tensor, Tensor]:
+    """Randomly sample next-token prediction windows."""
+    max_start = len(token_ids) - block_size - 1
+    starts = torch.randint(max_start + 1, (batch_size,))
+
+    x = torch.stack([token_ids[i : i + block_size] for i in starts])
+    y = torch.stack([token_ids[i + 1 : i + block_size + 1] for i in starts])
+    return x, y
+
+
+token_stream = torch.arange(20)
+x, y = get_batch(token_stream, block_size=5, batch_size=3)
+
+print('Input batch:', x, sep='\n')
+print()
+print('Label batch:', y, sep='\n')
+```
+
+这里需要区分两个容易混淆的概念：
+
+- `batch_size` 决定一次取多少个序列窗口，对应张量的第 0 维；
+- `block_size` 决定每个窗口包含多少个 token，对应张量的第 1 维。
+
+因此，当 `batch_size=3`、`block_size=5` 时，`x.shape` 和 `y.shape` 都是：
+
+```text
+torch.Size([3, 5])
+```
+
+这个函数虽然很小，但已经包含了语言模型数据最核心的结构：
+
+```text
+x: 当前 token 窗口
+y: 同一窗口在原始 token stream 中向右移动一位
+```
+
+## 18.1.5 训练时使用真实答案，生成时使用模型输出
+
+训练阶段，我们已经知道真实的下一个 token，因此可以直接计算 cross entropy：
+
+```text
+I love deep -> learning
+```
+
+如果模型没有给 `learning` 足够高的概率，loss 就会增大，反向传播会推动参数更新。
+
+生成阶段则没有现成的标签。模型只能根据当前上下文给出概率分布，再从中选择一个 token。例如：
+
+```text
+context: I love
+
+P(deep)     = 0.45
+P(machine)  = 0.25
+P(neural)   = 0.15
+P(cats)     = 0.01
+...
+```
+
+我们可以直接选择概率最大的 token，也就是 greedy decoding：
+
+```text
+I love deep
+```
+
+也可以按照概率分布进行采样，从而获得更有多样性的结果：
+
+```text
+I love machine
+```
+
+生成一个 token 后，再把它接回序列末尾，继续预测：
+
+```text
+I love                  -> deep
+I love deep             -> learning
+I love deep learning    -> because
+...
+```
+
+用公式表示：
+
+$$
+x_{t+1}
+\sim p_\theta(x_{t+1} \mid x_{\le t})
+$$
+
+这里的 $\theta$ 表示模型参数。训练时，我们更新 $\theta$，让真实文本中的下一个 token 获得更高概率；生成时，我们固定 $\theta$，不断将模型自己生成的 token 接回上下文。
+
+Next-token prediction 看起来只是一个局部目标，但为了把下一个 token 预测好，模型必须学习文本中不同层次的规律，例如：
+
+- 局部词语搭配与语法结构；
+- 句子之间的上下文关系；
+- 长距离指代与主题延续；
+- 代码中的括号、缩进和变量依赖；
+- 文本中反复出现的知识与推理模式。
+
+因此，局部的 next-token prediction 会迫使模型从大规模文本中压缩和利用丰富的统计结构。
+
+但也要注意，预训练语言模型首先学到的是如何续写文本，而不是直接学会如何成为一个有思考能力的 AI。Instruction tuning、RLHF、DPO 等 post-training 方法，才会进一步改变模型的交互方式和行为偏好。
+
+## 18.1.6 本章小结
+
+这一节把语言模型的训练目标、数据表示和损失函数连接了起来。
+
+对于 token 序列：
+
+$$
+x_1, x_2, \dots, x_T
+$$
+
+自回归语言模型使用链式法则建模：
+
+$$
+p(x_1, x_2, \dots, x_T)
+= \prod_{t=1}^{T} p(x_t \mid x_{<t})
+$$
+
+训练数据由同一条序列错开一位得到：
+
+```text
+input_ids = [x_1, x_2, ..., x_{T-1}]
+labels    = [x_2, x_3, ..., x_T]
+```
+
+模型在每个位置输出一个 vocab size 维度的 logits，并通过 cross entropy 学习提高真实下一个 token 的概率。生成时，模型再把新产生的 token 接回上下文，不断重复预测过程。
+
+到这里，我们已经明确了 GPT 的训练目标。下一节，我们来从头实现一个最小的 GPT 模型，看看它是如何把输入 token ids 转换成 logits 的。

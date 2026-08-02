@@ -1,0 +1,550 @@
+---
+author: jshn9515
+date: 2026-06-26
+date-modified: 2026-06-26
+open-graph:
+  title: ch7.2-dropout
+  description: "7.2 Dropout: Reducing Overfitting through Random Deactivation"
+title: "7.2 Dropout：通过随机失活减少过拟合"
+order: 2
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.2-dropout.ipynb){fig-align="left"}
+
+上一节我们把深层网络中常见的问题分成了两类：一类是模型表达能力过强以后容易出现的过拟合，另一类是网络变深以后可能出现的优化困难。Dropout 和 normalization 虽然经常一起使用，但它们处理问题的方式并不相同。
+
+这一节先讨论 **Dropout** [@srivastava2014Dropout]。它的做法看起来很直接：训练时随机把一部分中间激活设为 0。但这一步并不是简单地删掉一些神经元，而是在训练过程中持续扰动网络的信息路径，让模型不能过度依赖某几个固定特征。
+
+Dropout 还有一个很容易被忽略的细节：保留下来的激活为什么需要除以保留概率？训练时随机丢弃激活，推理时又为什么可以直接关闭 dropout？理解这些问题以后，dropout 就自然变成一个可以从概率期望推导出来的操作。
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.2.1 为什么随机丢弃激活可以缓解过拟合
+
+假设一个网络包含很多隐藏单元。训练时间足够长时，不同隐藏单元可能逐渐形成非常固定的配合关系。例如，某个单元只有在另一个单元同时激活时才有用，或者分类结果高度依赖少数几个特征同时出现。
+
+这种现象通常称为特征之间的**共适应（co-adaptation）**。共适应本身不一定有问题，但如果模型过度依赖训练集中特定的特征组合，那么当数据分布稍微变化时，这些组合可能不再成立，模型的泛化能力就会下降。
+
+Dropout 的做法是：每次前向传播时，随机让一部分激活失效。这样一来，某个隐藏单元不能假设其他单元一定存在。为了完成任务，网络必须把信息分散到更多特征和更多路径上，而不能只依赖一个脆弱的固定组合。
+
+例如，假设某一层产生四个特征：
+
+$$
+x = [x_1, x_2, x_3, x_4]
+$$
+
+不同前向传播可能得到不同的 mask：
+
+```text
+forward 1: [1, 0, 1, 1]
+forward 2: [0, 1, 1, 0]
+forward 3: [1, 1, 0, 1]
+```
+
+于是，同一个样本每次经过网络时，真正参与后续计算的特征组合都可能不同。模型训练的就不再是一条完全固定的信息路径，而是许多共享参数的随机子网络。
+
+![图 7.2.1 Dropout 让网络在训练时随机选择子网络 [@zhang2023d2l, fig. 4.6.1]](figures/ch7.2-dropout.svg)
+
+从这个角度看，Dropout 给训练过程加入了结构化噪声。它通常会让训练任务变难一些，因此训练损失可能下降得更慢，甚至训练集准确率也可能略低。但如果正则化强度合适，验证集性能反而可能更好。
+
+这正是正则化方法的典型特征：
+
+> **它们不一定让模型更容易拟合训练集，而是希望模型学到更加稳健、能够迁移到未见样本的规律。**
+
+## 7.2.2 Dropout 的数学形式
+
+设输入激活为：
+
+$$
+x = [x_1, x_2, \dots, x_d]
+$$
+
+对于每个元素，我们独立采样一个 Bernoulli 随机变量：
+
+$$
+m_i \sim \operatorname{Bernoulli}(1-p)
+$$
+
+其中，$p$ 是**丢弃概率（drop probability）**，$1-p$ 是**保留概率（keep probability）**。当 $m_i=0$ 时，第 $i$ 个激活被丢弃；当 $m_i=1$ 时，该激活被保留。最直接的写法是：
+
+$$
+\tilde{x} = m \odot x
+$$
+
+不过，现代深度学习框架通常使用的是 **inverted dropout**：
+
+$$
+\tilde{x} = \frac{m \odot x}{1-p}
+$$
+
+也就是说，训练时不仅把部分元素设为 0，还会把保留下来的元素放大 $\tfrac{1}{1-p}$ 倍。
+
+例如，当 $p=0.5$ 时，大约一半激活会被丢弃，剩下的激活会乘以 2：
+
+```text
+input:   [1, 2, 3, 4]
+mask:    [1, 0, 1, 0]
+output:  [2, 0, 6, 0]
+```
+
+这里的输出值看起来比输入更大，但整体期望并没有改变。这个缩放正是 dropout 能在训练和推理之间自然切换的关键。
+
+我们先直接观察 PyTorch 的行为：
+
+```{python}
+x = torch.ones(10)
+output = F.dropout(x, p=0.5)
+
+print('Input:')
+print(x)
+print('Dropout output:')
+print(output)
+print('Unique output values:', output.unique().tolist())
+```
+
+输入全部为 1，`p=0.5` 时，输出通常只会包含 0 和 2。0 表示元素被丢弃，2 表示元素被保留后除以了保留概率 $1-p=0.5$。
+
+## 7.2.3 为什么要除以保留概率？
+
+Inverted dropout 中最重要的细节是：为什么训练阶段要除以 $1-p$？
+
+对于单个元素 $x_i$，dropout 输出为：
+
+$$
+\tilde{x}_i = \frac{m_i x_i}{1-p}
+$$
+
+因为：
+
+$$
+\mathbb{E}[m_i] = 1-p
+$$
+
+所以：
+
+$$
+\begin{aligned}
+\mathbb{E}[\tilde{x}_i]
+&= \mathbb{E}\left[\frac{m_i x_i}{1-p}\right] \\
+&= \frac{x_i}{1-p}\mathbb{E}[m_i] \\
+&= \frac{x_i}{1-p}(1-p) \\
+&= x_i
+\end{aligned}
+$$
+
+因此，虽然单次前向传播会随机改变输出，但大量随机采样下，dropout 输出的期望值仍然等于原始输入。
+
+我们对同一个张量重复应用很多次 dropout，然后计算所有输出的平均值：
+
+```{python}
+x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+outputs = torch.stack([F.dropout(x, p=0.5) for _ in range(10000)])
+
+print('Original input:', x)
+print('Mean dropout output:', outputs.mean(dim=0))
+```
+
+随着采样次数增加，平均输出会逐渐接近原始输入。
+
+如果训练时只计算 $m \odot x$，而不对保留下来的激活值进行缩放，那么由于每个神经元只有 $1-p$ 的概率被保留，训练阶段输出的期望为：
+
+$$
+\mathbb{E}[m \odot x] = (1-p) \cdot x
+$$
+
+到了推理阶段，dropout 被关闭，所有神经元都会参与计算，输出恢复为 $x$。这就导致训练阶段和推理阶段的激活尺度不一致：训练时的期望是 $(1-p) \cdot x$，推理时则是 $x$。
+
+对此，一种解决方法是在推理阶段将输出乘以 $1-p$，使其与训练阶段保持一致。但 inverted dropout 采用了更方便的做法：在训练阶段将保留下来的激活值除以 $1-p$。这样，训练阶段输出的期望仍然是 $x$。在推理阶段我们只需要关闭 dropout，不用进行额外的缩放。
+
+也就是说：
+
+$$
+\begin{aligned}
+\text{training:} &\quad \tilde{x}=\frac{m\odot x}{1-p} \\
+\text{inference:} &\quad \tilde{x}=x
+\end{aligned}
+$$
+
+这也是 PyTorch、TensorFlow 等框架通常采用的实现方式。
+
+需要注意，保持的是输出的**期望**，不是每次输出的数值，也不是方差。Dropout 会增加训练阶段激活的随机性和方差，这正是它能够起到正则化作用的一部分原因。
+
+## 7.2.4 Dropout 的 PyTorch 实现
+
+理解了 mask 和缩放以后，我们可以自己实现一个最小版本的 dropout。我们需要处理三个情况：
+
+1. 推理模式下直接返回输入；
+2. `p=0` 时不丢弃任何元素；
+3. 训练模式下采样 mask，并除以保留概率。
+
+```{python}
+def dropout(
+    x: Tensor,
+    p: float = 0.5,
+    training: bool = True,
+) -> Tensor:
+    """Randomly zero elements of the input tensor."""
+    if not 0.0 <= p <= 1.0:
+        raise AssertionError(f'`p` must be between 0 and 1, but got {p}.')
+
+    if not training or p == 0.0:
+        return x
+
+    if p == 1.0:
+        return torch.zeros_like(x)
+
+    keep = 1.0 - p
+    mask = torch.rand_like(x) < keep
+    return x * mask / keep
+```
+
+我们可以把这个实现和 `F.dropout` 对照起来：
+
+```{python}
+x = torch.arange(10, dtype=torch.float32)
+
+actual = dropout(x, p=0.25)
+expected = F.dropout(x, p=0.25)
+
+print('Custom dropout:', actual, sep='\n')
+print('PyTorch dropout:', expected, sep='\n')
+```
+
+两个实现不一定产生完全相同的 mask，因为底层随机数采样过程可能不同，但它们应该具有相同的统计行为：每个元素以概率 $p$ 被设为 0，保留元素乘以 $\tfrac{1}{1-p}$。
+
+接下来把它写成一个 `nn.Module`：
+
+```{python}
+class Dropout(nn.Module):
+    """Randomly zero elements of the input tensor."""
+
+    def __init__(self, p: float = 0.5):
+        super().__init__()
+        if not 0.0 <= p <= 1.0:
+            raise AssertionError(f'`p` must be between 0 and 1, but got {p}.')
+        self.p = p
+
+    def forward(self, x: Tensor) -> Tensor:
+        return dropout(x, p=self.p, training=self.training)
+
+    def extra_repr(self) -> str:
+        return f'p={self.p}'
+```
+
+这里最值得注意的是 `self.training`。每个 `nn.Module` 都维护一个训练状态：调用 `model.train()` 时，`self.training=True`；调用 `model.eval()` 时，`self.training=False`。Dropout 正是通过这个状态决定是否采样随机 mask。
+
+## 7.2.5 训练模式与推理模式
+
+Dropout 只应该在训练阶段开启。推理阶段，我们希望模型使用全部特征，并且对同一个输入给出确定性的输出。
+
+```{python}
+dropout = nn.Dropout(p=0.5)
+x = torch.ones(10)
+
+dropout.train()
+train_output1 = dropout(x)
+train_output2 = dropout(x)
+
+dropout.eval()
+eval_output1 = dropout(x)
+eval_output2 = dropout(x)
+
+print('Training output 1:', train_output1)
+print('Training output 2:', train_output2)
+print('Evaluation output 1:', eval_output1)
+print('Evaluation output 2:', eval_output2)
+```
+
+训练模式下，两次输出通常不同，因为每次都会重新采样 mask。推理模式下，dropout 直接返回输入，因此两次输出完全相同。
+
+这一点也说明，`torch.no_grad()` 或 `torch.inference_mode()` 并不会自动关闭 dropout。它们控制的是 autograd 是否记录计算图，而 dropout 是否生效由模块的 `training` 状态决定。例如：
+
+```{python}
+dropout = nn.Dropout(p=0.5)
+dropout.train()
+
+with torch.inference_mode():
+    x = torch.ones(8)
+    y = dropout(x)
+
+print(y)
+```
+
+即使在 `inference_mode()` 中，只要模块仍然处于训练模式，dropout 依然会随机丢弃元素。
+
+因此，标准推理代码通常同时包含：
+
+```{python}
+model = nn.Sequential(
+    nn.Linear(4, 8),
+    nn.ReLU(),
+    nn.Dropout(p=0.5),
+    nn.Linear(8, 2),
+)
+
+model.eval()
+x = torch.randn(3, 4)
+
+with torch.inference_mode():
+    y = model(x)
+
+print('y.shape:', y.shape)
+```
+
+`model.eval()` 负责切换 `Dropout`、`BatchNorm` 等模块的行为，`torch.inference_mode()` 则关闭梯度记录。两者作用不同，不能互相替代。
+
+## 7.2.6 Dropout 在反向传播中做了什么
+
+Dropout 不仅改变前向传播中的激活，也会改变反向传播中的梯度路径。
+
+对于：
+
+$$
+\tilde{x}_i = \frac{m_i x_i}{1-p}
+$$
+
+其局部梯度为：
+
+$$
+\frac{\partial \tilde{x}_i}{\partial x_i} = \frac{m_i}{1-p}
+$$
+
+因此：
+
+- 被丢弃的元素 $m_i=0$，梯度也是 0；
+- 被保留的元素 $m_i=1$，梯度会乘以 $\tfrac{1}{1-p}$。
+
+也就是说，一次前向传播中被关闭的信息路径，在对应的反向传播中同样不会接收到梯度。
+
+我们可以直接检查这一点：
+
+```{python}
+x = torch.ones(12, requires_grad=True)
+y = F.dropout(x, p=0.5)
+y.backward(gradient=torch.ones_like(y))
+
+print('Dropout output:', y.data)
+print('Input gradient:', x.grad)
+```
+
+因为输入全为 1，并且损失是所有输出之和，所以输出和输入梯度通常具有相同的 mask：被丢弃位置的输出和梯度都是 0，保留位置的输出和梯度都是 2。
+
+同时，dropout 并不是在 `backward()` 之后单独修改梯度。它首先改变前向传播的计算图，随后 autograd 自然根据这张随机计算图求导。这和 gradient clipping 不同。Gradient clipping 是在 `backward()` 已经计算完梯度以后，显式修改参数的 `.grad` 属性；而 dropout 则是网络前向计算的一部分。
+
+## 7.2.7 nn.Dropout 和 F.dropout
+
+PyTorch 提供了模块形式 `nn.Dropout` 和函数形式 `F.dropout`。它们执行的操作相同，但适合不同场景。
+
+使用 `nn.Dropout` 时，丢弃概率和训练状态由模块管理：
+
+```{python}
+class MLP1(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(256, output_dim),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.layers(x)
+```
+
+如果使用函数形式，需要显式传入 `training=self.training`：
+
+```{python}
+class MLP2(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, 256)
+        self.fc2 = nn.Linear(256, output_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = self.fc2(x)
+        return x
+```
+
+这里不能省略 `training=self.training`。`F.dropout` 的 `training` 参数默认值是 `True`，如果直接写：
+
+```python
+x = F.dropout(x, p=0.2)
+```
+
+那么即使外层模型已经调用 `model.eval()`，函数仍然可能继续执行 dropout。
+
+因此，在普通网络结构中，优先使用 `nn.Dropout` 通常更不容易出错。只有当丢弃概率需要动态变化，或者 dropout 只是某段自定义计算的一部分时，函数形式才更加方便。
+
+## 7.2.8 Dropout1d、Dropout2d 和 Dropout3d
+
+`nn.Dropout` 对输入中的每个元素独立采样 mask。但对于卷积特征图，相邻空间位置通常高度相关。单独丢弃几个像素位置，剩余位置可能仍然包含非常相似的信息，因此正则化效果可能比较弱。
+
+因此，PyTorch 还提供：
+
+- `nn.Dropout1d`；
+- `nn.Dropout2d`；
+- `nn.Dropout3d`。
+
+它们并不是分别要求输入必须是一维、二维和三维张量。这里的 `1d/2d/3d` 对应的是卷积特征的空间维度，而它们的核心行为是：
+
+> **随机丢弃整个通道，而不是独立丢弃每个元素。**
+
+以二维卷积输出为例：
+
+$$
+X \in \mathbb{R}^{N \times C \times H \times W}
+$$
+
+`nn.Dropout2d` 会为每个样本、每个通道采样一个 mask，然后把选中的整个 $H\times W$ 特征图设为 0：
+
+$$
+\tilde{X}_{n,c,:,:} = 0
+$$
+
+下面对比普通 `Dropout` 和 `Dropout2d`：
+
+```{python}
+x = torch.ones(1, 4, 3, 3)
+
+element_dropout = nn.Dropout(p=0.5)
+channel_dropout = nn.Dropout2d(p=0.5)
+
+element_output = element_dropout(x)
+channel_output = channel_dropout(x)
+
+print('Element-wise dropout:')
+print(element_output)
+
+print('\nChannel-wise dropout:')
+print(channel_output)
+```
+
+普通 `Dropout` 会在每个特征图内部产生零散的 0。`Dropout2d` 则会让某些通道整体变成 0，其余通道整体保留并缩放。
+
+可以把这些模块粗略理解为：
+
+::: {.list-table}
+表 1：PyTorch 中不同 Dropout 模块的典型输入
+
+- - 模块
+  - 典型输入
+  - 随机丢弃的单位
+
+- - `nn.Dropout`
+  - 任意形状
+  - 单个元素
+
+- - `nn.Dropout1d`
+  - $(N,C,L)$
+  - 整个一维通道
+
+- - `nn.Dropout2d`
+  - $(N,C,H,W)$
+  - 整个二维通道
+
+- - `nn.Dropout3d`
+  - $(N,C,D,H,W)$
+  - 整个三维通道
+:::
+
+因此，`Dropout2d` 不是对二维矩阵做普通 dropout，而是面向二维卷积特征图的 channel-wise dropout。`Dropout1d` 和 `Dropout3d` 同理。它们的目标都是在卷积特征图中随机关闭一部分通道，从而减少特征之间的共适应。
+
+## 7.2.9 Dropout 应该放在哪里
+
+Dropout 通常放在具有较多可学习参数、容易过拟合的位置，例如 MLP 隐藏层或分类头：
+
+```text
+Linear → Activation → Dropout → Linear
+```
+
+对应代码可以写成：
+
+```{python}
+block = nn.Sequential(
+    nn.Linear(128, 256),
+    nn.ReLU(),
+    nn.Dropout(p=0.2),
+    nn.Linear(256, 10),
+)
+```
+
+在 Transformer 中，dropout 可能出现在多个位置，例如 attention 权重、attention 输出、前馈网络和残差分支上。不过具体放置方式属于模型架构设计的一部分，我们后面在 Transformer 相关章节中会详细讨论。
+
+对于 CNN，传统模型有时会在卷积块中使用 channel-wise dropout，也经常在最终分类器的全连接层中使用普通 dropout。但现代 CNN 是否需要 dropout，要结合数据增强、权重衰减、BatchNorm 和模型规模一起考虑。
+
+同时，dropout 的丢弃概率也不是越大越好：
+
+- $p$ 太小，正则化效果可能不明显；
+- $p$ 太大，信息丢失过多，模型可能欠拟合；
+- 网络越小、数据越充足，通常越不需要很强的 dropout；
+- 模型越容易过拟合，才越有理由增加 dropout。
+
+常见的 $p$ 可能落在 0.1 到 0.5 之间。是否使用以及使用多大的概率，应当根据验证集表现决定。
+
+## 7.2.10 Dropout 的常见误解
+
+为了避免把 dropout 和其他训练技巧混在一起，我们最后明确几个容易产生的误解。
+
+首先，dropout 不是归一化。它不会计算均值和方差，也不会主动把激活调整到某个固定尺度。除以 $1-p$ 只是为了保持期望，而不是为了实现标准化。
+
+其次，dropout 不是模型剪枝。虽然训练时有一部分激活被临时设为 0，但每次被丢弃的位置都可能不同，参数本身仍然保留。推理时通常还会使用完整网络。剪枝则会永久删除权重、连接或通道，目标通常是减小模型体积或计算量。
+
+然后，dropout 不是 gradient clipping。Dropout 在前向传播中随机改变计算路径；gradient clipping 在反向传播完成后限制梯度大小，两者作用位置完全不同。
+
+最后，dropout 也不是越多越好。它是一种正则化手段，只有在模型存在过拟合风险时才有价值。如果模型本来已经欠拟合，继续增加 dropout 只会进一步削弱模型能力。
+
+可以把本节的核心内容总结为：
+
+::: {.list-table}
+表 2：Dropout 的核心性质
+
+- - 问题
+  - 结论
+
+- - Dropout 主要解决什么
+  - 通过随机扰动缓解过拟合
+
+- - 训练时做什么
+  - 随机置零激活，并将保留值除以 $1-p$
+
+- - 为什么要缩放
+  - 保持输出期望与输入一致
+
+- - 推理时做什么
+  - 关闭 dropout，直接使用完整激活
+
+- - 是否修改模型参数
+  - 不会，只是临时改变激活和梯度路径
+
+- - `Dropout2d` 丢弃什么
+  - 整个二维特征通道，而不是独立像素
+:::
+
+## 7.2.11 本章小结
+
+Dropout 是一种作用于中间激活的随机正则化方法。训练时，它为每个元素或通道采样随机 mask，暂时关闭一部分信息路径，从而减少模型对固定特征组合的过度依赖。
+
+PyTorch 使用 inverted dropout：
+
+$$
+\tilde{x} = \frac{m\odot x}{1-p}
+$$
+
+除以保留概率以后，训练阶段输出的期望与原始输入一致，因此推理阶段只需要关闭 dropout，不需要额外缩放。
+
+Dropout 的训练和推理行为由 `training` 属性控制。`model.eval()` 可以关闭 dropout，而 `torch.no_grad()` 和 `torch.inference_mode()` 只负责关闭梯度记录，不能代替 `eval()`。
+
+普通 `nn.Dropout` 独立丢弃元素，而 `nn.Dropout{n}d` 通常以整个通道为单位进行丢弃。它们适合不同形状的卷积特征，但共同目标都是通过随机扰动减少特征之间的共适应。
+
+下一节，我们开始讨论 **Batch Normalization** [@ioffe2015BatchNorm]。与 dropout 不同，BatchNorm 不会随机关闭特征，而是根据 mini-batch 的统计量调整激活的数值尺度。我们会重点回答：对于全连接输入和卷积输入，BatchNorm 到底在哪些维度上计算均值和方差，以及为什么它在训练和推理阶段使用不同的统计量。

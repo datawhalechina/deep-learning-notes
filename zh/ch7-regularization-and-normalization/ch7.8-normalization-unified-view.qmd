@@ -1,0 +1,587 @@
+---
+author: jshn9515
+date: 2026-06-27
+date-modified: 2026-06-27
+open-graph:
+  title: ch7.8-normalization-unified-view
+  description: "7.8 A Unified View of Normalization: Which Dimensions Are Normalized?"
+title: "7.8 归一化方法的统一视角：统计量到底在哪些维度上计算"
+order: 7
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.8-normalization-unified-view.ipynb){fig-align="left"}
+
+前面几节，我们分别介绍了 Batch Normalization、Layer Normalization、Instance Normalization、Group Normalization 和 RMS Normalization。前四种方法都会先计算均值和方差，再进行标准化；RMSNorm 则省略均值中心化，只根据均方根调整特征尺度。
+
+真正让这些方法彼此不同的，并不是标准化公式本身，而是：
+
+> **哪些元素会被放在一起计算均值和方差。**
+
+对于一个形状为 `(N, C, H, W)` 的图像特征张量，不同归一化方法会选择不同的统计集合：
+
+- BatchNorm 固定通道，沿 `N, H, W` 统计；
+- LayerNorm 固定样本，通常沿 `C, H, W` 统计；
+- InstanceNorm 固定样本和通道，沿 `H, W` 统计；
+- GroupNorm 固定样本和 group，沿组内通道、`H, W` 统计；
+- RMSNorm 固定前缀位置，沿 `normalized_shape` 对应的尾部维度计算均方根。
+
+因此，这一节不再把它们当作四套独立公式，而是从一个统一框架出发，回答下面几个问题：
+
+- 所有归一化层可以写成怎样的共同形式？
+- 统计维度和保留维度分别是什么意思？
+- 为什么 reshape 可以把 GroupNorm 转化成普通的 Normalization？
+- 哪些方法依赖 batch，哪些方法不依赖？
+- `GroupNorm(1, C)` 为什么接近 LayerNorm？
+- `GroupNorm(C, C)` 为什么接近 InstanceNorm？
+- RMSNorm 与 LayerNorm 的统计方式有什么不同？
+- 面对 CNN、Transformer 和小 batch 任务时，应该如何选择？
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.8.1 所有归一化层都在做同一件事
+
+设某个归一化集合为 $S$，其中包含若干个输入元素。归一化层首先计算这个集合的均值：
+
+$$
+\mu_S = \frac{1}{|S|} \sum_{i\in S}x_i
+$$
+
+以及方差：
+
+$$
+\sigma_S^2 = \frac{1}{|S|} \sum_{i\in S}(x_i-\mu_S)^2
+$$
+
+随后，对集合中的每个元素进行标准化：
+
+$$
+\hat{x}_i = \frac{x_i-\mu_S}{\sqrt{\sigma_S^2+\epsilon}}
+$$
+
+最后，再应用可学习的仿射变换：
+
+$$
+y_i = \gamma_i\hat{x}_i+\beta_i
+$$
+
+BatchNorm、LayerNorm、InstanceNorm 和 GroupNorm 都遵循这套“中心化 + 尺度归一化”的形式，它们的差异来自集合 $S$ 的定义。
+
+RMSNorm 稍有不同。它不计算均值，也不执行中心化，而是直接根据集合中的均方根：
+
+$$
+\operatorname{RMS}(x_S) =
+\sqrt{\frac{1}{|S|}\sum_{i\in S}x_i^2+\epsilon}
+$$
+
+对输入进行缩放：
+
+$$
+\hat{x}_i = \frac{x_i}{\operatorname{RMS}(x_S)}
+$$
+
+因此，RMSNorm 仍然需要先定义统计集合 $S$，只是它计算的是二阶矩，而不是均值和中心化方差。
+
+换句话说，学习归一化方法时，最重要的问题不是公式是什么，而是：
+
+> **对当前输入中的某个元素，哪些其他元素会和它共享同一组均值和方差？**
+
+## 7.8.2 统计维度与保留维度
+
+考虑一个四维输入：
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+其中，$N$ 表示 batch size，$C$ 表示通道数，$H$、$W$ 表示空间尺寸。
+
+在 PyTorch 中，`mean(dim=...)` 和 `var(dim=...)` 中给出的维度可以称为**统计维度**，也就是会被归约掉的维度；而没有被归约的维度可以称为**保留维度**。每个保留位置都会拥有一组独立的均值和方差。
+
+例如，沿 `(0, 2, 3)` 统计：
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (0, 2, 3)
+mean = x.mean(dim, keepdim=True)
+var = x.var(dim, correction=0, keepdim=True)
+
+print('Input shape:', x.shape)
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+输出统计量的形状为 `(1, C, 1, 1)`，说明只有通道维度被保留下来。
+
+可以把两类维度理解为：
+
+- 统计维度：哪些元素被放进同一个统计集合；
+- 保留维度：需要分别维护多少组均值和方差。
+
+## 7.8.3 BatchNorm：固定通道，跨样本和空间统计
+
+对于输入 `(N, C, H, W)`，BatchNorm 的统计维度为：
+
+```python
+dim = (0, 2, 3)
+```
+
+因此，它固定通道 $c$，沿 batch 和空间维度统计：
+
+$$
+\begin{aligned}
+\mu_c &= \frac{1}{NHW} \sum_{n,h,w}x_{n,c,h,w} \\
+\sigma_c^2 &= \frac{1}{NHW} \sum_{n,h,w}(x_{n,c,h,w}-\mu_c)^2
+\end{aligned}
+$$
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (0, 2, 3)
+bn_mean = x.mean(dim, keepdim=True)
+bn_var = x.var(dim, correction=0, keepdim=True)
+
+x_bn = (x - bn_mean) / (bn_var + 1e-5).sqrt()
+
+print('Statistics shape:', bn_mean.shape)
+print('Output means by channel:', x_bn.mean(dim))
+print('Output variances by channel:', x_bn.var(dim, correction=0))
+```
+
+BatchNorm 的统计集合中包含不同样本，因此当前样本的输出会受到 batch 中其他样本影响。这也是 BatchNorm 与其他几种方法最根本的区别。
+
+## 7.8.4 LayerNorm：固定样本，归一化最后若干维
+
+如果对图像输入使用：
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+那么 LayerNorm 会固定样本，沿 `(C, H, W)` 统计：
+
+```python
+dim = (1, 2, 3)
+```
+
+均值和方差可以写成：
+
+$$
+\begin{aligned}
+\mu_n &= \frac{1}{CHW} \sum_{c,h,w}x_{n,c,h,w} \\
+\sigma_n^2 &= \frac{1}{CHW} \sum_{c,h,w}(x_{n,c,h,w}-\mu_n)^2
+\end{aligned}
+$$
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (1, 2, 3)
+ln_mean = x.mean(dim, keepdim=True)
+ln_var = x.var(dim, correction=0, keepdim=True)
+
+x_ln = (x - ln_mean) / (ln_var + 1e-5).sqrt()
+
+print('Statistics shape:', ln_mean.shape)
+print('Output means by sample:', x_ln.mean(dim))
+print('Output variances by sample:', x_ln.var(dim, correction=0))
+```
+
+不过，LayerNorm 并不固定归一化某几个语义维度。它的规则是：
+
+> **对输入最后 `len(normalized_shape)` 个维度进行归一化。**
+
+因此，对于 Transformer 输入 `(N, L, D)` 和 `nn.LayerNorm(D)`，它只沿最后一个特征维度 $D$ 统计，每个 token 都拥有独立的均值和方差。
+
+```{python}
+x = torch.randn(2, 6, 8)
+
+layer_norm = nn.LayerNorm(8)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Output means by token:')
+print(y.mean(dim=-1))
+```
+
+所以，讨论 LayerNorm 时不能只说在样本内部归一化，还需要明确 `normalized_shape` 到底覆盖输入的哪些尾部维度。
+
+## 7.8.5 InstanceNorm：固定样本和通道，只统计空间位置
+
+对于输入 `(N, C, H, W)`，InstanceNorm 的统计维度为：
+
+```python
+dim = (2, 3)
+```
+
+它固定样本 $n$ 和通道 $c$，沿空间维度统计：
+
+$$
+\begin{aligned}
+\mu_{n,c} &= \frac{1}{HW} \sum_{h,w}x_{n,c,h,w} \\
+\sigma_{n,c}^2 &= \frac{1}{HW} \sum_{h,w}(x_{n,c,h,w}-\mu_{n,c})^2
+\end{aligned}
+$$
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (2, 3)
+in_mean = x.mean(dim, keepdim=True)
+in_var = x.var(dim, correction=0, keepdim=True)
+
+x_in = (x - in_mean) / (in_var + 1e-5).sqrt()
+
+print('Statistics shape:', in_mean.shape)
+print('Output means by sample and channel:')
+print(x_in.mean(dim=(2, 3)))
+```
+
+每个 `(sample, channel)` 组合都有独立统计量，因此 InstanceNorm 既不跨样本，也不跨通道。它比 LayerNorm 使用更小的统计集合，也更强地消除了每个通道自己的空间均值和方差。
+
+## 7.8.6 GroupNorm：先分组，再统一归约
+
+GroupNorm 不能直接通过原始 `(N, C, H, W)` 中的一组 `dim` 完整表达，因为通道维度需要先划分为 group。
+
+假设通道数为 $C$，组数为 $G$。首先 reshape：
+
+$$
+(N, C, H, W) \rightarrow \left(N, G, \frac{C}{G}, H, W \right)
+$$
+
+随后固定样本和 group，沿组内通道与空间维度统计：
+
+```python
+dim = (2, 3, 4)
+```
+
+```{python}
+num_groups = 4
+x = torch.randn(4, 8, 5, 5)
+n, c, h, w = x.size()
+
+x_grouped = x.reshape(n, num_groups, c // num_groups, h, w)
+
+dim = (2, 3, 4)
+gn_mean = x_grouped.mean(dim, keepdim=True)
+gn_var = x_grouped.var(dim, correction=0, keepdim=True)
+
+x_gn = (x_grouped - gn_mean) / (gn_var + 1e-5).sqrt()
+x_gn = x_gn.reshape_as(x)
+
+y_grouped = x_gn.reshape(n, num_groups, c // num_groups, h, w)
+
+print('Grouped shape:', x_grouped.shape)
+print('Statistics shape:', gn_mean.shape)
+print('Output means by sample and group:')
+print(y_grouped.mean(dim))
+```
+
+因此，GroupNorm 可以看成：
+
+> **通过 reshape 创建一个显式的 group 维度，然后对每个样本中的每个 group 独立执行标准化。**
+
+这也说明很多归一化操作在实现上都可以统一为三步：
+
+1. 必要时 reshape；
+2. 沿指定维度计算均值和方差；
+3. Reshape 回原始形状并应用仿射变换。
+
+## 7.8.7 RMSNorm：沿尾部维度只归一化尺度
+
+RMSNorm 与 LayerNorm 一样，由 `normalized_shape` 决定统计集合。
+
+对于 Transformer 输入 `(N, L, D)` 和：
+
+```python
+nn.RMSNorm(D)
+```
+
+它会固定 batch 位置和 token 位置，沿最后一个隐藏维度 $D$ 计算均方根：
+
+$$
+\operatorname{RMS}_{n,l} =
+\sqrt{\frac{1}{D}\sum_{d=1}^{D}x_{n,l,d}^2+\epsilon}
+$$
+
+与 LayerNorm 不同，RMSNorm 不减去均值，因此它只控制特征的整体尺度，不强制输出均值为 0。
+
+```{python}
+x = torch.randn(2, 6, 8)
+
+rms_norm = nn.RMSNorm(8, elementwise_affine=False)
+y = rms_norm(x)
+
+print('Output RMS by token:')
+print(y.pow(2).mean(dim=-1).sqrt())
+print('Output means by token:')
+print(y.mean(dim=-1))
+```
+
+RMSNorm 的统计维度与 `LayerNorm(D)` 相同，都是最后一个隐藏维度，但统计量不同：
+
+- LayerNorm 计算均值和中心化方差；
+- RMSNorm 只计算平方均值对应的均方根。
+
+因此，把 RMSNorm 纳入统一视角时，需要同时考虑两件事：
+
+1. 哪些维度构成统计集合；
+2. 在统计集合上计算的是均值与方差，还是均方根。
+
+## 7.8.8 用一张表比较统计维度
+
+对于图像输入 `(N, C, H, W)`，五种归一化方法可以总结为：
+
+::: {.list-table}
+表 7.8.8 五种归一化方法对比
+
+- - 方法
+  - 保留维度
+  - 统计维度
+  - 可学习参数形状
+  - 是否维护运行统计量
+
+- - BatchNorm
+  - $C$
+  - $N, H, W$
+  - $(C,)$
+  - 是
+
+- - LayerNorm `(C,H,W)`
+  - $N$
+  - $C, H, W$
+  - $(C, H, W)$
+  - 否
+
+- - InstanceNorm
+  - $N, C$
+  - $H, W$
+  - $(C,)$
+  - 默认否，可选
+
+- - GroupNorm
+  - $N, G$
+  - $\frac{C}{G}, H, W$
+  - $(C,)$
+  - 否
+
+- - RMSNorm `(D)`
+  - $N, L$
+  - $D$
+  - $(D,)$
+  - 否
+:::
+
+这张表是理解归一化方法最重要的总结。公式中的标准化步骤几乎不变，真正变化的是**哪些元素共享同一组统计量**。
+
+## 7.8.9 GroupNorm 的两个边界情况
+
+GroupNorm 通过 `num_groups` 控制统计集合的大小，因此它可以连接 LayerNorm 和 InstanceNorm。
+
+当 $G=1$ 时，所有通道都属于同一个 group。GroupNorm 会对每个样本的全部 `C, H, W` 元素一起统计。这与：
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+使用相同的统计集合。
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+layer_norm = nn.LayerNorm((4, 3, 3), elementwise_affine=False)
+group_norm = nn.GroupNorm(1, 4, affine=False)
+
+ln_output = layer_norm(x)
+gn_output = group_norm(x)
+
+max_diff = (ln_output - gn_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+但是，两者默认的仿射参数形状不同：
+
+- LayerNorm 的 `weight` 和 `bias` 形状为 `(C, H, W)`；
+- GroupNorm 的 `weight` 和 `bias` 形状为 `(C,)`。
+
+因此，关闭仿射变换时，两者的标准化结果相同；开启默认仿射变换后，它们并不是完全相同的层。
+
+当每个通道单独构成一个 group 时（也就是 $G=C$ 时），GroupNorm 会固定样本和通道，只沿空间维度统计。这与默认 InstanceNorm 使用相同的统计集合。
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+instance_norm = nn.InstanceNorm2d(4)
+group_norm = nn.GroupNorm(4, 4, affine=False)
+
+in_output = instance_norm(x)
+gn_output = group_norm(x)
+
+max_diff = (in_output - gn_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+这里仍需注意运行时行为：
+
+- 默认 InstanceNorm 不维护 running statistics；
+- GroupNorm 从不维护 running statistics；
+- 如果 InstanceNorm 开启 `track_running_stats=True`，推理阶段就不再与 GroupNorm 等价。
+
+## 7.8.10 哪些方法依赖 batch
+
+是否把 batch 维度 $N$ 放进统计集合，是判断一个归一化方法是否依赖 batch 的关键。
+
+BatchNorm 的统计维度包括 $N$，因此：
+
+- 当前样本的输出受其他样本影响；
+- Batch size 会影响统计量稳定性；
+- 训练时需要 batch statistics；
+- 推理时通常需要 running statistics。
+
+LayerNorm、InstanceNorm 和 GroupNorm 都不会沿 $N$ 统计，因此：
+
+- 每个样本独立归一化；
+- 改变 batch 中其他样本不会改变当前样本输出；
+- 通常不需要 running statistics；
+- `train()` 与 `eval()` 下的统计规则相同。
+
+下面用 GroupNorm 验证当前样本不会受到其他样本影响：
+
+```{python}
+target = torch.randn(1, 8, 4, 4)
+other_sample1 = torch.randn(3, 8, 4, 4)
+other_sample2 = torch.randn(3, 8, 4, 4) * 100 + 50
+
+group_norm = nn.GroupNorm(4, 8, affine=False)
+
+other_sample1 = torch.concat([target, other_sample1], dim=0)
+other_sample2 = torch.concat([target, other_sample2], dim=0)
+output_sample1 = group_norm(other_sample1)[0]
+output_sample2 = group_norm(other_sample2)[0]
+
+max_diff = (output_sample1 - output_sample2).abs().max()
+print('Maximum difference for target sample:', max_diff.item())
+```
+
+如果把这里换成训练模式下的 BatchNorm，两个输出通常就会不同。
+
+## 7.8.11 应该如何选择归一化方法
+
+归一化方法没有绝对的优劣，选择取决于网络结构、batch size 和任务特点。
+
+#### **1. CNN，且 batch 足够大**
+
+BatchNorm 通常仍然是经典选择。它在卷积网络中表现稳定，而且推理时可以和卷积层融合。
+
+```python
+nn.Sequential(
+    nn.Conv2d(in_channels, out_channels, kernel_size=3, bias=False),
+    nn.BatchNorm2d(out_channels),
+    nn.ReLU(),
+)
+```
+
+#### **2. CNN，但每个设备上的 batch 很小**
+
+GroupNorm 更合适，因为它不依赖 batch statistics。目标检测、实例分割和高分辨率视觉任务经常属于这种情况。
+
+```python
+nn.Sequential(
+    nn.Conv2d(in_channels, out_channels, kernel_size=3, bias=False),
+    nn.GroupNorm(32, out_channels),
+    nn.ReLU(),
+)
+```
+
+实际使用时需要保证 `num_channels % num_groups == 0`，并根据通道数调整 group 数量。
+
+#### **3. Transformer 和序列模型**
+
+LayerNorm 长期以来一直是 Transformer 中最常见的归一化方法。它通常对每个 token 的隐藏特征独立计算统计量，因此不依赖 batch size，也不会受到 batch 中其他样本组成的影响。
+
+```python
+nn.LayerNorm(hidden_size)
+```
+
+随着大语言模型的发展，RMSNorm 也已经成为非常常见的选择。由于省略了均值中心化，RMSNorm 的计算形式比 LayerNorm 更简单，同时在许多现代大语言模型中表现出良好的训练稳定性。
+
+```python
+nn.RMSNorm(hidden_size)
+```
+
+经典 Transformer 架构通常使用 LayerNorm，而许多现代大语言模型则更倾向于使用 RMSNorm。
+
+#### **4. 风格迁移和部分图像生成任务**
+
+InstanceNorm 可以独立移除每个样本、每个通道的空间均值和方差，因此常用于强调内容结构而弱化实例级风格统计的任务。
+
+```python
+nn.InstanceNorm2d(num_features, affine=True)
+```
+
+当然，这些只是常见经验。现代网络也可能使用完全不同的归一化设计。
+
+## 7.8.12 归一化不是越多越好
+
+归一化层能够改善优化，但也会改变模型的表示方式，并带来额外约束。
+
+例如：
+
+- BatchNorm 引入了样本之间的依赖；
+- LayerNorm 会移除归一化维度上的整体均值和尺度信息；
+- InstanceNorm 可能移除对分类有用的实例级对比度信息；
+- GroupNorm 的效果会受到 group 数量影响；
+- RMSNorm 不执行均值中心化，因此不会移除特征的整体偏移。
+
+因此，不应该把归一化理解为任何层后面都必须添加的固定操作。更合理的思路是：
+
+1. 明确输入张量每个维度的语义；
+2. 决定哪些元素应该共享统计量；
+3. 判断模型是否能够依赖 batch；
+4. 再选择对应的归一化方法。
+
+归一化方法的本质不是记住四个类名，而是设计统计集合。
+
+## 7.8.13 本章小结
+
+这一节从统计维度出发，统一比较了 BatchNorm、LayerNorm、InstanceNorm、GroupNorm 和 RMSNorm。
+
+它们都需要先选择统计集合，再根据集合中的统计量调整特征尺度：
+
+1. 选择统计集合；
+2. 计算均值和方差（或均方根）；
+3. 标准化；
+4. 可学习仿射变换。
+
+BatchNorm、LayerNorm、InstanceNorm 和 GroupNorm 使用均值与方差，RMSNorm 则只使用均方根。
+
+真正的区别是哪些元素共享同一组统计量：
+
+- BatchNorm：固定通道，统计 `N, H, W`；
+- LayerNorm：固定前缀位置，统计 `normalized_shape` 对应的尾部维度；
+- InstanceNorm：固定样本和通道，统计空间维度；
+- GroupNorm：固定样本和 group，统计组内通道与空间维度；
+- RMSNorm：固定前缀位置，沿 `normalized_shape` 对应维度计算均方根。
+
+其中，只有 BatchNorm 默认依赖 batch，并在训练和推理阶段使用不同来源的统计量。LayerNorm、InstanceNorm、GroupNorm 和 RMSNorm 通常都直接使用当前输入的统计量。
+
+GroupNorm 的两个边界情况进一步展示了这些方法之间的联系：
+
+- `num_groups=1` 时，标准化统计接近覆盖全部非 batch 维度的 LayerNorm；
+- `num_groups=C` 时，标准化统计接近 InstanceNorm。
+
+但统计集合相同并不总意味着模块完全等价，因为仿射参数形状和 running statistics 机制也可能不同。
+
+到这里，本章的主要归一化方法已经全部介绍完毕。面对新的输入时，可以先不考虑具体类名，而是先问：
+
+> **我希望哪些元素共享统计量？需要进行均值中心化，还是只需要控制特征尺度？**
+
+只要回答了这个问题，归一化方法的选择通常就会清晰很多。

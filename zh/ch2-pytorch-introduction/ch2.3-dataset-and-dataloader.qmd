@@ -1,0 +1,600 @@
+---
+author: jshn9515
+date: 2026-05-23
+date-modified: 2026-05-23
+open-graph:
+  title: ch2.3-dataset-and-dataloader
+  description: "2.3 Data Loading in PyTorch: Dataset, DataLoader, and Batching"
+title: "2.3 PyTorch 中的数据加载：Dataset、DataLoader 与批处理"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch2-pytorch-introduction/ch2.3-dataset-and-dataloader.ipynb){fig-align="left"}
+
+前面两节里，我们讨论了 PyTorch 的自动微分机制。我们知道，前向传播会构建计算图，反向传播会沿着计算图把梯度传回去；也知道在验证和推理时，可以用 `no_grad()` 或 `inference_mode()` 关闭梯度记录。
+
+但是，一个完整的训练过程不只有模型和梯度，还有一个更基础的问题：数据从哪里来？
+
+在最简单的例子里，我们可以直接手写一个张量：
+
+```python
+X = torch.randn(1000, 10)
+y = torch.randn(1000, 1)
+```
+
+然后每次训练时自己切片：
+
+```python
+batch_size = 32
+
+X_batch = X[:batch_size]
+y_batch = y[:batch_size]
+```
+
+这当然可以工作，但我们会遇到很多问题：如果数据要打乱怎么办？如果最后一个 batch 不足 32 个样本怎么办？如果数据不是一个张量，而是一堆图片文件怎么办？如果每个样本长度不同，不能直接堆成一个规则张量怎么办？如果读取和预处理数据太慢，GPU 一直在等 CPU 怎么办？
+
+这些问题都不是模型本身的问题，而是**数据管道（data pipeline）**的问题。
+
+PyTorch 用两个概念来组织这件事：
+
+- `Dataset` 负责定义一个样本长什么样，以及如何取出一个样本；
+- `DataLoader` 负责把很多样本组织成 mini-batch，并处理打乱、多进程加载、拼接 batch、pin memory 等训练时常见细节。
+
+这一节我们就从最简单的张量数据开始，逐步理解 Dataset 和 DataLoader 背后的设计。
+
+```{python}
+from collections.abc import Iterator
+
+import dnnlpy
+import torch
+import torch.utils.data as utils
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+```{python}
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+## 2.3.1 Dataset：用统一接口访问样本
+
+训练循环里，我们通常不是一次性把所有数据都喂给模型，而是每次取出一个 mini-batch：
+
+```text
+dataset -> mini-batch -> model -> loss -> backward -> optimizer step
+```
+
+如果数据都已经存在张量里，我们可以直接用切片实现 mini-batch。但是这会把很多本来不属于训练逻辑的事情混在一起：取样本、打乱顺序、组成 batch、处理最后一个 batch，都要自己写。
+
+但是，真实数据往往不是一个规整的大张量。比如图像分类任务中，数据可能是一堆图片路径：
+
+```text
+cat_001.jpg -> label 0
+dog_001.jpg -> label 1
+cat_002.jpg -> label 0
+...
+```
+
+这时候我们真正需要的是一种统一接口：无论数据来自张量、图片、文本文件，还是数据库，都能像下面这样访问：
+
+```python
+sample = dataset[index]
+```
+
+这就是 Dataset 的作用。
+
+在 PyTorch 里，一个最基本的 map-style dataset 只需要回答两个问题：
+
+1. 数据集中一共有多少个样本？
+2. 给定一个下标，如何取出对应样本？
+
+也就是实现 `__len__()` 和 `__getitem__()`。
+
+我们先写一个最小版本：
+
+```{python}
+class SimpleTensorDataset(utils.Dataset):
+    """Simple dataset that wraps training data and targets."""
+
+    def __init__(self, X: Tensor, y: Tensor):
+        if X.size(0) != y.size(0):
+            raise AssertionError('X and y must have the same length.')
+        self.X = X
+        self.y = y
+
+    def __len__(self) -> int:
+        return len(self.X)
+
+    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
+        X = self.X[idx]
+        y = self.y[idx]
+        return X, y
+```
+
+现在我们可以把张量包装成一个 dataset：
+
+```{python}
+X = torch.randn(1000, 10)
+y = torch.randn(1000, 1)
+
+dataset = SimpleTensorDataset(X, y)
+x0, y0 = dataset[0]
+
+print('Dataset length:', len(dataset))
+print('First input shape:', x0.shape)
+print('First target shape:', y0.shape)
+```
+
+这样，训练代码就不用再关心数据内部怎么存储，只需要知道可以通过下标取样本。
+
+当然，PyTorch 也提供了一个内置版本，叫 `TensorDataset`，专门用于把任意多个张量按第一个维度打包成样本：
+
+```{python}
+dataset = utils.TensorDataset(X, y)
+x0, y0 = dataset[0]
+
+print('First input shape:', x0.shape)
+print('First target shape:', y0.shape)
+```
+
+如果只是普通张量数据，用 `TensorDataset` 就够了。但是，一旦数据稍微复杂一点，比如图片分类数据集，或者文本分类数据集，我们就需要自己写一个 Dataset，在 `__getitem__()` 里实现读取文件、做预处理、返回标签的逻辑。
+
+到这里，我们解决了如何取一个样本的问题。但训练时我们通常不可能每次只喂一个样本给模型，而是把样本组织成一个 mini-batch。这就需要 DataLoader。
+
+## 2.3.2 DataLoader：把样本组织成 mini-batch
+
+Dataset 本身只知道如何取单个样本。DataLoader 则进一步负责把这些样本组织成训练循环需要的 mini-batch。
+
+最简单的用法如下：
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+)
+
+X, y = next(iter(dataloader))
+print('Input batch shape:', X.shape)
+print('Target batch shape:', y.shape)
+```
+
+这里 DataLoader 做了几件事：
+
+1. 从 Dataset 中取出若干个样本（由 `batch_size` 指定）；
+2. 把这些样本拼成一个 batch；
+3. 如果 `shuffle=True`，每个 epoch 会打乱样本顺序；
+4. 返回可以直接用于模型训练的张量。
+
+于是训练循环就可以写成下面这种标准的形式：
+
+```python
+for X, y in dataloader:
+    y_pred = model(X)
+    loss = loss_fn(y_pred, y)
+    loss.backward()
+```
+
+从这个角度看，DataLoader 是训练循环和数据集之间的适配层。模型不需要知道原始数据怎么存，训练循环也不需要自己管理下标、打乱和拼 batch。
+
+我们可以把它们的关系概括成：
+
+```text
+Dataset:    index -> sample
+DataLoader: samples -> batch
+```
+
+这也是为什么 PyTorch 把 Dataset 和 DataLoader 分开。前者描述数据本身，后者描述数据如何被送进训练过程。
+
+## 2.3.3 collate_fn：样本如何拼成 batch
+
+前面我们说过，DataLoader 会把多个样本拼成一个 batch。这个“拼”的过程，就是由 `collate_fn` 控制的。
+
+默认情况下，PyTorch 会使用默认的 collate 逻辑。比如每个样本都是 `(x, y)`，其中 `x` 的形状是 `(10,)`，`y` 的形状是 `(1,)`，那么 32 个样本会被自动堆叠成：
+
+```text
+x: (32, 10)
+y: (32, 1)
+```
+
+这就是我们在前面看到的行为。
+
+但是，如果每个样本的形状不一样，默认拼接就会失败。最常见的例子是自然语言处理中的变长序列。比如我们有 4 个样本，每个样本的长度不同：
+
+```{python}
+class VariableLengthDataset(utils.Dataset):
+    """Variable-length sequence dataset for demonstration."""
+
+    def __init__(self):
+        self.samples = [
+            torch.tensor([1, 2, 3]),
+            torch.tensor([4, 5]),
+            torch.tensor([6, 7, 8, 9]),
+            torch.tensor([10]),
+        ]
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, idx: int) -> Tensor:
+        return self.samples[idx]
+```
+
+如果直接使用 DataLoader，它会尝试把不同长度的张量堆成一个规则张量，但这显然做不到：
+
+```{python}
+dataset = VariableLengthDataset()
+dataloader = utils.DataLoader(dataset, batch_size=2)
+
+try:
+    batch = next(iter(dataloader))
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+这时候我们就需要自定义 `collate_fn`。
+
+`collate_fn` 接收的是一个 list，里面是这次 batch 里的若干个样本。它的任务是把这些样本整理成模型可以接收的 batch。例如，我们可以把变长序列填充到当前 batch 中的最大长度：
+
+```{python}
+def pad_collate_fn(batch: list[Tensor]) -> tuple[Tensor, Tensor]:
+    """Pad variable-length sequences in a batch to the same length."""
+    lengths = torch.tensor([len(x) for x in batch])
+    max_len = lengths.max().item()
+
+    padded = torch.zeros(len(batch), max_len, dtype=torch.long)
+    for i, x in enumerate(batch):
+        padded[i, : len(x)] = x
+
+    return padded, lengths
+```
+
+然后再传给 DataLoader：
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=2,
+    collate_fn=pad_collate_fn,
+)
+
+for tokens, lengths in dataloader:
+    print('tokens:', tokens, sep='\n')
+    print('lengths:', lengths, end='\n\n')
+```
+
+这样，PyTorch 就会用我们定义的 `pad_collate_fn` 来把每个 batch 组织成一个张量和一个长度向量。
+
+在实际任务中，`collate_fn` 很常用。比如：
+
+- 文本任务中对变长句子做 padding；
+- 目标检测中，每张图的目标框数量不同，不能简单 stack；
+- 多模态任务中，把图像、文本、mask、metadata 组织成字典；
+- 对一个 batch 内的数据做额外整理。
+
+所以，`collate_fn` 可以理解成 DataLoader 的“打包规则”。默认规则适合形状一致的张量；一旦样本结构更复杂，就需要我们自己告诉 PyTorch，这个 batch 应该怎么组装。
+
+## 2.3.4 num_workers：让数据加载和模型计算并行
+
+到目前为止，我们的 DataLoader 都是在主进程里加载数据。也就是说，模型训练和数据读取是在同一个 Python 进程里交替进行的：
+
+```text
+读 batch -> 训练一步 -> 读 batch -> 训练一步 -> ...
+```
+
+如果每个样本只是从内存张量里取出来，这通常没什么问题。但如果每个样本都要读取图片、解码、数据增强、分词，那么 CPU 预处理可能会变成瓶颈。GPU 算完一个 batch 后，需要等 CPU 准备下一个 batch，这时候 GPU 就会空闲。
+
+而 `num_workers` 的作用，就是让 DataLoader 启动多个子进程来提前加载数据：
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=0,
+)
+```
+
+当 `num_workers=0` 时，所有数据加载都发生在主进程里。这是最简单、最容易调试、也最不容易出奇怪问题的设置；当 `num_workers>0` 时，PyTorch 会启动多个 worker 进程。它们负责提前从 dataset 里取样本、执行 `collate_fn`，并把准备好的 batch 放到队列里。主进程训练时，就可以从队列中取已经准备好的 batch：
+
+```text
+worker 0 -> 准备 batch
+worker 1 -> 准备 batch
+worker 2 -> 准备 batch
+main process -> 训练模型
+```
+
+这样做的好处是，数据加载和模型计算可以重叠。理想情况下，当 GPU 正在训练当前 batch 时，CPU workers 已经在准备后面的 batch。
+
+但是，`num_workers` 并不是越大越好。它有几个副作用。
+
+首先，更多 worker 意味着更多进程和更多内存开销。每个 worker 都会持有 dataset 的一个副本，至少会复制 dataset 中的 Python 对象。如果 dataset 在 `__init__()` 里保存了一个很大的 Python list，开启多个 worker 可能会明显增加内存占用。
+
+其次，多进程会让调试更困难。`__getitem__()` 里的错误不一定会直接在主进程里显示清楚，可能只会看到类似“DataLoader worker exited unexpectedly”的错误。遇到这种情况，就应该先把 `num_workers` 改成 0，让错误在主进程里暴露出来。
+
+最后，不同操作系统启动 worker 的方式不同，这会影响代码写法和性能。
+
+在 Linux 上，多进程通常使用 fork[^2.3.4]，子进程从父进程复制出一个几乎相同的状态。它启动快，而且很多内存页可以通过 copy-on-write 暂时共享。但如果 worker 修改了某些对象，或者 dataset 中有复杂的 Python 对象，内存仍然可能逐渐增加。
+
+[^2.3.4]: 对于 Python 3.14 及以上，默认使用 forkserver。它在一定程度上比 fork 更安全。
+
+在 Windows 上，没有 Unix 风格的 fork，多进程通常使用 spawn。子进程会启动一个新的 Python 解释器，然后重新导入你的脚本，再把需要的对象序列化传过去。这更安全，但启动更慢，也要求 dataset、`collate_fn` 等对象必须能被序列化。因此，在 Windows 上使用 `num_workers>0` 时，通常需要把训练入口放在：
+
+```python
+if __name__ == '__main__':
+    main()
+```
+
+否则子进程重新导入脚本时，可能会重复执行顶层代码，导致递归创建进程、卡住或者报错。
+
+所以，一个比较稳妥的经验是：先用 `num_workers=0` 确认代码正确；再逐步尝试 `num_workers=2, 4, 8`；观察 GPU 利用率、CPU 占用和内存占用；不要盲目把 `num_workers` 开得很大。
+
+需要注意的是，`num_workers` 本质上是在用更多 CPU 进程换取更快的数据供应。如果瓶颈在数据读取和预处理，它会很有用；如果数据本来就在内存里、预处理很轻，开很多 worker 反而可能更慢。
+
+::: {.callout-warning}
+由于 Jupyter Notebook 的特殊性，在 notebook 环境里使用 `num_workers>0` 可能会遇到一些额外的麻烦。因此，如果你是在 notebook 里调试代码，请不要使用 `num_workers>0`。
+:::
+
+## 2.3.5 persistent_workers：让 worker 不要每个 epoch 都重启
+
+当 `num_workers>0` 时，DataLoader 会启动多个 worker 进程。默认情况下，一个 epoch 迭代结束后，这些 worker 进程会被关闭；下一个 epoch 开始时，再重新创建 worker。
+
+如果 dataset 初始化很轻，这个过程可能没什么感觉。但如果 worker 启动成本很高，比如要重新导入很多模块、初始化数据读取状态、建立文件句柄或者准备缓存，那么每个 epoch 都重启 worker 就会浪费时间。
+
+`persistent_workers=True` 的作用，就是让 worker 在一个 epoch 结束后不要关闭，而是保留下来，等下一个 epoch 继续使用：
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=2,
+    persistent_workers=True,
+)
+```
+
+::: {.callout-warning}
+`persistent_workers=True` 只有在 `num_workers>0` 时才有意义。如果 `num_workers=0`，根本没有子进程可以保持。
+:::
+
+它的好处是减少 epoch 之间的 worker 启动开销，尤其是在 Windows 的 `spawn` 模式下，worker 启动本来就更慢，persistent workers 可能更有帮助。但它也有代价：worker 会一直存在，占用的内存和资源也会一直保留到 DataLoader 被销毁。如果你的 dataset 内部维护了一些状态，也要注意这些状态会跨 epoch 保留，而不是每个 epoch 都重新初始化。
+
+所以可以这样理解：
+
+- `num_workers` 控制要不要开子进程；
+- `persistent_workers` 控制这些子进程要不要跨 epoch 保留下来。
+
+如果训练有很多 epoch，并且 `num_workers>0`，可以尝试打开 `persistent_workers=True`。如果只是调试、小数据实验，或者内存比较紧张，保持默认值也完全可以。
+
+## 2.3.6 pin_memory：要不要把 batch 放进锁页内存
+
+::: {.callout-tip}
+如果你对使用 `pin_memory` 和 `non_blocking` 的细节感兴趣，以及在 benchmark 中它们的实际效果，可以参考 PyTorch 官方文档的 [A guide on good usage of non_blocking and pin_memory in PyTorch](https://docs.pytorch.org/tutorials/intermediate/pinmem_nonblock.html)。这篇文章详细分析了 CPU 到 GPU 数据传输的机制，以及在不同场景下 `pin_memory` 和 `non_blocking` 的性能影响。
+:::
+
+当我们用 GPU 训练时，每个 batch 通常先由 CPU 准备好，然后再拷贝到 GPU：
+
+```python
+X = X.to(device)
+y = y.to(device)
+```
+
+这里会发生一次 host-to-device 拷贝，也就是从 CPU 内存到 GPU 显存的拷贝。`pin_memory=True` 的作用，是让 DataLoader 把返回的张量放到 pinned memory，也叫 page-locked memory 或锁页内存中。普通 CPU 内存可能会被操作系统换页管理，而 pinned memory 则不会被换出，因此 GPU 可以更高效地从这块内存中拷贝数据。
+
+用法也很简单：
+
+```{python}
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+    pin_memory=device.type == 'cuda',
+)
+```
+
+注意，`pin_memory` 通常针对 CUDA。因此，如果使用 CUDA 训练，通常可以设置：
+
+```python
+pin_memory = True
+```
+
+然后在把数据搬到 GPU 时配合 `non_blocking=True`：
+
+```python
+X = X.to('cuda', non_blocking=True)
+y = y.to('cuda', non_blocking=True)
+```
+
+这里的 `non_blocking=True` 表示如果条件允许，CPU 到 GPU 的拷贝可以异步进行，从而和一部分计算重叠。不过它真正发挥作用，通常需要源张量在 pinned memory 中。
+
+那么，`pin_memory` 要不要总是打开？不一定。
+
+如果你在用 CUDA 训练，并且 batch 是从 CPU 拷贝到 GPU，`pin_memory=True` 通常值得尝试，很多训练脚本也会默认打开它。但如果你只在 CPU 上训练，或者数据已经在 GPU 上，或者不是使用 CUDA 而是使用其他 GPU（例如 Intel 的 XPU），或者 batch 很小、拷贝不是瓶颈，那么它带来的收益可能很小，甚至会有一点额外开销。
+
+所以更实用的判断是：
+
+- CUDA 训练：可以优先尝试 `pin_memory=True`；
+- CPU 训练：通常没必要；
+- 不确定是否有帮助：用实际训练吞吐量测试。
+
+`pin_memory` 不是模型正确性的开关，而是数据传输效率的开关。它解决的问题不是能不能训练，而是 CPU 准备好的 batch 能不能更快送到 GPU。
+
+## 2.3.7 IterableDataset：当数据不能随机访问时
+
+到目前为止，我们默认使用的是最常见的 **map-style dataset**。例如前面写的 `SimpleTensorDataset`，它的特点是可以用下标随机访问：
+
+```python
+sample = dataset[index]
+```
+
+这类数据集通常有明确长度，也可以很自然地打乱顺序。例如图像分类数据集、已经整理好的文本分类数据集、普通张量数据集，大多数都可以写成 map-style dataset。
+
+但是，并不是所有数据都适合用下标访问。例如，有些数据来自一个持续产生样本的数据流：
+
+- 从日志系统中不断读取新数据；
+- 从远程服务或数据库中流式读取样本；
+- 从一个超大文件中顺序扫描数据；
+- 生成式任务中动态产生训练样本。
+
+这时候我们不一定知道总长度，也不一定能随机访问第 i 个样本。我们能做的只是不断向前迭代：
+
+```text
+sample_1 -> sample_2 -> sample_3 -> ...
+```
+
+这种数据更适合写成 `IterableDataset`。
+
+IterableDataset 不实现 `__getitem__()`，而是实现 `__iter__()`：
+
+```{python}
+class SimpleCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1."""
+
+    def __init__(self, end: int):
+        self.end = end
+
+    def __iter__(self) -> Iterator[Tensor]:
+        for i in range(self.end):
+            yield torch.tensor(i)
+```
+
+我们可以直接用 DataLoader 读取它：
+
+```{python}
+dataset = SimpleCountingDataset(end=10)
+dataloader = utils.DataLoader(dataset, batch_size=4)
+
+for i, batch in enumerate(dataloader, start=1):
+    print(f'Batch {i}: {batch}')
+```
+
+注意，这里的语义已经变了。对于 map-style dataset，DataLoader 可以通过 sampler 生成一组下标，再用这些下标去取样本；对于 iterable-style dataset，DataLoader 只能从 `__iter__()` 产生的数据流里不断取样本。
+
+所以，Dataset 和 IterableDataset 的核心区别不是代码形式，而是数据访问模式不同：
+
+::: {.list-table tbl-colwidths="[20,20,30,45]"}
+表 1：Dataset 和 IterableDataset 的区别
+
+- - 类型
+  - 核心接口
+  - 数据访问方式
+  - 典型场景
+
+- - Dataset
+  - `__len__()` 和 `__getitem__()`
+  - 通过下标随机访问
+  - 张量数据、图片分类、固定文本数据集
+
+- - IterableDataset
+  - `__iter__()`
+  - 按数据流顺序迭代
+  - 流式数据、超大文件、在线生成样本
+:::
+
+两者的用法也有一些不同的地方。
+
+首先，`shuffle=True` 通常是 map-style dataset 的操作，因为它只需要打乱数据下标；但对 IterableDataset 来说，由于数据是流式产生的，DataLoader 并不能提前知道所有样本并打乱。因此，如果需要对流式数据做随机化，通常要在 IterableDataset 内部自己实现 buffer shuffle 或者数据分片逻辑。
+
+其次，当 IterableDataset 配合多个 worker 使用时，每个 worker 都会拿到一个 dataset 的副本。如果不手动切分数据，不同 worker 可能会读到重复样本。对于这种情况，我们可以用 `get_worker_info()` 在 `__iter__()` 里知道当前是哪个 worker，然后给不同 worker 分配不同的范围：
+
+```{python}
+class ShardedCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1, sharded across workers."""
+
+    def __init__(self, end: int):
+        self.end = end
+
+    def __iter__(self) -> Iterator[Tensor]:
+        worker_info = utils.get_worker_info()
+
+        if worker_info is None:
+            start = 0
+            step = 1
+        else:
+            start = worker_info.id
+            step = worker_info.num_workers
+
+        for i in range(start, self.end, step):
+            yield torch.tensor(i)
+```
+
+在这个例子中，如果有 2 个 worker，worker 0 会产生 `0, 2, 4, ...`，worker 1 会产生 `1, 3, 5, ...`。这样就避免了重复读取同一批数据。
+
+当然，在小规模实验里，我们大多数时候用的还是 map-style dataset。但知道 IterableDataset 的存在很重要，因为它告诉我们，PyTorch 的数据管道不只服务于已经整理好的小数据集，也可以服务于更接近真实系统的数据流。
+
+::: {.callout-tip}
+如果你想继续了解 PyTorch 在数据加载上的一些工程化扩展，可以看一下 [torchdata](https://meta-pytorch.org/data/beta/index.html)。现在它比较值得关注的方向之一是 `StatefulDataLoader`：它允许数据加载器像模型和优化器一样保存状态。这样一来，当训练在一个 epoch 中途被打断时，我们不一定只能从 epoch 开头重新开始，而是可以尝试恢复到更接近中断前的位置。
+:::
+
+## 2.3.8 一个更接近训练脚本的 DataLoader 配置
+
+到这里，我们已经理解了 DataLoader 中几个容易困惑的参数：
+
+- `batch_size` 控制每个 mini-batch 有多少样本；
+- `shuffle` 控制每个 epoch 是否打乱样本顺序；
+- `collate_fn` 控制多个样本如何组成 batch；
+- `num_workers` 控制是否用多进程提前加载数据；
+- `persistent_workers` 控制 worker 是否跨 epoch 保留；
+- `pin_memory` 控制是否把 batch 放到 pinned memory 中，加速 CPU 到 GPU 的拷贝。
+
+在一个常见的 GPU 训练脚本里，我们可能会写成这样：
+
+::: {.callout-note}
+这里我们使用较新的 `torch.accelerator` API 来动态检测当前可用的加速器设备。如果有 CUDA 可用，就使用 CUDA；如果有 XPU 可用，就用 XPU；如果所有加速器都没有，就回退到 CPU。这种方式比直接写 `torch.device('cuda' if torch.cuda.is_available() else 'cpu')` 更现代，也更适合未来可能出现的新加速器类型。我们后面的所有训练代码都会使用这种方式来获取设备。该 API 在 PyTorch 2.6 中引入。
+:::
+
+```python
+device = torch.accelerator.current_accelerator(check_available=True)
+if device is None:
+    device = torch.device('cpu')
+
+dataset = utils.TensorDataset(X, y)
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=64,
+    shuffle=True,
+    num_workers=2,
+    pin_memory=device.type == 'cuda',
+    persistent_workers=True,
+)
+```
+
+然后训练循环里：
+
+```python
+for X, y in dataloader:
+    X = X.to(device, non_blocking=True)
+    y = y.to(device, non_blocking=True)
+
+    y_pred = model(X)
+    loss = loss_fn(y_pred, y)
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+```
+
+当然，DataLoader 的参数不应该记成固定模板，而应该根据瓶颈来调整：
+
+- 代码还没跑通：先 `num_workers=0`；
+- 数据读取慢、GPU 等数据：增加 `num_workers`；
+- CUDA 训练且 CPU->GPU 拷贝明显：尝试 `pin_memory=True`；
+- Epoch 很多且 worker 启动慢：尝试 `persistent_workers=True`；
+- 样本无法默认拼接：写 `collate_fn`。
+
+这样理解之后，DataLoader 就不只是一个把 `batch_size` 填进去的工具，而是整个训练吞吐量的一部分。
+
+## 2.3.9 本章小结
+
+这一节我们从训练循环中的数据问题出发，介绍了 PyTorch 的 Dataset 和 DataLoader。
+
+Dataset 负责定义单个样本如何被取出，常见的 map-style dataset 通过 `__len__()` 和 `__getitem__()` 支持下标访问；IterableDataset 则通过 `__iter__()` 产生数据流，更适合流式数据和无法随机访问的数据源。
+
+DataLoader 负责把样本变成 mini-batch。默认情况下，它会自动把形状一致的张量 stack 起来；如果样本长度不同或结构更复杂，就需要通过 `collate_fn` 自定义打包方式。
+
+在效率方面，`num_workers` 可以用多个子进程提前加载数据，但也会带来内存、调试和跨平台问题。Windows 通常使用 spawn，需要注意 `if __name__ == '__main__'` 和对象可序列化；Linux 上常见的 fork 启动更快，但也要小心复杂状态和内存占用。`pin_memory` 主要服务于 CUDA 训练中的 CPU 到 GPU 数据拷贝，而 `persistent_workers` 可以减少多个 epoch 之间反复启动 worker 的开销。
+
+所以，DataLoader 的核心不是某个固定配置，而是让数据供应跟上模型训练。小实验可以从简单配置开始；当数据读取成为瓶颈时，再逐步打开多进程、pinned memory 和 persistent workers。
+
+到此，我们已经了解了 PyTorch 数据管道的基本构成和常见配置。下一节，我们来看看 PyTorch 的主体，也就是 `nn.Module` 和 `nn.functional`，以及它们是如何定义模型的。

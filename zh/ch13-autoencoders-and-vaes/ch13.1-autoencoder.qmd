@@ -1,0 +1,367 @@
+---
+author: jshn9515
+date: 2026-03-24
+date-modified: 2026-04-04
+open-graph:
+  title: ch13.1-autoencoder
+  description: "13.1 Autoencoders: Starting with Compression and Reconstruction"
+title: "13.1 AutoEncoder：从压缩与重建开始"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch13-autoencoders-and-vaes/ch13.1-autoencoder.ipynb){fig-align="left"}
+
+在正式进入 VAE (Variational Autoencoder) 之前，我们先来看一个更简单也更直观的模型（也是 VAE 的前身）：**AutoEncoder** [@hinton2006AutoEncoder]。
+
+如果用一句话概括，AutoEncoder 做的事情其实很简单：
+
+> **把输入数据压缩成一个更紧凑的表示，再尽可能从这个表示中恢复出原始输入。**
+
+听起来，它有点像数据压缩机。比如一张图片本来有几百上千个像素，信息维度很高；AutoEncoder 会试图把它压到一个更低维的向量里，然后再从这个向量把原图重建出来。
+
+这个过程看起来简单，却很重要。因为它告诉我们，神经网络不仅可以做分类，也可以学会一种对数据本身的内部表示。这正是后面理解 VAE 和 Diffusion，乃至扩散模型里潜空间的基础。
+
+```{python}
+import math
+
+import dnnlpy
+import dnnlpy.nn as dnn
+import dnnlpy.optim as dopt
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.utils.data as utils
+import torchvision.datasets as datasets
+import torchvision.transforms.v2 as v2
+from sklearn.manifold import TSNE
+from torch import Tensor
+from torchmetrics import MeanMetric
+from torchvision.utils import make_grid
+
+print('PyTorch version:', torch.__version__)
+```
+
+```{python}
+dnnlpy.set_seed(42)
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+## 13.1.1 什么是 AutoEncoder
+
+一个标准的 AutoEncoder 由两部分组成：
+
+- **Encoder（编码器）**：把输入 $x$ 映射成一个低维表示 $z$；
+- **Decoder（解码器）**：再把这个表示 $z$ 还原成重建结果 $\hat{x}$。
+
+写成公式就是：
+
+$$
+z = f_\theta(x)
+$$
+
+$$
+\hat{x} = g_\phi(z)
+$$
+
+合起来也可以写成：
+
+$$
+\hat{x} = g_\phi(f_\theta(x))
+$$
+
+其中，$x$ 是原始输入；$z$ 是中间的**隐藏表示（latent representation）**；$\hat{x}$ 是模型重建出来的结果。
+
+从结构上看，它像一个 U 型漏斗，前半部分把高维输入不断压缩，中间经过一个较小的瓶颈层，后半部分再把信息展开，还原回原空间。有一点 U-Net 的感觉，但它的目标不是分割，而是重建。
+
+AutoEncoder 的核心结构经常长这样：
+
+$$
+x \rightarrow \text{Encoder} \rightarrow z \rightarrow \text{Decoder} \rightarrow \hat{x}
+$$
+
+![图 13.1.1：AutoEncoder 网络结构 [@Mathworks2026AutoEncoder]](figures/ch13.1-autoencoder.svg){height=225px}
+
+到这里你可能会问，既然目标只是让输出尽量接近输入，那模型直接学一个恒等映射不就行了吗？
+
+确实，如果不给任何限制，一个容量足够大的网络完全可能只是把输入原样抄一遍。那样虽然训练误差很小，但网络并没有学到什么有价值的东西。所以，AutoEncoder 的关键不在于输入等于输出，而在于模型必须经过一个受限制的中间表示 $z$，才能完成重建。
+
+这就像让一个人看完一张复杂图片后，只能用一句简短的话概括，然后再让另一个人根据这句话尽量把图片画回来。如果最后能画得还不错，说明这句概括确实抓住了图中的关键信息。
+
+因此，AutoEncoder 的本质就是，在压缩过程中，强迫模型尽可能学习数据的有效表示。
+
+## 13.1.2 训练目标：让重建尽可能接近输入
+
+AutoEncoder 的训练非常直观：给定输入 $x$，经过编码和解码得到 $\hat{x}$，然后让 $\hat{x}$ 尽量接近 $x$。
+
+最常见的损失函数是**重建误差（reconstruction loss）**：
+
+$$
+\mathcal{L}(x, \hat{x}) = \|x - \hat{x}\|^2
+$$
+
+也就是均方误差（MSE）。
+
+如果输入是图像，而且像素值在 $[0,1]$ 之间，我们也可以用二元交叉熵（BCE）：
+
+$$
+\mathcal{L}(x, \hat{x}) = - \sum_i \left[x_i \log \hat{x}_i + (1-x_i)\log(1-\hat{x}_i)\right]
+$$
+
+不管具体形式是什么，思想都一样：让模型学会从压缩表示中尽可能恢复原始数据。
+
+所以 AutoEncoder 的优化目标可以写成：
+
+$$
+\min_{\theta,\phi} \mathbb{E}_{x \sim p_{\text{data}}}[\mathcal{L}(x, \hat{x})]
+$$
+
+这里并没有标签，不需要“猫”“狗”这样的监督信号。模型只需要数据本身，就能进行训练。因此 AutoEncoder 常被看作一种**自监督 / 无监督**表示学习方法。
+
+以 MNIST 手写数字为例，一张图片大小是 $28 \times 28$，总共有 784 个像素。我们可以设计一个 AutoEncoder：
+
+- 输入层：784 维
+- 编码器：784 → 256 → 64 → 16
+- 解码器：16 → 64 → 256 → 784
+- 输出层：784 维
+
+这样，我们中间只保留一个 16 维向量 $z$。这意味着，每张数字图片都被压缩成一个 16 维的点。
+
+如果训练得好，我们会发现：
+
+- 相似的数字会被映射到相近的位置
+- 不同类别的数字可能在潜空间里形成不同区域
+- Decoder 可以从这些点大致重建出对应的数字形状
+
+这说明 AutoEncoder 学到的不是每个像素单独怎么存，而是图像背后的更高层结构，比如笔画、形状、整体轮廓。这也是 latent space 这个概念第一次真正登场的地方。模型试图在一个更紧凑的空间里表示数据的本质结构。
+
+## 13.1.3 AutoEncoder 学到了什么
+
+AutoEncoder 学到的东西，可以从两个层面理解。
+
+**第一层：压缩表示**
+
+AutoEncoder 把原始高维数据变成一个更小的向量。这个向量通常不是人工设计的特征，而是网络自己学出来的。比如对于人脸图像，latent 向量里可能隐含了姿态、光照、轮廓、表情和局部纹理，这些因素不一定能被单独解释，但它们共同构成了对输入的某种编码。
+
+**第二层：数据结构**
+
+为了能成功重建输入，模型必须捕捉数据中的统计规律。所以 AutoEncoder 往往会学到数据中哪些模式经常出现，哪些特征是关键的，而哪些细节可以忽略。换句话说，它并不只是记住样本，而是在某种程度上学习了这类数据通常长什么样。
+
+**AutoEncoder 和 PCA 的关系**
+
+从某种角度看，AutoEncoder 可以被视为 PCA 的非线性推广。
+
+PCA 做的是，把数据投影到一个低维线性子空间，并且尽量保留原数据的方差。而 AutoEncoder 做的是，用神经网络学习编码和解码，因此可以表示复杂的非线性映射。如果 AutoEncoder 只有一层线性 encoder 和一层线性 decoder，并使用 MSE 作为损失，那么它学到的子空间和 PCA 有紧密关系。
+
+但神经网络的优势在于：真实数据往往不是分布在线性子空间上，而是落在某个复杂的非线性子空间附近。用更专业的术语来说，数据可能分布在一个复杂的**低维流形（manifold）** 上。因此，PCA 难以捕捉这种结构，而 AutoEncoder 得益于其灵活的非线性映射能力，能够更好地适应数据的内在几何形状。
+
+所以相比 PCA，AutoEncoder 更适合图像、语音、文本等复杂数据。
+
+## 13.1.4 AutoEncoder 的 PyTorch 实现
+
+下面我们来看一个最简单的 AutoEncoder 实现。这里用全连接网络做编码和解码，适合用来理解基本流程。
+
+这里我们定义了一个基本的 `AutoEncoder` 类，包含一个 encoder 和一个 decoder。编码器是一个两层的全连接网络，输入维度是 784（$28\times 28$ 的图像展平），输出维度是 32（latent space 的大小）。解码器也是一个两层的全连接网络，把 latent 向量从 32 维还原回 784 维。
+
+同时，由于我们使用了 `v2.ToDtype(torch.float32, scale=True)` 这个变换，输入的像素值会被归一化到 $[0,1]$ 之间。所以我们在 decoder 的最后加了一个 `nn.Sigmoid()` 激活函数，确保输出也在 $[0,1]$ 范围内。
+
+```{python}
+class AutoEncoder(nn.Module):
+    """A fully connected autoencoder for small image tensors."""
+
+    def __init__(
+        self,
+        input_shape: tuple[int, int, int],
+        hidden_dim: int = 256,
+        latent_dim: int = 32,
+    ):
+        """Initialize encoder and decoder networks."""
+        super().__init__()
+        self.latent_dim = latent_dim
+
+        input_dim = math.prod(input_shape)
+        self.encoder = nn.Sequential(
+            dnn.Flatten(),  # 28x28 -> 784
+            dnn.Linear(input_dim, hidden_dim),
+            dnn.ReLU(),
+            dnn.Linear(hidden_dim, latent_dim),
+        )
+        self.decoder = nn.Sequential(
+            dnn.Linear(latent_dim, hidden_dim),
+            dnn.ReLU(),
+            dnn.Linear(hidden_dim, input_dim),
+            dnn.Sigmoid(),
+            dnn.Unflatten(1, input_shape),  # 784 -> 28x28
+        )
+
+    def encode(self, x: Tensor) -> Tensor:
+        """Encode inputs into latent vectors."""
+        z = self.encoder(x)
+        return z
+
+    def decode(self, z: Tensor) -> Tensor:
+        """Decode latent vectors back to input-shaped tensors."""
+        x_hat = self.decoder(z)
+        return x_hat
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Reconstruct inputs through the encoder and decoder."""
+        z = self.encode(x)
+        x_hat = self.decode(z)
+        return x_hat
+```
+
+我们使用 MNIST 数据集来训练这个 AutoEncoder。每张图片被展平为一个 784 维的向量，输入到网络中。训练过程中，我们使用均方误差（MSE）作为损失函数，让模型学会从压缩表示中重建出原始图像。
+
+可以看到，整个训练过程只做三件事：
+
+1. 输入图片 $x$；
+2. 得到重建结果 $\hat{x}$；
+3. 最小化它们之间的差异。
+
+这就是 AutoEncoder 最核心的训练逻辑。
+
+```{python}
+root = dnnlpy.get_data_root()
+transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+
+train_ds = datasets.MNIST(root, train=True, download=True, transform=transform)
+test_ds = datasets.MNIST(root, train=False, download=True, transform=transform)
+train_dl = utils.DataLoader(train_ds, batch_size=128, shuffle=True)
+
+input_shape = (1, 28, 28)
+model = AutoEncoder(input_shape).to(device)
+optimizer = dopt.AdamW(model.parameters(), lr=1e-3)
+loss_fn = dnn.MSELoss()
+loss_metric = MeanMetric().to(device)
+```
+
+```{python}
+num_epochs = 10
+
+model.train()
+for epoch in range(1, num_epochs + 1):
+    loss_metric.reset()
+
+    for x, _ in train_dl:
+        x = x.to(device)
+        x_hat = model(x)
+        loss = loss_fn(x_hat, x)
+        loss.backward()
+        loss_metric.update(loss.detach())
+
+        optimizer.step()
+        optimizer.zero_grad()
+
+    print(f'Epoch [{epoch:2d}/{num_epochs:2d}] | loss: {loss_metric.compute():.4f}')
+```
+
+我们从测试集中随机采样 6 张图片，看看它们的重建效果。
+
+```{python}
+num_samples = 6
+samples_idx = torch.randperm(len(test_ds))[:num_samples]
+original = [test_ds[int(idx)][0] for idx in samples_idx]
+original = torch.stack(original, dim=0).to(device)
+
+model.eval()
+with torch.inference_mode():
+    reconstructed = model(original)
+
+image_list = torch.concat([original, reconstructed], dim=0)
+grid = make_grid(image_list, nrow=num_samples, padding=1, pad_value=1)
+grid = grid.permute(1, 2, 0).numpy(force=True)  # CxHxW -> HxWxC
+
+fig = plt.figure(1, figsize=(8, 3))
+ax = fig.add_subplot(1, 1, 1)
+ax.imshow(grid, cmap='gray')
+ax.axis('off')
+ax.set_title('Original (top) vs Reconstructed (bottom)')
+dnnlpy.set_matplotlib_format('highdpi')
+plt.show()
+```
+
+可以看到，虽然重建的图像可能有些模糊，但整体轮廓和数字形状都能被还原出来。这说明 AutoEncoder 确实学到了输入数据的某种有效表示，而不是简单地记住每个像素值。
+
+## 13.1.5 AutoEncoder 的局限性
+
+虽然 AutoEncoder 能学到不错的表示，但它有一个很关键的问题：它学到的 latent space 不一定适合生成新样本。
+
+为什么？难道我们不能直接从潜空间中采样一个 $z$，然后让 decoder 从这个 $z$ 生成一个新图像吗？
+
+或许你已经发现了，我们从头到尾都没提到 $z$ 到底服从一个什么分布。我们只是让模型学会把输入映射到某个 $z$，然后再从这个 $z$ 重建出输入。但我们并没有告诉模型，这些 $z$ 应该分布在潜空间的什么位置，或者说应该服从什么样的概率分布。也就是说，普通 AutoEncoder 只要求输入能被 encoder 编码到某个 $z$，然后 decoder 能从这个 $z$ 把原图重建回来。它并没有约束所有 $z$ 在潜空间中的分布形式。
+
+但是，如果我们想要生成图像，我们需要从潜空间中随机采样一个 $z$，然后让 decoder 从这个 $z$ 生成一个新图像。问题是，由于我们没有对潜空间的分布进行任何约束，我们训练得到的潜空间可能和我们的采样空间完全不同。一旦我们随机采样一个 $z$，很可能就落在了这些空洞当中。结果就是 decoder 可能会生成出毫无意义的图像，甚至完全随机的噪声。
+
+更糟糕的是，AutoEncoder 训练得到的是一个 deterministic 的映射。也就是说，给定一个输入 $x$，它总是被编码成同一个 $z$。这就导致了潜空间的分布非常不规整，甚至可能是离散的点云，而不是一个连续的、平滑的分布。
+
+利用我们之前训练好的模型，现在我们从正态分布中随机采样几个 $z$，看看 decoder 从这些随机 $z$ 生成的图像是什么样子。
+
+```{python}
+z = torch.randn(num_samples, model.latent_dim).to(device)
+
+with torch.inference_mode():
+    x_hat = model.decode(z)
+
+grid = make_grid(x_hat, nrow=num_samples, padding=1, pad_value=1)
+grid = grid.permute(1, 2, 0).numpy(force=True)  # CxHxW -> HxWxC
+
+fig = plt.figure(2, figsize=(8, 2))
+ax = fig.add_subplot(1, 1, 1)
+ax.imshow(grid, cmap='gray')
+ax.axis('off')
+ax.set_title('Randomly Generated Images from Latent Space')
+dnnlpy.set_matplotlib_format('highdpi')
+plt.show()
+```
+
+你看，这些随机采样的 $z$ 生成的图像多是结构混乱的模糊图像，而不是清晰的数字。因为训练过程中，decoder 只学习如何对 encoder 输出的那部分潜在表示进行重建，而没有学习如何处理整个潜在空间中的任意点。因此，当输入随机采样得到的 $z$ 时，这些点往往落在训练时未覆盖或很少覆盖的区域，decoder 无法将其稳定映射为真实图像，只能输出失真的结果。
+
+我们再来看看潜空间中的点分布情况。我们把测试集中的图片通过 encoder 映射到潜空间中，并用 t-SNE 进行可视化，看看它们的分布是什么样子的。
+
+```{python}
+num_samples = 1000
+samples_idx = torch.randperm(len(test_ds))[:num_samples]
+samples_batch = [test_ds[int(idx)][0] for idx in samples_idx]
+samples_batch = torch.stack(samples_batch, dim=0).to(device)
+
+model.eval()
+with torch.inference_mode():
+    z_list = model.encode(samples_batch)
+
+z_list = z_list.numpy(force=True)
+label_list = test_ds.targets[samples_idx].numpy()
+
+Mdl = TSNE(n_components=2, random_state=42)
+z_2d = Mdl.fit_transform(z_list)
+
+fig = plt.figure(3, figsize=(6, 5))
+ax = fig.add_subplot(1, 1, 1)
+scatter = ax.scatter(z_2d[:, 0], z_2d[:, 1], c=label_list, s=8, alpha=0.7)
+ax.set_xlabel('z1')
+ax.set_ylabel('z2')
+ax.set_title('Latent means of test samples')
+fig.colorbar(scatter)
+dnnlpy.set_matplotlib_format('svg')
+plt.show()
+```
+
+你会发现，潜空间中的点分布非常不规整，甚至可能形成一些离散的簇。这些簇对应着训练数据中不同类别的样本，但它们之间可能存在很大的空洞。也就是说，潜空间中有很多区域是没有被训练数据覆盖的。当我们从这些区域中采样 $z$ 时，decoder 无法正确地将其映射为有效的图像，因此生成的结果往往是模糊或无意义的。
+
+所以，普通 AutoEncoder 更擅长表示学习，降维与去噪，特征提取，却不天然擅长稳定地生成新的高质量样本。而这，正是后面引出 VAE 的关键动机。
+
+## 13.1.6 本章小结
+
+到这里，我们已经知道了 AutoEncoder 的基本思想：
+
+- 用 encoder 把输入压缩到 latent space；
+- 用 decoder 从 latent 表示重建原输入；
+- 通过重建误差训练模型。
+
+它告诉我们，神经网络可以学会一种有意义的潜在表示。但与此同时，它也暴露出一个问题：
+
+> **普通 AutoEncoder 的潜空间虽然能表示数据，却未必规整、连续、可采样。**
+
+于是一个自然的问题就出现了：能不能让模型不仅会压缩和重建，还让 latent space 具有良好的概率结构，从而可以直接采样生成新样本？
+
+这就把我们带到了下一节：**Variational Autoencoder (VAE)** [@kingma2022VAE]。

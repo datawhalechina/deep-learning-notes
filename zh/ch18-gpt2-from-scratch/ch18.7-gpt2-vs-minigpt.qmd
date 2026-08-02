@@ -1,0 +1,331 @@
+---
+author: jshn9515
+date: 2026-06-23
+date-modified: 2026-06-23
+open-graph:
+  title: ch18.7-gpt2-vs-minigpt
+  description: "18.7 GPT-2：从 MiniGPT 到预训练语言模型"
+title: "18.7 GPT-2：从 MiniGPT 到预训练语言模型"
+order: 7
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch18-gpt2-from-scratch/ch18.7-gpt2-vs-minigpt.ipynb){fig-align="left"}
+
+前面几节里，我们已经从零实现了一个 MiniGPT，并成功在一个小型语料上训练了它。
+
+当看到 GPT-2 这个名字时，可能有人会以为我们还需要学习一种新的模型结构。实际上并不是这样。MiniGPT 和 GPT-2 使用的是同一种 decoder-only Transformer 架构。GPT-2 的主要区别不是多了一个新模块，而是采用了更大的标准配置，并使用大规模语料完成了预训练。
+
+因此，这一节不再重新实现 causal self-attention、MLP 和 GPT block。我们只讨论四件事情：
+
+1. MiniGPT 和 GPT-2 的关系；
+2. GPT-2 系列的不同模型配置；
+3. GPT-2 的参数初始化与残差缩放；
+4. 如何直接使用 Hugging Face 的预训练 GPT-2 生成文本。
+
+```{python}
+import math
+
+import dnnlpy
+import IPython.display as ipy
+import torch
+import torch.nn as nn
+
+print('PyTorch version:', torch.__version__)
+```
+
+```{python}
+dnnlpy.set_seed(42)
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+## 18.7.1 MiniGPT 和 GPT-2 是同一种模型
+
+MiniGPT 的目标不是发明一个与 GPT-2 不同的模型，而是用较小、较清晰的代码复现 GPT 类语言模型的核心结构。
+
+![图 18.7.1 GPT-2 模型结构](figures/ch18.7-gpt2-architecture.png){width=70%}
+
+从计算流程看，两者都可以写成：
+
+$$
+\begin{aligned}
+H^{(0)} &= E_{\text{token}}(X) + E_{\text{position}}(X) \\
+H^{(l+1)} &= \operatorname{GPTBlock}^{(l)}(H^{(l)}) \\
+Z &= \operatorname{LMHead}(\operatorname{LayerNorm}(H^{(L)}))
+\end{aligned}
+$$
+
+其中，每个 GPT block 都由 causal self-attention、MLP、LayerNorm 和 residual connection 组成：
+
+$$
+\begin{aligned}
+H &= X + \operatorname{Attention}(\operatorname{LayerNorm}(X)) \\
+Y &= H + \operatorname{MLP}(\operatorname{LayerNorm}(H))
+\end{aligned}
+$$
+
+因此，MiniGPT 和 GPT-2 在下面这些核心设计上是一致的。真正影响模型规模的，是配置中的几个超参数：
+
+- `vocab_size`：词表大小；
+- `block_size`：模型能够处理的最大上下文长度；
+- `embed_dim`：每个 token 的 hidden dimension；
+- `num_heads`：每层 attention 的 head 数量；
+- `num_layers`：堆叠的 GPT block 数量。
+
+例如，我们前面为了教学而使用的 MiniGPT，可能只有 4 层、128 维 hidden state 和 4 个 attention heads，而 GPT-2 Small 则使用 12 层、768 维 hidden state 和 12 个 attention heads。
+
+从 MiniGPT 变成 GPT-2，结构本身并没有发生根本变化。更准确地说：
+
+> **MiniGPT 是小配置下的 GPT-2-style language model，GPT-2 是经过标准化配置和大规模预训练的真实模型。**
+
+当然，仅仅把 MiniGPT 的层数和 hidden dimension 调大，并不会自动获得 GPT-2 的能力。模型能力来自结构、数据、计算量和训练结果的共同作用。
+
+## 18.7.2 GPT-2 系列的不同配置
+
+GPT-2 不是单个模型，而是一组使用相同架构、不同规模配置的模型。它们的词表大小都是 50257，最大上下文长度都是 1024。主要变化来自层数、hidden dimension 和 attention head 数量。
+
+::: {.list-table}
+表 18.7.2 GPT-2 系列配置
+
+- - 模型
+  - 参数量
+  - 层数 $L$
+  - Hidden size
+  - Num heads
+  - Head dimension
+  - Context length
+
+- - GPT-2 Small
+  - 约 124M
+  - 12
+  - 768
+  - 12
+  - 64
+  - 1024
+
+- - GPT-2 Medium
+  - 约 355M
+  - 24
+  - 1024
+  - 16
+  - 64
+  - 1024
+
+- - GPT-2 Large
+  - 约 774M
+  - 36
+  - 1280
+  - 20
+  - 64
+  - 1024
+
+- - GPT-2 XL
+  - 约 1.5B
+  - 48
+  - 1600
+  - 25
+  - 64
+  - 1024
+:::
+
+可以注意到，四个模型都保持：
+
+$$
+D_{\text{head}} = \frac{D}{H} = 64
+$$
+
+也就是说，GPT-2 在扩大模型时，并没有增大 attention head 的维度，而是同时增加 hidden dimension 和 head 数量。
+
+需要特别注意，对于一个 GPT block，参数量主要来自 attention 和 MLP：
+
+$$
+\underbrace{4D^2}_{\text{QKV and Projection}} +
+\underbrace{8D^2}_{\text{MLP}} \approx 12D^2
+$$
+
+堆叠 $L$ 层后，Transformer blocks 的参数量大致为：
+
+$$
+12LD^2
+$$
+
+因此，增加 hidden dimension 的代价非常大，因为参数量会近似按照 $D^2$ 增长。
+
+## 18.7.3 参数初始化与残差缩放
+
+在很小的模型里，直接使用 PyTorch 的默认初始化通常也能训练。但当 Transformer 堆叠得越来越深时，参数初始化会明显影响训练稳定性。
+
+GPT-2 对 embedding 和线性层权重使用均值为 0、标准差为 0.02 的正态分布初始化：
+
+$$
+W \sim \mathcal{N}(0, 0.02^2)
+$$
+
+bias 通常初始化为 0。
+
+LayerNorm 的缩放参数和偏置分别初始化为：
+
+$$
+\gamma = 1, \qquad \beta = 0.
+$$
+
+可以写成下面的初始化函数：
+
+```{python}
+def reset_parameters(module: nn.Module) -> None:
+    """Apply the basic GPT-2 initialization to one module."""
+    if isinstance(module, nn.Embedding):
+        nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    elif isinstance(module, nn.Linear):
+        nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+
+    elif isinstance(module, nn.LayerNorm):
+        nn.init.ones_(module.weight)
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+```
+
+然后可以对整个模型递归应用：
+
+```python
+model.apply(reset_parameters)
+```
+
+不过，GPT-2 还有一个更值得注意的细节：**残差分支的输出投影需要额外缩放。**
+
+一个 GPT block 有两条残差分支：
+
+```text
+x + attn(...)
+x + mlp(...)
+```
+
+当模型堆叠很多层时，每一层都会向 residual stream 中加入新的输出。如果所有残差输出都使用完全相同的初始化尺度，那么 residual stream 的方差可能随着深度不断累积。
+
+GPT-2 的思路是根据模型深度缩小残差分支输出层的初始化尺度。按照 nanoGPT 中常见的实现方式，attention 和 MLP 的输出投影可以使用：
+
+$$
+\operatorname{std}_{\text{residual}} = \frac{0.02}{\sqrt{2L}}
+$$
+
+其中，$L$ 是 GPT block 的数量，系数 2 来自每个 block 中的两条残差分支。
+
+例如，GPT-2 small 有 12 层：
+
+```{python}
+num_layers = 12
+residual_std = 0.02 / math.sqrt(2 * num_layers)
+print(f'Residual projection std: {residual_std:.6f}')
+```
+
+这会得到比 0.02 更小的初始化标准差。
+
+假设模型中 attention 输出投影和 MLP 输出投影都叫作 `out_proj`，那么我们可以在完成普通初始化之后，再单独重新初始化这些残差输出层：
+
+```python
+for name, parameter in model.named_parameters():
+    if name.endswith('out_proj.weight'):
+        nn.init.normal_(
+            parameter,
+            mean=0.0,
+            std=0.02 / math.sqrt(2 * num_layers),
+        )
+```
+
+这种缩放不会改变模型的前向结构，也不会增加新的参数。它只是让深层 Transformer 在训练开始时拥有更合适的数值尺度。当然，不同实现的模块名可能不同，因此需要根据实际情况修改 `name.endswith()` 的条件。
+
+因此，GPT-2 相比教学版 MiniGPT 的一个重要工程细节是：
+
+> **不仅要决定模型有哪些层，还要决定这些层在训练开始时处于什么数值尺度。**
+
+## 18.7.4 使用 Hugging Face GPT-2 生成文本
+
+由于从头训练一个完整的 GPT-2 需要大量计算资源，通常我们会直接使用已经训练好的模型。Hugging Face 已经提供了转换好的 GPT-2 配置、tokenizer 和预训练权重。我们可以直接加载 `openai-community/gpt2`：
+
+```{python}
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model_id = 'openai-community/gpt2'
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+model = AutoModelForCausalLM.from_pretrained(model_id, device_map=device)
+model.eval()
+ipy.clear_output()
+```
+
+这里的 `from_pretrained()` 不只是创建模型结构，还会下载并加载已经训练好的参数。
+
+我们给模型一段英文开头：
+
+```{python}
+prompt = 'Once upon a time, there was a little girl'
+inputs = tokenizer(prompt, return_tensors='pt').to(device)
+```
+
+GPT-2 是 causal language model，因此可以根据已有 token 逐步预测后续 token。下面使用 sampling 生成文本。这里我们设置 `repetition_penalty=1.1`，可以降低重复生成相同内容的倾向。
+
+```{python}
+model.cpu()
+with torch.inference_mode():
+    output_ids = model.generate(
+        **inputs,
+        max_new_tokens=150,
+        do_sample=True,
+        temperature=0.8,
+        top_k=50,
+        top_p=0.95,
+        repetition_penalty=1.1,
+        pad_token_id=tokenizer.eos_token_id,
+    )
+```
+
+最后把 token ids 解码回文本：
+
+```{python}
+generated_text = tokenizer.decode(
+    output_ids[0],
+    skip_special_tokens=True,
+)
+print(generated_text)
+```
+
+由于这里启用了 sampling，即使 prompt 相同，不同随机种子也可能得到不同结果。
+
+几个主要生成参数分别控制：
+
+- `max_new_tokens`：最多生成多少个新 token；
+- `do_sample=True`：从概率分布中采样，而不是每次都选择最大概率 token；
+- `temperature`：调整概率分布的平滑程度；
+- `top_k`：只在概率最高的 $k$ 个 token 中采样；
+- `top_p`：只在累计概率达到 $p$ 的候选集合中采样；
+- `repetition_penalty`：降低重复生成相同内容的倾向。
+
+这些生成方法前面已经详细介绍过，这里就不再重复。
+
+我们还可以直接查看模型的配置：
+
+```{python}
+print('vocab_size:', model.config.vocab_size)
+print('n_positions:', model.config.n_positions)
+print('n_embed:', model.config.n_embd)
+print('n_layer:', model.config.n_layer)
+print('n_head:', model.config.n_head)
+```
+
+这些参数与前面配置表中的内容一致。
+
+## 18.7.5 本章小结
+
+这一节没有重新实现 GPT-2，因为前面的 MiniGPT 已经实现了它的核心结构。
+
+MiniGPT 和 GPT-2 都是 decoder-only Transformer，都使用 causal self-attention、pre-LN GPT blocks、learned positional embedding 和 next-token prediction。两者之间最直接的区别，是模型配置和训练规模。
+
+GPT-2 系列通过增加层数、hidden dimension 和 attention head 数量，形成了从 124M 到 1.5B 参数的四种主要规模。随着网络加深，初始化也变得更加重要。GPT-2 使用标准差为 0.02 的正态初始化，并缩小残差分支输出投影的初始化尺度，从而控制深层 residual stream 的数值增长。
+
+最后，我们使用 Hugging Face Transformers 库直接加载了 GPT-2 small 的 tokenizer、模型结构和预训练权重，并通过 `generate()` 函数完成了文本生成。
+
+因此，从 MiniGPT 到 GPT-2，并不是从一种架构跳到另一种架构，而是完成下面这一步：
+
+> **从一个用于理解原理的小型实现，走向一个具有标准配置、稳定初始化和预训练参数的真实语言模型。**

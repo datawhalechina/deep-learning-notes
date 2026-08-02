@@ -1,0 +1,709 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-08
+open-graph:
+  title: ch3.2-activation-functions
+  description: "3.2 Activation Functions: Adding Nonlinearity to Neural Networks"
+title: "3.2 激活函数：给神经网络加入非线性"
+order: 2
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch3-multi-layer-perceptron/ch3.2-activation-functions.ipynb){fig-align="left"}
+
+上一节我们看到，如果只是把多个线性层堆在一起，那么整个模型仍然等价于一个线性层：
+
+$$
+Z = XW' + b'
+$$
+
+也就是说，层数虽然变多了，但模型本质上仍然只能表示线性变换。为了让神经网络能够表示更复杂的函数，我们需要在线性层之间加入非线性操作。这个非线性操作就是**激活函数（activation function）**。
+
+对于一个两层 MLP，我们可以写成：
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \phi(H) \\
+Z &= AW_2 + b_2
+\end{aligned}
+$$
+
+其中，$\phi$ 就是激活函数。它通常逐元素作用在 $H$ 上，也就是说，$H$ 中的每个元素都会经过同一个函数。
+
+这一节我们先介绍几个经典激活函数，并推导它们在反向传播中的梯度。我们会把激活函数实现成一个单独的模块，拥有自己的 `forward` 和 `backward`，以便在后续的 MLP 实现中直接使用。
+
+```{python}
+from typing import override
+
+import dnnlpy
+import matplotlib.pyplot as plt
+import numpy as np
+from dnnlpy.models.mlp import Module
+
+rng = np.random.default_rng(42)
+dnnlpy.set_matplotlib_format('svg')
+print('NumPy version:', np.__version__)
+```
+
+## 3.2.1 背景知识：雅可比矩阵和 VJP
+
+在正式介绍激活函数之前，我们先补一个反向传播里经常被忽视的概念：**雅可比矩阵（Jacobian matrix）**。
+
+先从普通的一元函数开始。假设：
+
+$$
+y = f(x)
+$$
+
+其中，$x$ 和 $y$ 都是标量，那么导数就是：
+
+$$
+\frac{dy}{dx}
+$$
+
+它描述的是：输入 $x$ 变化一点点时，输出 $y$ 会怎么变化。
+
+但是神经网络里的变量通常不是标量，而是向量或矩阵。例如，一层网络可以看成一个向量到向量的函数：
+
+$$
+y = f(x), \quad x \in \mathbb{R}^n, \quad y \in \mathbb{R}^m
+$$
+
+也就是说，输入有 $n$ 个分量：
+
+$$
+x = [x_1, x_2, \dots, x_n]
+$$
+
+输出有 $m$ 个分量：
+
+$$
+y = [y_1, y_2, \dots, y_m]
+$$
+
+这时我们不能只用一个导数来描述 $f$ 的变化，因为每个输出 $y_i$ 都可能依赖每个输入 $x_j$。因此，我们需要把所有偏导数整理成一个矩阵：
+
+$$
+J_f(x) =
+\frac{\partial y}{\partial x} =
+\begin{bmatrix}
+\frac{\partial y_1}{\partial x_1} & \frac{\partial y_1}{\partial x_2} & \cdots & \frac{\partial y_1}{\partial x_n} \\
+\frac{\partial y_2}{\partial x_1} & \frac{\partial y_2}{\partial x_2} & \cdots & \frac{\partial y_2}{\partial x_n} \\
+\vdots & \vdots & \ddots & \vdots \\
+\frac{\partial y_m}{\partial x_1} & \frac{\partial y_m}{\partial x_2} & \cdots & \frac{\partial y_m}{\partial x_n}
+\end{bmatrix}
+\in \mathbb{R}^{m \times n}
+$$
+
+这个矩阵就是**雅可比矩阵（Jacobian matrix）**。它的第 $i$ 行第 $j$ 列表示输入的第 $j$ 个分量 $x_j$ 对输出的第 $i$ 个分量 $y_i$ 有多大影响。
+
+那么，为什么反向传播需要雅可比矩阵呢？因为反向传播本质上就是在复合函数里反复使用链式法则。
+
+假设损失函数 $L$ 不是直接依赖 $x$，而是通过中间变量 $y$ 依赖 $x$：
+
+$$
+x \rightarrow y = f(x) \rightarrow L
+$$
+
+反向传播时，我们通常已经知道上游传回来的梯度：
+
+$$
+\frac{\partial L}{\partial y}
+$$
+
+现在要继续往前传，求：
+
+$$
+\frac{\partial L}{\partial x}
+$$
+
+根据链式法则，$\frac{\partial L}{\partial x}$ 需要由两部分组成：
+
+1. $L$ 对 $y$ 的梯度，也就是上游梯度；
+2. $y$ 对 $x$ 的导数，也就是当前模块的雅可比矩阵。
+
+如果把梯度看成行向量，可以写成：
+
+$$
+\frac{\partial L}{\partial x} =
+\frac{\partial L}{\partial y}
+\frac{\partial y}{\partial x} =
+\frac{\partial L}{\partial y} J_f(x)
+$$
+
+这句话非常重要：
+
+> **每个模块的 backward，本质上都是把上游梯度乘上当前模块的雅可比矩阵。**
+
+不过在实际写深度学习代码时，我们几乎不会显式构造完整的雅可比矩阵。原因很简单：它太大了。比如一个函数把 1000 维向量映射到 1000 维向量，那么雅可比矩阵就是 $1000 \times 1000$，已经有一百万个元素。如果是图像、序列或者大模型中的隐藏状态，完整雅可比矩阵会更大。
+
+所以，深度学习框架真正计算的通常不是完整的 $J_f(x)$，而是上游梯度乘雅可比矩阵的结果，也就是：
+
+$$
+\frac{\partial L}{\partial y} J_f(x)
+$$
+
+这也叫 **VJP（vector-Jacobian product）**。也就是说，反向传播关心的不是把整个雅可比矩阵写出来，而是如何高效地把上游梯度传到输入。
+
+接下来要讲的激活函数就是一个很好的例子。激活函数通常逐元素作用：
+
+$$
+y_i = \phi(x_i)
+$$
+
+这里的“**逐元素**”非常关键：第 $i$ 个输出只依赖第 $i$ 个输入，不依赖其他输入分量。因此：
+
+$$
+\frac{\partial y_i}{\partial x_j} = 0, \quad i \ne j
+$$
+
+所以逐元素激活函数的雅可比矩阵是一个对角矩阵：
+
+$$
+\frac{\partial y}{\partial x} =
+\begin{bmatrix}
+\phi'(x_1) & 0 & \cdots & 0 \\
+0 & \phi'(x_2) & \cdots & 0 \\
+\vdots & \vdots & \ddots & \vdots \\
+0 & 0 & \cdots & \phi'(x_n)
+\end{bmatrix}
+$$
+
+把上游梯度乘上这个对角矩阵，结果就等价于逐元素相乘：
+
+$$
+\frac{\partial L}{\partial x} =
+\frac{\partial L}{\partial y} \odot \phi'(x)
+$$
+
+这就是为什么激活函数的 backward 通常写成：
+
+```python
+grad_input = grad_output * local_derivative
+```
+
+从数学上看，这其实是在做“上游梯度 $\times$ 雅可比矩阵”；从代码上看，由于逐元素激活函数的雅可比矩阵是对角矩阵，所以我们可以直接用逐元素乘法高效实现。
+
+## 3.2.2 激活函数做了什么？
+
+从上一小节我们知道，激活函数的 backward 并不是一个随便写出来的逐元素乘法，而是 VJP 在对角雅可比矩阵上的简化。现在我们回到前向传播，看看激活函数为什么要放在线性层后面。
+
+假设线性层输出一个标量 $h$。如果不加激活函数，那么下一层接收到的仍然是这个线性输出：
+
+$$
+a = h
+$$
+
+如果加入激活函数，就变成：
+
+$$
+a = \phi(h)
+$$
+
+激活函数的作用可以从两个角度理解。
+
+第一，在前向传播中，激活函数会改变隐藏层表示。比如 ReLU 会把负数变成 0，把正数保留下来：
+
+$$
+\operatorname{ReLU}(h) = \max(0, h)
+$$
+
+这使得隐藏层不再只是输入的线性变换，而是经过了一个非线性筛选。如果没有这样的非线性，多个线性层叠在一起仍然等价于一个线性层。
+
+第二，在反向传播中，激活函数会控制梯度如何继续向前一层传播。标量情况下，若：
+
+$$
+a = \phi(h)
+$$
+
+且上游梯度是 $\frac{\partial L}{\partial a}$，那么根据链式法则：
+
+$$
+\frac{\partial L}{\partial h} =
+\frac{\partial L}{\partial a}
+\frac{\partial a}{\partial h} =
+\frac{\partial L}{\partial a}\phi'(h)
+$$
+
+对于 MLP 中更常见的矩阵形式，设：
+
+$$
+H \in \mathbb{R}^{B \times D}, \quad A = \phi(H)
+$$
+
+这里 $B$ 是 batch size，$D$ 是隐藏层维度。激活函数逐元素作用，因此：
+
+$$
+A_{b,d} = \phi(H_{b,d})
+$$
+
+如果把 $H$ 和 $A$ 展平成向量，那么第 $(b,d)$ 个输出只依赖第 $(b,d)$ 个输入，不依赖其他位置：
+
+$$
+\frac{\partial A_{b,d}}{\partial H_{b',d'}} = 0,
+\quad (b,d) \ne (b',d')
+$$
+
+因此，$A$ 对 $H$ 的雅可比矩阵是对角矩阵，对角线上的元素是对应位置的局部导数：
+
+$$
+\frac{\partial A_{b,d}}{\partial H_{b,d}} = \phi'(H_{b,d})
+$$
+
+所以反向传播中的 VJP 可以简化成逐元素乘法：
+
+$$
+\frac{\partial L}{\partial H}
+=
+\frac{\partial L}{\partial A}
+\odot \phi'(H)
+$$
+
+其中，$\odot$ 表示逐元素相乘。
+
+这也是后面三个激活函数的共同结构：先求标量函数的导数，再利用“逐元素作用 $\Rightarrow$ 对角雅可比矩阵”，把 backward 写成上游梯度和局部导数的逐元素乘法。
+
+## 3.2.3 Sigmoid 激活函数
+
+Sigmoid 是早期神经网络中非常常见的激活函数：
+
+$$
+\sigma(x) = \frac{1}{1 + e^{-x}}
+$$
+
+它会把任意实数压缩到 $(0, 1)$ 之间。输入越大，输出越接近 1；输入越小，输出越接近 0。
+
+用 NumPy 实现一下 sigmoid：
+
+```{python}
+def sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1 / (1 + np.exp(-x))
+
+
+x = np.linspace(-10, 10, 100)
+y = sigmoid(x)
+
+fig = plt.figure(1, figsize=(5, 3.5))
+ax = fig.add_subplot(1, 1, 1)
+ax.plot(x, y)
+ax.grid(linestyle='--')
+ax.set_xlabel('x')
+ax.set_ylabel(r'$\sigma(x)$')
+ax.set_title('Sigmoid Activation Function')
+plt.show()
+```
+
+Sigmoid 的标量导数有一个很简洁的形式。令：
+
+$$
+y = \sigma(x)
+$$
+
+则：
+
+$$
+\frac{\partial y}{\partial x} = y(1 - y)
+$$
+
+如果输入是一个矩阵 $X$，输出为：
+
+$$
+Y = \sigma(X)
+$$
+
+由于 sigmoid 是逐元素作用的：
+
+$$
+Y_{b,d} = \sigma(X_{b,d})
+$$
+
+因此，当 $(b,d) \ne (b',d')$ 时：
+
+$$
+\frac{\partial Y_{b,d}}{\partial X_{b',d'}} = 0
+$$
+
+也就是说，sigmoid 的雅可比矩阵只有对角线元素非零。对角线上的元素是：
+
+$$
+\sigma'(X_{b,d}) = Y_{b,d}(1 - Y_{b,d})
+$$
+
+所以，如果上游梯度是 $\frac{\partial L}{\partial Y}$，那么反向传播为：
+
+$$
+\frac{\partial L}{\partial X}
+=
+\frac{\partial L}{\partial Y}
+\odot Y \odot (1 - Y)
+$$
+
+写成 NumPy 模块：
+
+```{python}
+class Sigmoid(Module):
+    def __init__(self):
+        super().__init__()
+
+    @override
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        self.ctx = sigmoid(x)
+        return self.ctx
+
+    @override
+    def backward(self, grad: np.ndarray) -> np.ndarray:
+        assert self.ctx is not None, 'Must call forward before backward.'
+        return grad * self.ctx * (1 - self.ctx)
+```
+
+其中，`grad` 就是上游传下来的梯度。这里我们在 `forward` 中保存了 `self.ctx`，也就是 sigmoid 的输出 $Y$。这是因为 backward 需要用 $Y(1-Y)$ 计算局部导数。
+
+Sigmoid 的问题也很明显。当输入非常大或者非常小时，输出会非常接近 1 或 0，此时导数会接近 0：
+
+$$
+\sigma'(x) = \sigma(x)(1 - \sigma(x)) \approx 0
+$$
+
+从雅可比矩阵的角度看，这意味着对角线上的元素会变得很小。上游梯度乘上这样的对角雅可比矩阵后，也会被缩小。这就是常说的**梯度消失（vanishing gradient）**问题。
+
+## 3.2.4 Tanh 激活函数
+
+Tanh 也是一个 S 形激活函数：
+
+$$
+\tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}
+$$
+
+它会把输入压缩到 $(-1, 1)$ 之间。
+
+```{python}
+def tanh(x: np.ndarray) -> np.ndarray:
+    return np.tanh(x)
+
+
+x = np.linspace(-10, 10, 100)
+y = tanh(x)
+
+fig = plt.figure(2, figsize=(5, 3.5))
+ax = fig.add_subplot(1, 1, 1)
+ax.plot(x, y)
+ax.grid(linestyle='--')
+ax.set_xlabel('x')
+ax.set_ylabel(r'$\tanh(x)$')
+ax.set_title('Tanh Activation Function')
+plt.show()
+```
+
+和 sigmoid 相比，tanh 的输出是以 0 为中心的。也就是说，它既可以输出正数，也可以输出负数。这在很多情况下比 sigmoid 更适合作为隐藏层激活函数。
+
+Tanh 的标量导数也可以用输出值表示。令：
+
+$$
+y = \tanh(x)
+$$
+
+则：
+
+$$
+\frac{\partial y}{\partial x} = 1 - y^2
+$$
+
+对于矩阵输入 $X$，输出为：
+
+$$
+Y = \tanh(X)
+$$
+
+同样有：
+
+$$
+Y_{b,d} = \tanh(X_{b,d})
+$$
+
+所以当 $(b,d) \ne (b',d')$ 时：
+
+$$
+\frac{\partial Y_{b,d}}{\partial X_{b',d'}} = 0
+$$
+
+这说明 tanh 的雅可比矩阵也是对角矩阵。对角线上的元素为：
+
+$$
+1 - Y_{b,d}^2
+$$
+
+因此，反向传播为：
+
+$$
+\frac{\partial L}{\partial X}
+=
+\frac{\partial L}{\partial Y}
+\odot (1 - Y^2)
+$$
+
+对应的 NumPy 实现为：
+
+```{python}
+class Tanh(Module):
+    def __init__(self):
+        super().__init__()
+
+    @override
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        self.ctx = tanh(x)
+        return self.ctx
+
+    @override
+    def backward(self, grad: np.ndarray) -> np.ndarray:
+        assert self.ctx is not None, 'Must call forward before backward.'
+        return grad * (1 - np.square(self.ctx))
+```
+
+不过，tanh 仍然存在饱和问题。当输入绝对值很大时，输出会接近 1 或 -1，局部导数 $1-y^2$ 会接近 0。换句话说，它的雅可比矩阵对角线元素也会变得很小，梯度在经过这一层时仍然容易被缩小。
+
+因此，虽然 sigmoid 和 tanh 在历史上很重要，但在现代深度学习中，隐藏层更常用的是 ReLU 及其变体。
+
+## 3.2.5 ReLU 激活函数
+
+ReLU (Rectified Linear Unit) [@agarap2026ReLU] 是目前最常用的激活函数之一。它的定义非常简单：
+
+$$
+\operatorname{ReLU}(x) = \max(0, x)
+$$
+
+也就是说：
+
+$$
+\operatorname{ReLU}(x) =
+\begin{cases}
+x, & x > 0 \\
+0, & x \le 0
+\end{cases}
+$$
+
+用 NumPy 实现就是：
+
+```{python}
+def relu(x: np.ndarray) -> np.ndarray:
+    return np.maximum(0, x)
+
+
+x = np.linspace(-10, 10, 100)
+y = relu(x)
+
+fig = plt.figure(3, figsize=(5, 3.5))
+ax = fig.add_subplot(1, 1, 1)
+ax.plot(x, y)
+ax.grid(linestyle='--')
+ax.set_xlabel('x')
+ax.set_ylabel('ReLU(x)')
+ax.set_title('ReLU Activation Function')
+plt.show()
+```
+
+ReLU 的标量导数也很简单。令：
+
+$$
+y = \operatorname{ReLU}(x)
+$$
+
+则在 $x \ne 0$ 时：
+
+$$
+\frac{\partial y}{\partial x} =
+\begin{cases}
+1, & x > 0 \\
+0, & x < 0
+\end{cases}
+$$
+
+严格来说，ReLU 在 $x=0$ 处不可导。不过在实际实现中，我们通常直接把 $x=0$ 处的梯度设为 0。这可以看成一种实现约定，也不会影响神经网络训练的整体过程。
+
+对于矩阵输入 $X$，输出为：
+
+$$
+Y = \operatorname{ReLU}(X)
+$$
+
+ReLU 仍然是逐元素作用的：
+
+$$
+Y_{b,d} = \operatorname{ReLU}(X_{b,d})
+$$
+
+所以当 $(b,d) \ne (b',d')$ 时：
+
+$$
+\frac{\partial Y_{b,d}}{\partial X_{b',d'}} = 0
+$$
+
+这点和 sigmoid、tanh 完全一样。虽然 ReLU 不是可逆函数，但这不影响它的雅可比矩阵是对角矩阵。决定非对角项为 0 的原因是逐元素作用，不是函数可逆。
+
+ReLU 雅可比矩阵的对角线元素为：
+
+$$
+\mathbb{1}(X_{b,d} > 0)
+$$
+
+其中，$\mathbb{1}(X_{b,d} > 0)$ 是指示函数。当 $X_{b,d}>0$ 时为 1，否则为 0。因此反向传播为：
+
+$$
+\frac{\partial L}{\partial X}
+=
+\frac{\partial L}{\partial Y}
+\odot \mathbb{1}(X > 0)
+$$
+
+对应的模块实现为：
+
+```{python}
+class ReLU(Module):
+    def __init__(self):
+        super().__init__()
+
+    @override
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        self.ctx = x
+        return relu(x)
+
+    @override
+    def backward(self, grad: np.ndarray) -> np.ndarray:
+        assert self.ctx is not None, 'Must call forward before backward.'
+        return grad * (self.ctx > 0)
+```
+
+注意这里保存的是输入 `x`，而不是输出。因为 ReLU 的 backward 需要知道前向传播时哪些位置大于 0。
+
+当然，也可以保存一个 mask：
+
+```{python}
+class ReLUWithMask(Module):
+    def __init__(self):
+        super().__init__()
+
+    @override
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        self.ctx = x > 0
+        return x * self.ctx
+
+    @override
+    def backward(self, grad: np.ndarray) -> np.ndarray:
+        assert self.ctx is not None, 'Must call forward before backward.'
+        return grad * self.ctx
+```
+
+这两个版本本质上是一样的。它们都没有构造完整的雅可比矩阵，而是直接计算了 VJP：上游梯度乘以 ReLU 的对角雅可比矩阵。
+
+ReLU 看起来比 sigmoid 和 tanh 更简单，但它在深层网络中非常有效。一个重要原因是，当 $x>0$ 时，ReLU 的局部导数是 1：
+
+$$
+\operatorname{ReLU}'(x) = 1, \quad x > 0
+$$
+
+从雅可比矩阵的角度看，这意味着在激活为正的位置，对角线元素为 1，梯度可以比较直接地通过这一层，不会像 sigmoid 或 tanh 那样因为饱和而迅速变小。
+
+另一方面，当 $x \le 0$ 时，ReLU 的输出为 0，局部导数也为 0。这会让隐藏表示变得稀疏：不是所有神经元都会在每个样本上被激活。
+
+不过，ReLU 也不是没有问题。如果某个神经元长期落在负半轴，它对应位置的梯度就会一直是 0，参数也可能很难再被更新。这通常被称为 **dead ReLU** 问题。
+
+即便如此，ReLU 仍然是 MLP、CNN 和很多深度模型中最基础、最常用的激活函数之一。在这一章的 MLP 实现中，我们也会默认使用 ReLU。
+
+## 3.2.6 激活函数通常不改变张量形状
+
+在神经网络中，激活函数通常会保持输入和输出的形状一致。也就是说，如果线性层输出：
+
+$$
+H \in \mathbb{R}^{B \times d}
+$$
+
+那么经过激活函数后，通常仍然得到：
+
+$$
+A \in \mathbb{R}^{B \times d}
+$$
+
+不过，这里需要区分两个概念：
+
+1. 是否保持形状不变；
+2. 是否逐元素作用。
+
+对于 sigmoid、tanh、ReLU 这类激活函数，它们既保持形状不变，也逐元素作用。也就是说：
+
+$$
+A_{bj} = \phi(H_{bj})
+$$
+
+第 $(b,j)$ 个输出只依赖第 $(b,j)$ 个输入，不会依赖其他位置。因此，如果把 $H$ 和 $A$ 展平成向量，它们对应的雅可比矩阵就是对角矩阵：
+
+$$
+\frac{\partial A_i}{\partial H_j}=0,\quad i\ne j
+$$
+
+所以它们的反向传播可以写成简单的逐元素乘法：
+
+$$
+\frac{\partial L}{\partial H} =
+\frac{\partial L}{\partial A}
+\odot \phi'(H)
+$$
+
+但是，保持形状不变并不一定意味着逐元素作用。比如 softmax 通常也保持形状不变：
+
+$$
+A = \mathrm{softmax}(H)
+$$
+
+如果沿最后一维做 softmax，那么：
+
+$$
+A_{bj}
+=
+\frac{\exp(H_{bj})}
+{\sum_k \exp(H_{bk})}
+$$
+
+这时 $A_{bj}$ 不只依赖 $H_{bj}$，还依赖同一行里的其他元素 $H_{bk}$。因此 softmax 虽然不改变张量形状，但它不是逐元素函数，对应的雅可比矩阵也不是对角矩阵。
+
+所以更准确地说：
+
+> **Sigmoid、Tanh、ReLU 这类逐元素激活函数之所以反向传播可以写成逐元素乘法，是因为它们的雅可比矩阵是对角矩阵。而“形状是否保持不变”只是表面现象，不是判断 backward 是否能逐元素相乘的根本原因。**
+
+## 3.2.7 本章小结
+
+这一节我们先解释了雅可比矩阵与反向传播的关系，然后介绍了激活函数在 MLP 中的作用。
+
+对于向量到向量的函数，导数不再是一个标量，而是一个雅可比矩阵。反向传播中的每个模块，本质上都在计算：
+
+$$
+\frac{\partial L}{\partial x}
+=
+\frac{\partial L}{\partial y}J_f(x)
+$$
+
+也就是上游梯度和当前模块雅可比矩阵的 VJP。
+
+激活函数的特殊之处在于，它通常逐元素作用：
+
+$$
+A_{b,d} = \phi(H_{b,d})
+$$
+
+因此，每个输出位置只依赖对应输入位置，不依赖其他位置：
+
+$$
+\frac{\partial A_{b,d}}{\partial H_{b',d'}} = 0,
+\quad (b,d) \ne (b',d')
+$$
+
+所以激活函数的雅可比矩阵是对角矩阵，backward 可以简化成逐元素乘法：
+
+$$
+\frac{\partial L}{\partial H}
+=
+\frac{\partial L}{\partial A}\odot \phi'(H)
+$$
+
+我们分别介绍了 sigmoid、tanh 和 ReLU。它们都是逐元素激活函数，因此雅可比矩阵的非对角元素都为 0；不同点在于对角线上的局部导数不同。Sigmoid 和 tanh 会把输入压缩到有限区间，但在输入绝对值较大时容易饱和，使雅可比矩阵对角线元素接近 0，导致梯度变小。ReLU 更简单，当输入为正时局部导数为 1，因此在深度网络中更常用；但当输入长期为负时，梯度也可能长期为 0，产生 dead ReLU 问题。
+
+下一节我们会讨论分类模型的输出层。MLP 最后一层会输出 logits，但 logits 本身还不是概率。为了训练分类模型，我们需要把 logits 和真实标签结合起来，得到 softmax cross entropy 损失，并推导它的反向传播。

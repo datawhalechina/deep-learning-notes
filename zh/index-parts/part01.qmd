@@ -1,0 +1,23 @@
+---
+title: "Part 1：深度学习基础"
+author: jshn9515
+date: 2026-05-05
+date-modified: today
+page-layout: full
+comments: false
+
+listing:
+  contents:
+    - "../ch1-introduction/*.qmd"
+    - "../ch2-pytorch-introduction/*.qmd"
+    - "../ch3-multi-layer-perceptron/*.qmd"
+    - "../ch4-optimization-algorithms/*.qmd"
+  sort: title asc
+  type: table
+  fields: [title, author, date]
+  date-format: iso
+
+open-graph:
+  title: part1-fundamentals-of-deep-learning
+  description: "Part 1: Fundamentals of Deep Learning"
+---

@@ -1,0 +1,21 @@
+---
+title: "Part 2：卷积神经网络"
+author: jshn9515
+date: 2026-05-05
+date-modified: today
+page-layout: full
+comments: false
+
+listing:
+  contents:
+    - "../ch5-convolutional-neural-network/*.qmd"
+    - "../ch7-regularization-and-normalization/*.qmd"
+  sort: title asc
+  type: table
+  fields: [title, author, date]
+  date-format: iso
+
+open-graph:
+  title: part2-convolutional-neural-network
+  description: "Part 2: Convolutional Neural Network"
+---

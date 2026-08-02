@@ -1,0 +1,592 @@
+---
+author: jshn9515
+date: 2026-06-05
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.9-learning-rate-schedulers
+  description: "4.9 Learning Rate Schedulers: Controlling Learning Rate Dynamics During Training"
+title: "4.9 学习率调度器：让学习率随训练过程变化"
+order: 9
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.9-learning-rate-schedulers.ipynb){fig-align="left"}
+
+前面几节里，我们一直把学习率 $\eta$ 当成优化器里的一个超参数。无论是 SGD、momentum、Adagrad、RMSprop、Adam 还是 AdamW，参数更新时都会出现某种形式的“步长”：
+
+$$
+\theta_{t+1} = \theta_t - \eta \cdot \mathrm{update}_t
+$$
+
+不同优化器会改变 $\mathrm{update}_t$ 的计算方式。比如 momentum 会平滑梯度方向，Adam 会用一阶矩和二阶矩共同调整更新量，AdamW 会把 weight decay 从梯度更新中解耦出来。
+
+但是还有一个问题没有解决：
+
+> **学习率一定要从训练开始到结束都保持不变吗？**
+
+很多时候，答案是否定的。
+
+训练刚开始时，参数距离较好的区域通常还比较远。这个时候我们希望学习率稍微大一些，让模型快速移动到损失较低的区域。但到训练后期，模型已经接近某个较好的区域。如果学习率仍然很大，参数可能会在低损失区域附近来回震荡，难以进一步收敛。这个时候我们通常希望学习率逐渐变小，让参数更新更细致。
+
+这就是**学习率调度器（Learning Rate Scheduler）** 要解决的问题。
+
+学习率调度器不改变优化器本身的更新规则，而是控制优化器里的学习率如何随训练过程变化。
+
+优化器回答的是：
+
+> **给定当前学习率和梯度，参数怎么更新？**
+
+学习率调度器回答的是：
+
+> **训练到这一步时，学习率应该是多少？**
+
+这一节我们不自己实现 scheduler，而是从直觉上总结常见学习率调度策略，并在最后用 PyTorch 演示它们的基本用法。
+
+```{python}
+import dnnlpy
+import dnnlpy.optim as dopt
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.optim.lr_scheduler as lr
+
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.9.1 为什么需要学习率调度？
+
+如果学习率固定，训练过程可能会遇到两类问题。
+
+- 第一类问题是学习率太小。模型更新很稳定，但每一步走得很慢，训练可能需要很久才能下降到比较好的区域。
+- 第二类问题是学习率太大。模型一开始下降很快，但后期可能在低损失区域附近震荡，难以进一步收敛。严重时，甚至会直接发散。
+
+所以，一个自然的想法是：
+
+> **训练前期用较大的学习率快速探索，训练后期用较小的学习率逐渐收敛。**
+
+这就是大多数 learning rate scheduler 的基本直觉。
+
+例如，在训练一个 CNN 时，我们可能先用 `lr=0.1` 训练一段时间，然后把学习率降到 0.01，再降到 0.001。这样模型前期可以快速下降，后期可以更稳定地逼近较好的参数。
+
+在训练 Transformer 或 ViT 时，我们还经常会看到另一种策略：先 warmup，也就是让学习率从很小的值逐渐升高，然后再缓慢衰减。这样可以避免训练刚开始时参数和优化器状态都还不稳定，却直接使用较大学习率导致训练震荡。
+
+因此，学习率调度器本质上是在训练过程中动态控制优化步长。
+
+## 4.9.2 学习率调度器与优化器的关系
+
+在 PyTorch 中，scheduler 通常包裹一个 optimizer：
+
+```{python}
+model = nn.Linear(1, 1)
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.CosineAnnealingLR(
+    optimizer,
+    T_max=100,
+)
+```
+
+这里 optimizer 负责真正更新参数，scheduler 负责修改 optimizer 里的学习率。
+
+也就是说，scheduler 不会替代：
+
+```python
+optimizer.step()
+```
+
+而是额外增加一步：
+
+```python
+scheduler.step()
+```
+
+一个常见的 epoch-level scheduler 用法是：
+
+```python
+for epoch in range(num_epochs):
+    train_one_epoch(model, train_loader, optimizer)
+    scheduler.step()
+```
+
+如果是 batch-level scheduler，例如 OneCycleLR，则通常每个 mini-batch 后调用一次：
+
+```python
+for epoch in range(num_epochs):
+    for x, y in train_loader:
+        optimizer.zero_grad()
+        loss = compute_loss(model, x, y)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+```
+
+所以，使用 scheduler 时一个很重要的问题是：
+
+> **这个 scheduler 是每个 epoch 调一次，还是每个 batch 调一次？**
+
+不同 scheduler 的预期调用频率不一样。如果调用频率错了，学习率变化速度也会完全不一样。
+
+## 4.9.3 常见学习率调度器总览
+
+下面这张表总结了 PyTorch 中常见的学习率调度器。这里只列出关注深度学习训练中最常见、最容易遇到的几类。
+
+::: {.list-table}
+表 1：PyTorch 中常见学习率调度器对比
+
+- - Scheduler
+  - 核心思想
+  - 适合场景
+  - 调用频率
+
+- - StepLR
+  - 每隔固定 epoch 把学习率乘以 `gamma`
+  - 简单 baseline、经典 CNN 训练
+  - 通常每 epoch
+
+- - MultiStepLR
+  - 在指定 milestones 处衰减学习率
+  - 经典视觉训练 recipe，例如在若干固定 epoch 降 LR
+  - 通常每 epoch
+
+- - ExponentialLR
+  - 每次调用都乘以固定系数 `gamma`
+  - 希望平滑指数衰减
+  - 通常每 epoch
+
+- - CosineAnnealingLR
+  - 按余弦曲线从初始学习率平滑降到较小值
+  - Transformer、ViT、现代视觉训练、fine-tuning
+  - 每 epoch 或每 step，取决于 `T_max` 设计
+
+- - CosineAnnealing WarmRestarts
+  - 余弦衰减后周期性重启到较大学习率
+  - 想周期性重新探索参数空间
+  - 通常每 epoch 或更细粒度
+
+- - ReduceLROnPlateau
+  - 验证指标停滞时降低学习率
+  - 指标波动明显、训练轮数不固定、不知道何时该降 LR
+  - 每次验证后
+
+- - OneCycleLR
+  - 学习率先升高再降低，通常每 batch 更新
+  - 快速训练、super-convergence、需要强 schedule 的实验
+  - 每 batch
+
+- - CyclicLR
+  - 学习率在一个范围内周期性循环
+  - 想让学习率在训练过程中周期性变化
+  - 每 batch
+
+- - LinearLR
+  - 线性增大或减小学习率
+  - Warmup 或简单线性衰减
+  - 每 epoch 或每 step
+
+- - SequentialLR
+  - 按阶段串联多个 scheduler
+  - Warmup + cosine decay 等组合策略
+  - 取决于子 scheduler
+
+- - LambdaLR
+  - 用自定义函数定义学习率变化
+  - 需要完全自定义 schedule
+  - 取决于设计
+:::
+
+同时，可以先记住一个简单经验：
+
+```text
+想要最简单：StepLR / MultiStepLR。
+想要平滑衰减：CosineAnnealingLR。
+验证集不再提升才降 LR：ReduceLROnPlateau。
+想做 warmup + decay：LinearLR + SequentialLR，或 LambdaLR。
+想每个 batch 强控制 LR：OneCycleLR。
+```
+
+## 4.9.4 StepLR 和 MultiStepLR：在固定位置降低学习率
+
+最朴素的学习率调度方式是 **step decay**。它的想法很简单：先用较大的学习率训练一段时间，等模型下降到一定程度后，把学习率乘上一个小于 1 的系数 `gamma`。
+
+例如，StepLR 会每隔固定数量的 epoch 衰减一次学习率：
+
+```{python}
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.StepLR(
+    optimizer,
+    step_size=25,
+    gamma=0.1,
+)
+dopt.plot_lr_schedule(optimizer, scheduler, num_steps=100)
+```
+
+这表示每 25 个 epoch，把学习率变成原来的 0.1 倍。如果初始学习率是 1，那么学习率大概会这样变化：
+
+```text
+1 -> 0.1 -> 0.01 -> 0.001
+```
+
+MultiStepLR 更灵活一些。它不是每隔固定间隔衰减，而是在指定的 milestones 处衰减：
+
+```{python}
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.MultiStepLR(
+    optimizer,
+    milestones=[30, 60, 90],
+    gamma=0.2,
+)
+dopt.plot_lr_schedule(optimizer, scheduler, num_steps=100)
+```
+
+这种形式在经典视觉训练中很常见。比如训练固定 epoch 数的 CNN 时，我们可以预先指定在哪些 epoch 降低学习率。
+
+它们的优点是简单、可控、容易复现。缺点是需要我们提前知道什么时候该降学习率。如果训练过程和预期不一样，固定 milestones 可能就不够灵活。
+
+## 4.9.5 ExponentialLR：持续指数衰减
+
+ExponentialLR 会让学习率每次调用都乘以同一个系数 `gamma`：
+
+```{python}
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.ExponentialLR(
+    optimizer,
+    gamma=0.95,
+)
+dopt.plot_lr_schedule(optimizer, scheduler, num_steps=100)
+```
+
+如果每个 epoch 调一次，那么学习率会按照下面的形式变化：
+
+$$
+\eta_t = \eta_0 \cdot \gamma^t
+$$
+
+相比 StepLR 的突然下降，ExponentialLR 的变化更加平滑。它适合希望学习率持续变小、但不想手动设置多个 milestones 的情况。
+
+不过，它也有一个问题：如果 `gamma` 设置得太小，学习率会过早衰减；如果 `gamma` 太接近 1，变化又可能太慢。因此它虽然简单，但也需要调参。
+
+## 4.9.6 CosineAnnealingLR：平滑地降到较小学习率
+
+现代深度学习训练中，一个非常常见的选择是 **cosine annealing**。它的直觉是：不要突然降低学习率，而是让学习率沿着一条平滑曲线慢慢下降。
+
+在 PyTorch 中，可以使用：
+
+```{python}
+num_epochs = 100
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.CosineAnnealingLR(
+    optimizer,
+    T_max=num_epochs,
+    eta_min=1e-6,
+)
+dopt.plot_lr_schedule(optimizer, scheduler, num_steps=num_epochs)
+```
+
+学习率会从初始值平滑下降到 `eta_min` 附近。相比 StepLR，cosine schedule 不会在某个 epoch 突然把学习率砍掉，而是让学习率在训练过程中逐渐变小。这类调度在 Transformer、ViT 和很多现代训练 recipe 中都很常见。尤其是在训练总步数已知时，cosine decay 很容易使用，只要把 `T_max` 设置成总 epoch 数或总 step 数即可。
+
+需要注意的是，`T_max` 的单位取决于你怎么调用 `scheduler.step()`。
+
+如果每个 epoch 调一次：
+
+```{python}
+num_epochs = 100
+scheduler = lr.CosineAnnealingLR(
+    optimizer,
+    T_max=num_epochs,
+)
+```
+
+那么 `T_max` 表示 epoch 数。
+
+如果每个 batch 调一次：
+
+```{python}
+num_steps = num_epochs * 100  # Assuming 100 steps per epoch
+scheduler = lr.CosineAnnealingLR(
+    optimizer,
+    T_max=num_steps,
+)
+```
+
+那么 `T_max` 表示总 step 数。
+
+所以 scheduler 的参数不能脱离调用频率来理解。
+
+## 4.9.7 ReduceLROnPlateau：指标停滞时再降低学习率
+
+前面的 StepLR、MultiStepLR、ExponentialLR 和 CosineAnnealingLR 都是预先安排好的 schedule。它们不关心验证集指标，只按照 epoch 或 step 改变学习率。但有时我们并不知道什么时候应该降低学习率。比如验证 loss 在某个阶段停滞了，但我们无法提前知道它会发生在哪个 epoch。
+
+这时可以使用 ReduceLROnPlateau：
+
+```{python}
+metric_values = np.random.rand(100)  # Simulated validation loss values
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.ReduceLROnPlateau(
+    optimizer,
+    mode='min',
+    factor=0.1,
+    patience=5,
+)
+dopt.plot_lr_schedule(
+    optimizer,
+    scheduler,
+    num_steps=100,
+    metric_values=metric_values.tolist(),
+)
+```
+
+它的含义是：如果监控的指标连续若干次没有改善，就把学习率乘以 `factor`。
+
+例如，我们通常会在验证阶段之后调用：
+
+```python
+val_loss = evaluate(model, val_loader)
+scheduler.step(val_loss)
+```
+
+这和普通 scheduler 不太一样。普通 scheduler 通常不需要传入指标：
+
+```python
+scheduler.step()
+```
+
+而 `ReduceLROnPlateau` 需要知道当前监控指标是多少：
+
+```python
+scheduler.step(metric)
+```
+
+它适合训练过程不太确定、验证指标变化比较重要的任务。缺点是它依赖验证指标，因此如果验证指标噪声很大，学习率变化也可能受到影响。
+
+## 4.9.8 Warmup：训练开始时先慢慢升高学习率
+
+前面我们一直在讲学习率怎么逐渐变小。但在很多现代模型中，训练一开始反而会先让学习率从很小的值逐渐升高，达到一个较大的值后再逐渐变小。这种策略叫做 **warmup**。
+
+Warmup 的直觉是：
+
+> **训练刚开始时，参数、梯度分布和优化器状态都还不稳定，不要一上来就用最大的学习率。**
+
+尤其是 AdamW 这类自适应优化器，在训练最初几步中，一阶矩和二阶矩估计都还不稳定。Transformer 训练里也经常使用 warmup，让学习率先线性增大，然后再进入衰减阶段。
+
+PyTorch 中可以用 LinearLR 配合 SequentialLR 实现 warmup + cosine decay：
+
+```{python}
+total_steps = 100
+warmup_steps = 10
+
+optimizer = optim.AdamW(model.parameters(), lr=1)
+warmup_scheduler = lr.LinearLR(
+    optimizer,
+    start_factor=0.01,
+    end_factor=1.0,
+    total_iters=warmup_steps,
+)
+cosine_scheduler = lr.CosineAnnealingLR(
+    optimizer,
+    T_max=total_steps - warmup_steps,
+    eta_min=1e-6,
+)
+
+scheduler = lr.SequentialLR(
+    optimizer,
+    schedulers=[warmup_scheduler, cosine_scheduler],
+    milestones=[warmup_steps],
+)
+dopt.plot_lr_schedule(optimizer, scheduler, num_steps=total_steps)
+```
+
+这里的意思是：前 `warmup_steps` 步使用线性 warmup，之后切换到 cosine decay。
+
+这种组合在现代训练中非常常见。先 warmup，避免训练初期不稳定；再 decay，让训练后期更稳定收敛。
+
+## 4.9.9 OneCycleLR：先升后降的强 Schedule
+
+OneCycleLR [@smith2018SuperConvergence] 使用的是 1cycle policy。它的特点是学习率会先从较小值升到一个较大值，再逐渐降到很小的值。PyTorch 文档也提醒，OneCycleLR 通常是 **每个 batch 调用一次**，而不是每个 epoch 调用一次。
+
+```{python}
+num_epochs = 100
+num_steps = num_epochs * 100  # Assuming 100 steps per epoch
+
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.OneCycleLR(
+    optimizer,
+    max_lr=1,
+    epochs=num_epochs,
+    total_steps=num_steps,
+)
+dopt.plot_lr_schedule(optimizer, scheduler, num_steps=num_steps, xlabel='Step')
+```
+
+训练循环中通常这样写：
+
+```python
+for epoch in range(num_epochs):
+    for x, y in train_loader:
+        optimizer.zero_grad()
+        loss = compute_loss(model, x, y)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+```
+
+它适合想要使用较大学习率快速训练的场景。相比简单 decay，OneCycleLR 对训练过程的控制更强，但也更依赖 `max_lr`、总步数和 batch-level 调用方式。所以如果只是写一个比较稳妥的 baseline，AdamW + cosine decay 通常更简单；如果想尝试快速训练或 super-convergence，可以考虑 OneCycleLR。
+
+## 4.9.10 LambdaLR：用函数自定义 schedule
+
+有时 PyTorch 内置 scheduler 不能完全表达我们想要的学习率曲线。这时可以使用 LambdaLR。LambdaLR 接收一个函数，用这个函数返回的比例因子乘以初始学习率。
+
+例如，下面实现一个简单的线性 warmup + 线性衰减：
+
+```{python}
+num_steps = 100
+num_warmup_steps = 10
+
+
+def lr_lambda(step: int) -> float:
+    if step < num_warmup_steps:
+        return step / max(1, num_warmup_steps)
+
+    return max(0.0, (num_steps - step) / max(1, num_steps - num_warmup_steps))
+
+
+optimizer = optim.AdamW(model.parameters(), lr=1)
+scheduler = lr.LambdaLR(
+    optimizer,
+    lr_lambda=lr_lambda,
+)
+dopt.plot_lr_schedule(optimizer, scheduler, num_steps=num_steps)
+```
+
+这种写法很灵活，适合复现论文或框架中的自定义 schedule。缺点是函数由我们自己定义，所以更容易写错。教学和普通训练中，可以优先使用 PyTorch 已经封装好的 scheduler。
+
+## 4.9.11 PyTorch 演示：训练循环中怎么使用 Scheduler
+
+最后，我们看一个更接近真实训练的写法。
+
+对于大多数 epoch-level scheduler，比如 StepLR、ExponentialLR 和 CosineAnnealingLR，常见写法是：
+
+```python
+num_epochs = 100
+
+model = nn.Linear(1, 1)
+optimizer = torch.optim.AdamW(
+    model.parameters(),
+    lr=1e-3,
+    weight_decay=1e-2,
+)
+scheduler = lr.CosineAnnealingLR(
+    optimizer,
+    T_max=num_epochs,
+)
+
+for epoch in range(num_epochs):
+    model.train()
+    for x, y in train_loader:
+        optimizer.zero_grad()
+        pred = model(x)
+        loss = compute_loss(pred, y)
+        loss.backward()
+        optimizer.step()
+
+    scheduler.step()
+```
+
+对于 ReduceLROnPlateau，调用位置通常在验证之后，并且要传入验证指标：
+
+```python
+num_epochs = 100
+
+scheduler = lr.ReduceLROnPlateau(
+    optimizer,
+    mode='min',
+    factor=0.1,
+    patience=5,
+)
+
+for epoch in range(num_epochs):
+    train_one_epoch(model, train_loader, optimizer)
+    val_loss = evaluate(model, val_loader)
+    scheduler.step(val_loss)
+```
+
+对于 OneCycleLR 或按 step 设计的 warmup + decay，通常每个 mini-batch 后调用：
+
+```python
+num_epochs = 100
+
+scheduler = lr.OneCycleLR(
+    optimizer,
+    max_lr=1e-3,
+    epochs=num_epochs,
+    steps_per_epoch=len(train_loader),
+)
+
+for epoch in range(num_epochs):
+    for x, y in train_loader:
+        optimizer.zero_grad()
+        pred = model(x)
+        loss = compute_loss(pred, y)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+```
+
+如果要做 warmup + cosine decay，可以用 SequentialLR 把两个 scheduler 串起来：
+
+```python
+num_epochs = 100
+total_steps = num_epochs * len(train_loader)
+warmup_steps = int(0.1 * total_steps)
+
+warmup = lr.LinearLR(
+    optimizer,
+    start_factor=0.01,
+    end_factor=1.0,
+    total_iters=warmup_steps,
+)
+cosine = lr.CosineAnnealingLR(
+    optimizer,
+    T_max=total_steps - warmup_steps,
+    eta_min=1e-6,
+)
+scheduler = lr.SequentialLR(
+    optimizer,
+    schedulers=[warmup, cosine],
+    milestones=[warmup_steps],
+)
+
+for epoch in range(num_epochs):
+    for x, y in train_loader:
+        optimizer.zero_grad()
+        pred = model(x)
+        loss = compute_loss(pred, y)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+```
+
+::: {.callout-warning}
+注意，scheduler 的参数设计和 `scheduler.step()` 的调用频率必须一致。如果 `T_max` 是 epoch 数，就每个 epoch 调一次；如果 `T_max` 是总 step 数，就每个 mini-batch 调一次。
+:::
+
+了解了这些基本用法之后，在实际训练中看到各种 optimizer + scheduler 组合时，就会清楚它们的设计意图和使用方式了。
+
+## 4.9.12 本章小结
+
+这一节我们介绍了 learning rate scheduler。优化器决定“给定梯度和学习率，参数怎么更新”，scheduler 决定“训练到当前阶段时，学习率应该是多少”。
+
+固定学习率虽然简单，但训练全过程不一定都适合使用同一个步长。训练前期通常需要较大学习率快速下降，训练后期通常需要较小学习率稳定收敛。而在 Transformer、ViT 和大模型训练中，warmup 也经常用于缓解训练初期的不稳定。
+
+常见 scheduler 可以分成几类：
+
+- StepLR 和 MultiStepLR 做阶梯式衰减；
+- ExponentialLR 做指数衰减；
+- CosineAnnealingLR 做平滑余弦衰减；
+- ReduceLROnPlateau 根据验证指标停滞自动降低学习率；
+- OneCycleLR 使用先升后降的强 schedule；
+- LinearLR、SequentialLR 和 LambdaLR 则常用于 warmup 或自定义 schedule。
+
+在实践中，可以先记住几个默认选择：如果训练总步数已知，AdamW + warmup + cosine decay 是现代模型中很常见的起点；如果训练经典 CNN，SGD + momentum 配合 StepLR 或 MultiStepLR 仍然很常见；如果验证指标停滞明显，可以考虑 ReduceLROnPlateau；如果想尝试快速训练，可以考虑 OneCycleLR。
+
+至此，我们已经完成了这一章的主线：从最基础的 SGD、momentum，到自适应学习率、Adam、AdamW、Muon，再到优化器选择和学习率调度。理解这些内容之后，再看后面的 CNN、Transformer、ViT 或大模型训练配置时，很多看似复杂的 optimizer 和 scheduler 组合就会清晰很多。

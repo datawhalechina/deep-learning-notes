@@ -1,0 +1,516 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.8-mlp-with-pytorch
+  description: "3.8 Implementing MLP with PyTorch nn.Module"
+title: "3.8 用 PyTorch nn.Module 重新实现 MLP"
+order: 8
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch3-multi-layer-perceptron/ch3.8-mlp-with-pytorch.ipynb){fig-align="left"}
+
+前面几节中，我们用 NumPy 从零实现了一个两层 MLP：
+
+$$
+X
+\rightarrow
+\operatorname{Linear}
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}
+\rightarrow
+\operatorname{SoftmaxCrossEntropy}
+\rightarrow
+L
+$$
+
+为了训练它，我们手动完成了：
+
+1. 前向传播；
+2. 损失函数计算；
+3. 反向传播；
+4. 参数更新；
+5. Mini-batch 训练循环；
+6. 数值梯度检查。
+
+这样做的好处是可以看清楚神经网络训练的每一个细节。但真实项目里，我们通常不会手写每一层的 backward，而是交给深度学习框架自动完成。
+
+这一节我们回到 PyTorch，用 `nn.Module` 重新实现同一个 MLP。重点不是学习一个新模型，而是对比前面的 NumPy 实现，看看 PyTorch 帮我们自动化了哪些步骤。
+
+```{python}
+from collections import defaultdict
+
+import dnnlpy
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.utils.data as utils
+import torchvision.datasets as datasets
+import torchvision.transforms.v2 as v2
+from torch import Tensor
+
+torch.manual_seed(42)
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 3.8.1 从 NumPy 版本回顾模型结构
+
+前面的 NumPy 版本中，两层 MLP 的结构是：
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \operatorname{ReLU}(H) \\
+Z &= AW_2 + b_2
+\end{aligned}
+$$
+
+其中：
+
+$$
+\begin{aligned}
+X &\in \mathbb{R}^{B \times 784} \\
+W_1 &\in \mathbb{R}^{784 \times H} \\
+b_1 &\in \mathbb{R}^{H} \\
+H &\in \mathbb{R}^{B \times H} \\
+A &\in \mathbb{R}^{B \times H} \\
+W_2 &\in \mathbb{R}^{H \times 10} \\
+b_2 &\in \mathbb{R}^{10} \\
+Z &\in \mathbb{R}^{B \times 10}
+\end{aligned}
+$$
+
+对于 MNIST 来说，一张图片大小是 $28 \times 28$，展开以后就是 784 维向量；输出层有 10 个神经元，对应数字 0 到 9 的 10 个类别。
+
+如果用 PyTorch 表达同一个结构，可以写成：
+
+```{python}
+class MLP(nn.Module):
+    def __init__(
+        self,
+        input_dim: int = 784,
+        hidden_dim: int = 256,
+        num_classes: int = 10,
+    ):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_classes),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.net(x)
+```
+
+这里的 `nn.Flatten()` 对应我们在 NumPy 里手动做的图像展平：
+
+$$
+(B, 1, 28, 28) \rightarrow (B, 784)
+$$
+
+`nn.Linear` 对应前面自己写的 `Linear` 类，`nn.ReLU` 对应自己写的 `ReLU` 类。也就是说，PyTorch 版本并没有换一个数学模型，只是把这些基础模块封装好了。
+
+## 3.8.2 检查模型输出形状
+
+先用一个 mini-batch 看看模型能不能正常前向传播。
+
+```{python}
+model = MLP(input_dim=784, hidden_dim=256, num_classes=10)
+
+x = torch.randn(32, 1, 28, 28)
+logits = model(x)
+
+print('logits shape:', logits.shape)
+```
+
+其中，$B = 32$ 是 batch size，10 是类别数。注意，这里的输出仍然叫 **logits**。它不是概率分布，也没有经过 softmax。
+
+在 PyTorch 中，我们通常把 logits 直接传给 `nn.CrossEntropyLoss`：
+
+```{python}
+loss_fn = nn.CrossEntropyLoss()
+
+y = torch.randint(10, size=(32,))
+loss = loss_fn(logits, y)
+
+print('loss:', loss.item())
+```
+
+这和前面 NumPy 中实现的 `CrossEntropyLoss` 是同一个目标函数。区别是：
+
+- NumPy 版本里，我们显式实现了 softmax、cross entropy 和 backward；
+- PyTorch 版本里，`nn.CrossEntropyLoss` 内部帮我们完成了稳定的 log-softmax 和 negative log likelihood 计算。
+
+因此在 PyTorch 里不要先写：
+
+```python
+probs = logits.softmax(dim=1)
+loss = loss_fn(probs, y)
+```
+
+`nn.CrossEntropyLoss` 需要的是 logits，而不是 softmax 之后的概率。
+
+## 3.8.3 PyTorch 自动完成反向传播
+
+在 NumPy 版本中，我们需要手动写：
+
+```python
+grad = loss_fn.backward()
+model.backward(grad)
+```
+
+也就是每一层都要实现自己的 `backward` 方法。
+
+在 PyTorch 里，我们只需要：
+
+```python
+loss.backward()
+```
+
+这会沿着前向传播时 PyTorch 自动记录的计算图，把梯度反向传播到所有需要梯度的参数上。例如：
+
+```{python}
+model = MLP()
+loss_fn = nn.CrossEntropyLoss()
+
+x = torch.randn(32, 1, 28, 28)
+y = torch.randint(10, size=(32,))
+
+logits = model(x)
+loss = loss_fn(logits, y)
+loss.backward()
+```
+
+反向传播之后，可以查看第一层权重的梯度：
+
+```{python}
+print('The shape of the first layer:', model.net[1].weight.grad.shape)
+```
+
+第一层是：
+
+```python
+nn.Linear(784, 256)
+```
+
+所以它的权重形状是 `(256, 784)`，对应的梯度形状也是 `(256, 784)`。
+
+这里需要注意一个小差异：前面 NumPy 实现中，我们把权重写成：
+
+$$
+W \in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}}
+$$
+
+然后前向传播写成：
+
+$$
+Y = XW + b
+$$
+
+而 PyTorch 的 `nn.Linear(in_features, out_features)` 内部权重形状是：
+
+$$
+W \in \mathbb{R}^{D_{\text{out}} \times D_{\text{in}}}
+$$
+
+前向传播等价于：
+
+$$
+Y = XW^\top + b
+$$
+
+所以 PyTorch 中 `weight.shape` 是 `(out_features, in_features)`，这和我们 NumPy 版本的矩阵摆放方向不同，但表达的是同一个线性变换。
+
+## 3.8.4 用 Optimizer 更新参数
+
+在 NumPy 版本中，我们自己写过参数更新：
+
+```python
+for param, grad in model.parameters():
+    param -= lr * grad
+```
+
+这就是最基础的 SGD：
+
+$$
+\theta \leftarrow \theta - \eta \frac{\partial L}{\partial \theta}
+$$
+
+在 PyTorch 中，参数更新由 optimizer 完成：
+
+```{python}
+model = MLP(input_dim=784, hidden_dim=256, num_classes=10)
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+```
+
+一次训练步骤通常写成：
+
+```{python}
+x = torch.randn(32, 1, 28, 28)
+y = torch.randint(10, size=(32,))
+
+optimizer.zero_grad()
+logits = model(x)
+loss = loss_fn(logits, y)
+loss.backward()
+optimizer.step()
+```
+
+这里有一个固定顺序：
+
+```text
+zero_grad -> forward -> loss -> backward -> step
+```
+
+其中：
+
+- `optimizer.zero_grad()` 清空上一轮累积的梯度；
+- `model(x)` 做前向传播；
+- `criterion(logits, y)` 计算损失；
+- `loss.backward()` 自动反向传播；
+- `optimizer.step()` 根据梯度更新参数。
+
+这和 NumPy 版本是一一对应的，只是 PyTorch 把 backward 和 update 的细节封装了起来。
+
+## 3.8.5 准备 MNIST 数据集
+
+接下来用 PyTorch 的标准方式加载 MNIST。
+
+```{python}
+root = dnnlpy.get_data_root()
+transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+
+train_ds = datasets.MNIST(root, train=True, download=True, transform=transform)
+test_ds = datasets.MNIST(root, train=False, download=True, transform=transform)
+```
+
+`transform` 会把图片转换成形状为：
+
+$$
+(1, 28, 28)
+$$
+
+的 Tensor，并且把像素值缩放到 $[0, 1]$。
+
+然后使用 `DataLoader` 构造 mini-batch：
+
+```{python}
+train_dl = utils.DataLoader(train_ds, batch_size=128, shuffle=True)
+test_dl = utils.DataLoader(test_ds, batch_size=256, shuffle=False)
+```
+
+在 NumPy 版本中，mini-batch 是我们自己用索引切出来的；在 PyTorch 中，`DataLoader` 会自动帮我们完成打乱数据、分 batch 和迭代。
+
+## 3.8.6 训练一个 PyTorch MLP
+
+为了让代码自动选择合适的加速器，我们可以写：
+
+```{python}
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+然后创建模型、损失函数和优化器：
+
+```{python}
+model = MLP(input_dim=784, hidden_dim=256, num_classes=10).to(device)
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+history = defaultdict(list)
+```
+
+训练循环如下：
+
+```{python}
+num_epochs = 10
+
+for epoch in range(1, num_epochs + 1):
+    model.train()
+
+    train_loss = 0.0
+    correct_samples = 0
+
+    for X, y in train_dl:
+        X = X.to(device)
+        y = y.to(device)
+
+        logits = model(X)
+        loss = loss_fn(logits, y)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        train_loss += loss.item()
+        correct_samples += (logits.argmax(dim=1) == y).sum().item()
+
+    avg_train_loss = train_loss / len(train_dl)
+    avg_train_acc = correct_samples / len(train_ds)
+    history['loss'].append(avg_train_loss)
+    history['acc'].append(avg_train_acc)
+
+    model.eval()
+    test_loss = 0.0
+    correct_samples = 0
+
+    for X, y in test_dl:
+        X = X.to(device)
+        y = y.to(device)
+
+        with torch.inference_mode():
+            logits = model(X)
+            loss = loss_fn(logits, y)
+
+        test_loss += loss.item()
+        correct_samples += (logits.argmax(dim=1) == y).sum().item()
+
+    avg_test_loss = test_loss / len(test_dl)
+    avg_test_acc = correct_samples / len(test_ds)
+    history['test_loss'].append(avg_test_loss)
+    history['test_acc'].append(avg_test_acc)
+
+    n = len(str(num_epochs))
+    print(
+        f'Epoch [{epoch:{n}d}/{num_epochs:{n}d}] '
+        f'| loss: {avg_train_loss:.4f} '
+        f'| acc: {avg_train_acc:.4f} '
+        f'| test_loss: {avg_test_loss:.4f} '
+        f'| test_acc: {avg_test_acc:.4f}'
+    )
+```
+
+这段训练循环和 NumPy 版本非常像。最大的区别是：
+
+- NumPy 版本中，`backward` 是我们手写的；
+- PyTorch 版本中，`loss.backward()` 自动完成反向传播；
+- NumPy 版本中，`param -= lr * grad` 是我们手写的；
+- PyTorch 版本中，`optimizer.step()` 自动完成参数更新。
+
+## 3.8.7 可视化训练过程
+
+先看训练集和测试集的 loss：
+
+```{python}
+fig = plt.figure(1, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+xticks = torch.arange(1, num_epochs + 1)
+ax.plot(xticks, history['loss'], marker='o')
+ax.plot(xticks, history['test_loss'], marker='o')
+ax.grid(linestyle='--', alpha=0.7)
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Loss')
+ax.legend(['train_loss', 'test_loss'])
+ax.set_title('MLP Training Loss')
+plt.show()
+```
+
+再看训练集和测试集的准确率：
+
+```{python}
+fig = plt.figure(2, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+xticks = torch.arange(1, num_epochs + 1)
+ax.plot(xticks, history['acc'], marker='o')
+ax.plot(xticks, history['test_acc'], marker='o')
+ax.grid(linestyle='--', alpha=0.7)
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Accuracy')
+ax.legend(['train_acc', 'test_acc'])
+ax.set_title('MLP Training Accuracy')
+plt.show()
+```
+
+如果训练正常，loss 会逐渐下降，accuracy 会逐渐上升。
+
+当然，我们也可以可视化一下模型的预测结果：
+
+```{python}
+indices = torch.randperm(len(test_ds))[:10]
+x_samples = torch.stack([test_ds[i][0] for i in indices])
+y_samples = torch.tensor([test_ds[i][1] for i in indices])
+
+model.cpu().eval()
+with torch.inference_mode():
+    logits = model(x_samples)
+    y_preds = logits.argmax(dim=1)
+
+fig = plt.figure(3, figsize=(7, 3.2))
+axes = fig.subplots(2, 5)
+for i, ax in enumerate(axes.ravel()):
+    ax.imshow(x_samples[i].reshape(28, 28), cmap='gray')
+    ax.axis('off')
+    ax.set_title(f'Pred: {y_preds[i]}, Label: {y_samples[i]}', fontsize=10)
+fig.tight_layout()
+plt.show()
+```
+
+## 3.8.8 NumPy 实现和 PyTorch 实现的对应关系
+
+到这里，我们已经用两种方式实现了同一个 MLP。它们的对应关系可以总结如下：
+
+::: {.list-table}
+表 1：NumPy 手写版本和 PyTorch 版本的对应关系
+
+- - NumPy 手写版本
+  - PyTorch 版本
+
+- - Linear.forward
+  - nn.Linear
+
+- - ReLU.forward
+  - nn.ReLU
+
+- - CrossEntropyLoss.forward
+  - nn.CrossEntropyLoss
+
+- - 手写 backward
+  - loss.backward()
+
+- - param -= lr * grad
+  - optimizer.step()
+
+- - 手写 mini-batch 索引
+  - DataLoader
+
+- - 手写 evaluation loop
+  - model.eval() + torch.no_grad()
+:::
+
+所以 PyTorch 并没有改变神经网络训练的数学本质。它主要帮我们自动完成三件事：
+
+1. 自动记录计算图；
+2. 自动计算梯度；
+3. 用统一接口管理参数和优化器。
+
+这也是为什么前面手写 NumPy 版本很重要，它是一切神经网络训练的基础。理解了手写版本之后，再看 PyTorch 代码，就不会觉得 `loss.backward()` 是一个黑箱了。
+
+## 3.8.9 本章小结
+
+这一节我们用 PyTorch `nn.Module` 重新实现了前面手写过的两层 MLP。
+
+在 NumPy 版本中，我们需要自己实现 `Linear`、`ReLU`、`CrossEntropyLoss`，并且为每一层写 `backward`。在 PyTorch 版本中，这些模块已经由 `nn.Linear`、`nn.ReLU` 和 `nn.CrossEntropyLoss` 封装好，反向传播则由 `loss.backward()` 自动完成。
+
+不过，两者背后的数学结构是一致的：输入经过线性层和非线性激活函数得到 logits，再用 cross entropy 衡量预测和标签之间的差距，最后沿着梯度方向更新参数。
+
+到这里，我们已经完整走完了一个 MLP 的训练过程：
+
+$$
+\text{data}
+\rightarrow
+\text{forward}
+\rightarrow
+\text{loss}
+\rightarrow
+\text{backward}
+\rightarrow
+\text{update}
+$$
+
+恭喜你，已经学会了如何搭建一个基本的神经网络，并且理解了训练的每一个步骤。在后面的学习中，我们会继续在这个基础上引入更多的模型组件和训练技巧。但是，无论多复杂的模型，本质都是从这个基本的训练流程演变而来的。理解了它，就理解了深度学习的核心。

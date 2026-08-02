@@ -1,0 +1,468 @@
+---
+author: jshn9515
+date: 2026-06-18
+date-modified: 2026-06-18
+open-graph:
+  title: ch18.6-generation
+  description: "18.6 From Training to Generation: Temperature, Top-k, and Top-p"
+title: "18.6 从训练到生成：Temperature、Top-k、Top-p"
+order: 6
+eval: false
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch18-gpt2-from-scratch/ch18.6-generation.ipynb){fig-align="left"}
+
+上一节里，我们已经把 MiniGPT 训练起来了。
+
+训练时，模型看到一个 batch 的 token ids：
+
+```text
+input_ids: (B, T)
+```
+
+然后输出每个位置上的词表 logits：
+
+```text
+logits: (B, T, V)
+```
+
+训练的目标是让 `logits[:, t]` 尽量预测 `labels[:, t]`。也就是说，训练时我们会对所有位置都计算 loss。
+
+但是生成时，问题变了。
+
+给定一个前缀：
+
+$$
+x_0, x_1, \ldots, x_t
+$$
+
+模型只需要回答一个问题：
+
+> **下一个 token 应该是什么？**
+
+所以生成时，我们通常只取最后一个位置的 logits：
+
+```text
+next_token_logits = logits[:, -1, :]
+```
+
+然后再把这个 logits 变成下一个 token。
+
+这一节就讲这一步：模型已经给出了 logits，接下来怎么从 logits 生成 token。
+
+```{python}
+from typing import cast
+
+import dnnlpy
+import dnnlpy.models.gpt as gpt
+import dnnlpy.nn.functional as dF
+import tokenizers as tk
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+```{python}
+dnnlpy.set_seed(42)
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+## 18.6.1 从 logits 到概率分布
+
+我们知道，模型最后输出的是 logits，不是概率。
+
+假设词表里有 5 个 token，某一步的 logits 是：
+
+```{python}
+logits = torch.tensor([[2.0, 1.0, 0.1, -1.0, -2.0]])
+probs = dF.softmax(logits, dim=-1)
+
+print('Logits:', logits)
+print('Probs:', probs)
+```
+
+Softmax 会把 logits 变成概率分布：
+
+$$
+p_i = \frac{\exp(z_i)}{\sum_j \exp(z_j)}
+$$
+
+其中，$z_i$ 是第 $i$ 个 token 的 logit。
+
+最简单的生成方式是直接选择概率最大的 token：
+
+```{python}
+greedy_token = probs.argmax(dim=-1, keepdim=True)
+print('Greedy token:', greedy_token.item())
+```
+
+这叫 greedy decoding。它的特点是稳定、确定：同一个 prompt，每次都会生成一样的结果。但缺点也很明显：如果一直选最大概率 token，生成可能变得过于保守，甚至陷入重复。
+
+语言模型的 logits 本质上描述的是一个分布，而不是唯一答案。比如看到：
+
+```text
+I like to eat
+```
+
+后面可以接：
+
+```text
+apples
+rice
+pizza
+...
+```
+
+这些都可能合理。生成时如果只选概率最大的一个 token，就会丢掉这种多样性。
+
+所以我们常常会从概率分布中采样：
+
+```{python}
+sampled_token = probs.multinomial(num_samples=1)
+print('Sampled token:', sampled_token.item())
+```
+
+`torch.multinomial` 会按照概率分布随机抽样。概率越大的 token 越容易被抽中，但不是每次都一定抽中。
+
+## 18.6.2 Temperature：控制分布有多尖锐
+
+Temperature 是生成里最常见的参数之一。
+
+它的做法很简单：在 softmax 之前，把 logits 除以一个温度系数 $\tau$。
+
+$$
+p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}
+$$
+
+其中，$\tau$ 就是 temperature。
+
+- $\tau < 1$：分布更尖锐，高概率 token 更容易被选中；
+- $\tau = 1$：保持原来的分布；
+- $\tau > 1$：分布更平坦，低概率 token 也更可能被选中。
+
+用代码看一下：
+
+```{python}
+def greedy_sampling(logits: Tensor, temperature: float) -> Tensor:
+    """Sample the next token greedily from the logits."""
+    if temperature <= 0:
+        raise AssertionError('`temperature` must be positive.')
+    return dF.softmax(logits / temperature, dim=-1)
+
+
+for temperature in [0.5, 1.0, 2.0]:
+    probs = greedy_sampling(logits, temperature)
+    print('Temperature:', temperature)
+    print(probs)
+```
+
+可以看到，temperature 不是直接删除 token，而是改变整个分布的形状。当 temperature 很低时，模型接近 greedy decoding；当 temperature 很高时，采样会更随机。
+
+所以一个直觉是：
+
+> **Temperature 控制的是敢不敢冒险。**
+
+低 temperature 更稳，高 temperature 更多样。
+
+## 18.6.3 Top-k：只在概率最高的 k 个 token 里采样
+
+Temperature 会调整分布，但它不会彻底排除低概率 token。如果词表很大，某些 token 的概率虽然很小，但仍然有机会被采样到。生成长文本时，这些低概率 token 偶尔被抽中，就可能让文本突然跑偏。
+
+Top-k 的想法是：
+
+> **每一步只保留 logits 最高的 k 个 token，其余 token 直接屏蔽掉。**
+
+比如 `top_k=3`，就只在概率最高的 3 个 token 里采样。
+
+```{python}
+def top_k_sampling(logits: Tensor, top_k: int) -> Tensor:
+    """Sample the next token from the logits using top-k sampling."""
+    if top_k <= 0:
+        return logits
+
+    top_k = min(top_k, logits.size(-1))
+    values = logits.topk(top_k, dim=-1).values
+    threshold = values[..., -1]
+
+    logits = logits.masked_fill(logits < threshold, -torch.inf)
+    return logits
+
+
+logits = top_k_sampling(logits, top_k=3)
+probs = dF.softmax(logits, dim=-1)
+print('Original logits:', logits)
+print('Top-k sampling probs:', probs)
+```
+
+被设成 `-inf` 的位置，经过 softmax 后概率就是 0。
+
+所以 top-k 的效果是把采样范围从 `V` 个 token 缩小到 `k` 个 token，从而减少非常离谱的 token 被采样到的概率。但是 top-k 也有一个问题：`k` 是固定的。有些位置可能只有 2 个 token 合理，有些位置可能有 100 个 token 都合理。固定的 `k` 不一定总合适。
+
+## 18.6.4 Top-p：保留累计概率达到 p 的最小集合
+
+Top-p 也叫 nucleus sampling。它不是固定保留 `k` 个 token，而是先按概率从高到低排序，然后保留累计概率达到 `p` 的最小 token 集合。
+
+比如 `top_p=0.9` 的意思是：
+
+> **保留一组最可能的 token，使它们的总概率至少达到 0.9。**
+
+如果当前分布非常尖锐，可能只需要保留几个 token；如果当前分布比较平坦，就会保留更多 token。这让 top-p 比 top-k 更自适应。
+
+下面实现一个最小版本：
+
+```{python}
+def top_p_sampling(logits: Tensor, top_p: float) -> Tensor:
+    """Sample the next token from the logits using top-p sampling."""
+    if not 0 < top_p <= 1:
+        raise AssertionError('`top_p` must be in (0, 1].')
+
+    if top_p == 1.0:
+        return logits
+
+    sorted_logits, sorted_indices = logits.sort(dim=-1, descending=True)
+    sorted_probs = dF.softmax(sorted_logits, dim=-1)
+    cumulative_probs = sorted_probs.cumsum(dim=-1)
+
+    # Remove tokens whose cumulative probability is above top_p.
+    mask = cumulative_probs > top_p
+    # Keep the first token above the threshold as well, so the kept set reaches top_p.
+    mask = F.pad(mask[..., :-1], (1, 0), value=False)
+
+    remove_mask = torch.zeros_like(logits, dtype=torch.bool)
+    remove_mask.scatter_(dim=-1, index=sorted_indices, src=mask)
+
+    logits = logits.masked_fill(remove_mask, -torch.inf)
+    return logits
+
+
+logits = top_p_sampling(logits, top_p=0.9)
+probs = logits.softmax(dim=-1)
+print('Original logits:', logits)
+print('Top-p sampling probs:', probs)
+```
+
+Top-p 的直觉是：
+
+> **不是固定问保留几个 token，而是问保留多少概率质量。**
+
+这也是很多开放式文本生成任务里常用 top-p 的原因。
+
+## 18.6.5 把 Temperature、Top-k、Top-p 合在一起
+
+实际生成时，这几个操作通常会组合起来使用。一个常见顺序是：
+
+```text
+next_token_logits
+    -> divide by temperature
+    -> top-k filter
+    -> top-p filter
+    -> softmax
+    -> sample
+```
+
+下面写一个通用的采样函数：
+
+```{python}
+def sample_next_token(
+    logits: Tensor,
+    temperature: float = 1.0,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    greedy: bool = False,
+) -> Tensor:
+    """Sample next token ids from logits with temperature, top-k, and top-p."""
+    if logits.ndim != 2:
+        raise AssertionError('`logits` must have shape (B, V).')
+    if temperature <= 0:
+        raise AssertionError('`temperature` must be positive.')
+
+    if greedy:
+        next_token = logits.argmax(dim=-1, keepdim=True)
+        return next_token
+
+    logits = logits / temperature
+
+    if top_k is not None:
+        logits = top_k_sampling(logits, top_k=top_k)
+
+    if top_p is not None:
+        logits = top_p_sampling(logits, top_p=top_p)
+
+    probs = dF.softmax(logits, dim=-1)
+    next_token = probs.multinomial(num_samples=1)
+    return next_token
+
+
+print('Sample 5 tokens:', end=' ')
+for i in range(5):
+    token = sample_next_token(logits, temperature=1.0, top_k=3, top_p=0.9)
+    print(token.item(), end=', ')
+```
+
+这个函数返回的形状是 `(B, 1)`，也就是每个 batch 样本生成一个新 token。
+
+## 18.6.6 一个完整的 generate 函数
+
+现在可以写完整的 `generate` 函数了。它做的事情是：
+
+1. 输入一段 token ids；
+2. 如果序列长度超过 context length，只保留最后 `context_length` 个 token；
+3. 前向传播；
+4. 取最后一个位置的 logits；
+5. 采样出下一个 token；
+6. 拼接到原序列后面；
+7. 重复 `max_new_tokens` 次。
+
+```{python}
+@torch.inference_mode()
+def generate(
+    model: nn.Module,
+    input_ids: Tensor,
+    block_size: int,
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    do_sample: bool = True,
+) -> Tensor:
+    """Generate new token ids autoregressively."""
+    model.eval()
+
+    for _ in range(max_new_tokens):
+        model_input = input_ids[:, -block_size:]
+        logits = model(model_input)
+
+        next_token = sample_next_token(
+            logits[:, -1, :],
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            greedy=not do_sample,
+        )
+        input_ids = torch.concat([input_ids, next_token], dim=1)
+
+    return input_ids
+```
+
+这里有一个细节：
+
+```python
+model_input = input_ids[:, -block_size:]
+```
+
+如果已经生成了很长的文本，超过模型的 context length，那么 MiniGPT 不能一次看完整历史，只能看最后一段上下文。这不是 tokenizer 的限制，而是模型结构里的最大上下文长度限制。
+
+## 18.6.7 MiniGPT 生成文本
+
+这里我们直接加载上一节训练好的 MiniGPT 模型，看看它能生成什么文本。
+
+```{python}
+tokenizer = tk.Tokenizer.from_file('models/tokenizer.json')
+tokenizer = cast(tk.Tokenizer, tokenizer)
+model = gpt.MiniGPT(
+    vocab_size=tokenizer.get_vocab_size(),
+    block_size=128,
+    embed_dim=256,
+    num_layers=4,
+    num_heads=4,
+    dropout=0.1,
+).to(device)
+state_dict = torch.load('models/minigpt.pt', map_location=device)
+flag = model.load_state_dict(state_dict)
+```
+
+现在用不同策略生成：
+
+```{python}
+prompt = 'Once upon a time, there was a little girl'
+prompt_ids = tokenizer.encode(prompt).ids
+prompt_ids = torch.tensor([prompt_ids], device=device)
+
+greedy = generate(
+    model,
+    prompt_ids.clone(),
+    block_size=128,
+    max_new_tokens=150,
+    do_sample=False,
+)
+sample = generate(
+    model,
+    prompt_ids.clone(),
+    block_size=128,
+    max_new_tokens=150,
+    temperature=0.8,
+    top_k=5,
+    top_p=0.9,
+)
+
+print('Greedy:')
+print(tokenizer.decode(greedy[0].tolist()))
+print()
+print('Sample:')
+print(tokenizer.decode(sample[0].tolist()))
+```
+
+可以看到，greedy decoding 的输出比较保守，而 sampling 的输出更有多样性。
+
+## 18.6.8 几个生成参数怎么选
+
+生成参数没有唯一正确答案，它取决于任务。
+
+如果你希望输出稳定，比如做代码补全、事实问答、格式化摘要，可以用更保守的设置：
+
+```text
+temperature: 0.2 ~ 0.8
+top_k:       较小或不用
+top_p:       0.8 ~ 0.95
+```
+
+如果你希望输出更多样，比如写故事、头脑风暴、生成多个候选，可以适当提高 temperature：
+
+```text
+temperature: 0.8 ~ 1.2
+top_p:       0.9 ~ 0.98
+```
+
+但是 temperature 太高，模型会更容易胡说；top-p 太低，生成又可能变得单调。
+
+所以可以把它们理解成三种不同的控制旋钮：
+
+- **Temperature**：改变整个概率分布的尖锐程度；
+- **Top-k**：只保留最高的 $k$ 个 token；
+- **Top-p**：保留累计概率达到 $p$ 的动态 token 集合。
+
+实际使用时，不一定三个都要开。很多情况下，`temperature + top_p` 就已经够用了。
+
+## 18.6.9 本章小结
+
+这一节我们从训练切到了生成。
+
+训练时，模型并行预测所有位置的下一个 token：
+
+```text
+logits: (B, T, V)
+loss over B * T positions
+```
+
+生成时，模型每次只用最后一个位置的 logits：
+
+```text
+next_token_logits = logits[:, -1, :]
+```
+
+然后通过某种 decoding 策略选出下一个 token。
+
+几个关键点是：
+
+- Greedy decoding 每次选概率最大的 token，稳定但容易保守；
+- Sampling 会从概率分布中抽样，更有多样性；
+- Temperature 控制分布有多尖锐；
+- Top-k 把采样范围限制在最高的 $k$ 个 token；
+- Top-p 根据累计概率动态决定保留多少 token；
+- 自回归生成就是不断 `forward -> sample -> append` 的循环。
+
+到这里，我们已经从训练走到了生成。下一节会回头看 GPT-2 的结构：真实 GPT-2 和我们写的 MiniGPT 到底有什么不同。

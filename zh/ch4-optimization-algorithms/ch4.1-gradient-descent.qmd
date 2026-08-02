@@ -1,0 +1,500 @@
+---
+author: jshn9515
+date: 2026-05-29
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.1-gradient-descent
+  description: "4.1 From Gradient Descent to SGD"
+title: "4.1 从梯度下降到 SGD"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.1-gradient-descent.ipynb){fig-align="left"}
+
+在前面的章节里，我们已经知道了神经网络可以看成一个带参数的函数。给定输入 $x$，模型会经过前向传播得到预测结果，再通过损失函数衡量预测和真实标签之间的差距。训练的目标，就是不断调整模型参数，让损失越来越小。
+
+如果用 $\theta$ 表示模型里的所有可学习参数，用 $L(\theta)$ 表示当前参数下的损失，那么训练神经网络本质上就是在解一个优化问题：
+
+$$
+\min_\theta L(\theta)
+$$
+
+这句话看起来很简单，但它背后有一个非常关键的问题：
+
+> **我们怎么知道参数应该往哪个方向更新？**
+
+自动微分可以帮我们计算梯度。对于参数 $\theta$，梯度 $\nabla_\theta L(\theta)$ 可以告诉我们，如果稍微改变参数，损失会如何变化。但是，知道梯度还不等于知道完整的训练过程。梯度只是告诉我们局部方向，真正训练模型时，我们还需要决定：
+
+1. 参数应该沿着哪个方向移动；
+2. 每次应该移动多远；
+3. 应该用多少数据来估计这个方向。
+
+这一节我们先从最基础的梯度下降开始，看清楚“根据梯度更新参数”这件事的基本逻辑。然后我们会进一步讨论，为什么在深度学习里更常见的不是完整的梯度下降，而是随机梯度下降，也就是我们常说的 **SGD (Stochastic Gradient Descent)** [@bottou2012SGD]。
+
+```{python}
+from collections.abc import Iterable
+from typing import override
+
+import dnnlpy
+import dnnlpy.optim as dopt
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch import Tensor
+
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.1.1 梯度告诉我们什么？
+
+先考虑一个最简单的情况：只有一个参数 $\theta$，损失函数是 $L(\theta)$。
+
+如果我们站在当前参数位置 $\theta_t$，梯度
+
+$$
+\frac{dL}{d\theta}
+$$
+
+表示损失函数在这个位置的变化方向。
+
+如果梯度是正的，说明当 $\theta$ 增大时，损失会增大。为了让损失变小，我们应该让 $\theta$ 往小的方向走。而如果梯度是负的，说明当 $\theta$ 增大时，损失会减小。为了让损失变小，我们应该让 $\theta$ 往大的方向走。
+
+所以不管梯度是正还是负，想让损失下降，一个自然的选择就是沿着梯度的反方向更新参数：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{dL}{d\theta}
+$$
+
+这里的 $\eta$ 是**学习率（learning rate）**，用来控制每一步走多远。
+
+如果参数不止一个，而是一整个向量，那么更新规则可以写成：
+
+$$
+\theta_{t+1} = \theta_t - \eta \nabla_\theta L(\theta_t)
+$$
+
+这就是最基本的**梯度下降（Gradient Descent）**。
+
+直观来说，梯度下降就像在山坡上往低处走。当前位置的梯度告诉我们山坡最陡的上升方向，而负梯度方向就是最陡的下降方向。我们每次沿着负梯度方向走一小步，希望一步一步走到损失较小的位置。
+
+当然，学习率 $\eta$ 的选择也非常重要。如果学习率太小，每一步走得很谨慎，训练会很慢。损失虽然可能稳定下降，但需要很多次迭代才能接近较好的参数。但如果学习率太大，每一步可能跨得太远，甚至直接越过最低点。更严重时，参数会在损失曲面上来回震荡，损失不降反升，训练变得不稳定。因此，学习率是优化过程中最重要的超参数之一。
+
+我们可以把学习率理解成模型对梯度的信任程度。学习率越大，模型越激进，相信当前梯度方向可以走很远；学习率越小，模型越保守，只沿着当前方向挪动一点点。
+
+在后面的章节里，我们会看到，很多优化器的核心思想其实都和学习率有关。比如 Adagrad、RMSprop 和 Adam 会为不同参数自动调整学习率；学习率调度器（Learning Rate Scheduler）则会让全局学习率在训练过程中发生变化。但在最基础的梯度下降里，学习率就是一个固定的手动设置的数。
+
+## 4.1.2 用一个简单例子观察梯度下降
+
+为了更直观地理解梯度下降，我们先不考虑神经网络，而是看一个简单函数：
+
+$$
+L(\theta) = 0.1 (x - 2)^2 + 2.0 (y + 1)^2
+$$
+
+这个函数的最小值显然出现在 $(x, y) = (2, -1)$。如果我们从一个较远的位置开始，比如 $(x, y) = (-5, 2)$，梯度下降应该一步一步把参数推向 $(2, -1)$。
+
+先定义损失函数：
+
+```{python}
+def loss_fn(theta: Tensor) -> Tensor:
+    x, y = theta[0], theta[1]
+    return 0.1 * (x - 2) ** 2 + 2.0 * (y + 1) ** 2
+```
+
+然后实现一个简单的梯度下降：
+
+```{python}
+class SimpleSGD(dopt.Optimizer):
+    def __init__(self, params: Iterable[Tensor], lr: float = 1e-3):
+        super().__init__(params)
+        self.lr = lr
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        for p in self.params:
+            if p.grad is None:
+                continue
+
+            p.sub_(p.grad, alpha=self.lr)
+```
+
+运行梯度下降，并观察参数的更新轨迹：
+
+```{python}
+theta = torch.tensor([-5.0, 2.0], requires_grad=True)
+optimizer = SimpleSGD([theta], lr=0.4)
+history = dopt.run_optimizer(optimizer, loss_fn, steps=40)
+
+print('Final theta:', history[-1])
+print('Final loss:', loss_fn(history[-1]).item())
+```
+
+我们可以把参数更新轨迹画出来：
+
+```{python}
+x = torch.linspace(-6.5, 5.5, 200)
+y = torch.linspace(-3.5, 2.5, 200)
+X, Y = torch.meshgrid(x, y, indexing='ij')
+Z = 0.1 * (X - 2) ** 2 + 2.0 * (Y + 1) ** 2
+
+fig = plt.figure(1)
+ax = fig.add_subplot(1, 1, 1)
+ax.contourf(X, Y, Z, levels=25, cmap='YlGnBu')
+ax.plot(
+    history[:, 0],
+    history[:, 1],
+    color='#EC705B',
+    marker='o',
+    markersize=3,
+    markerfacecolor='#C0392B',
+    markeredgecolor='white',
+    markeredgewidth=0.5,
+)
+ax.set_xlabel(r'$\theta_1$')
+ax.set_ylabel(r'$\theta_2$')
+ax.set_title('SGD on a Simple Quadratic Function')
+plt.show()
+```
+
+从图中可以看到，参数一开始离最优点较远，梯度较大，所以每一步移动也比较明显。随着参数逐渐接近 $(2, -1)$，梯度越来越小，更新步长也自然变小。这体现了梯度下降的一个基本特点：即使学习率固定，实际更新量也会受到梯度大小的影响。远离最低点时，梯度通常较大，参数移动较快；接近最低点时，梯度变小，参数移动变慢。
+
+## 4.1.3 从单个样本到整个数据集
+
+上面的例子里，损失函数只有一个简单公式。但在真实的监督学习任务中，我们通常有一个训练集：
+
+$$
+\mathcal{D} = \{(x_1, y_1), (x_2, y_2), \dots, (x_N, y_N)\}
+$$
+
+模型参数为 $\theta$，对于每个样本 $(x_i, y_i)$，模型都会产生一个损失：
+
+$$
+\ell_i(\theta) = \ell(f_\theta(x_i), y_i)
+$$
+
+整个训练集上的平均损失可以写成：
+
+$$
+L(\theta) = \frac{1}{N} \sum_{i=1}^N \ell_i(\theta)
+$$
+
+如果我们想严格按照梯度下降更新参数，就需要计算整个训练集的平均损失，再对它求梯度：
+
+$$
+\nabla_\theta L(\theta) = \frac{1}{N} \sum_{i=1}^N \nabla_\theta \ell_i(\theta)
+$$
+
+然后更新参数：
+
+$$
+\theta_{t+1} = \theta_t - \eta \nabla_\theta L(\theta_t)
+$$
+
+这通常被称为**批量梯度下降（Batch Gradient Descent）**，也就是每次更新都使用整个训练集。
+
+这个做法在数学上很干净。因为我们每次使用的确实是整个训练目标的梯度，方向比较稳定，不会受到单个样本噪声的影响。但问题也很明显：当训练集很大时，每更新一次参数都要遍历全部数据，代价太高了。
+
+想象一下，如果我们有几百万张图片，每次只为了更新一步参数，就要把所有图片都前向传播和反向传播一遍，那么训练会非常慢。更重要的是，在深度学习里，我们通常需要更新成千上万步参数。如果每一步都使用完整训练集，计算成本会非常夸张。
+
+所以，批量梯度下降虽然概念简单，但并不是现代深度学习训练中最常用的形式。
+
+## 4.1.4 随机梯度下降：不用每次都看完整数据集
+
+既然每次用完整训练集太贵，一个自然的问题就是：
+
+> **能不能每次只看一部分数据，也大致知道参数该往哪里走？**
+
+这就是随机梯度下降的核心思想。
+
+最极端的做法是每次只随机抽取一个样本 $(x_i, y_i)$，用这个样本的损失梯度近似整个训练集的梯度：
+
+$$
+\nabla_\theta L(\theta) \approx \nabla_\theta \ell_i(\theta)
+$$
+
+于是参数更新变成：
+
+$$
+\theta_{t+1} = \theta_t - \eta \nabla_\theta \ell_i(\theta_t)
+$$
+
+这就是最原始意义上的**随机梯度下降（Stochastic Gradient Descent）**。
+
+它的好处是每次更新都非常便宜，因为只需要计算一个样本的梯度。缺点是方向会很杂乱。单个样本不一定能代表整个训练集，所以每一步的方向可能会偏，有时甚至会暂时让整体损失变大。但从长期来看，如果样本是随机抽取的，这些杂乱的更新方向会围绕真实梯度方向波动。模型不再每一步都精确地朝着整体损失下降最快的方向走，而是在噪声中逐渐靠近较好的区域。
+
+这种噪声并不完全是坏事。在深度学习的非凸损失曲面中，适当的随机性有时反而可以帮助模型跳出某些狭窄或不好的区域。不过，噪声太大也会让训练不稳定。因此，实践中我们很少真的每次只用一个样本，而是使用 mini-batch。
+
+## 4.1.5 Mini-batch SGD：深度学习里的默认训练方式
+
+在现代深度学习中，我们通常说的 SGD，很多时候指的是 **Mini-batch SGD**。也就是说，每次不是使用一个样本，也不是使用整个训练集，而是随机抽取一小批样本：
+
+$$
+\mathcal{B} = \{(x_i, y_i)\}_{i \in B}
+$$
+
+然后计算这个 mini-batch 上的平均损失：
+
+$$
+L_{\mathcal{B}}(\theta) = \frac{1}{|\mathcal{B}|} \sum_{i \in B} \ell_i(\theta)
+$$
+
+再用它的梯度来更新参数：
+
+$$
+\theta_{t+1} = \theta_t - \eta \nabla_\theta L_{\mathcal{B}}(\theta_t)
+$$
+
+Mini-batch SGD 介于完整 batch gradient descent 和单样本 SGD 之间。如果 batch size 很大，梯度估计更稳定，但每一步计算成本更高，而且更新次数变少；如果 batch size 很小，每一步计算更便宜，更新更频繁，但梯度噪声更大，训练可能更抖。因此，mini-batch 实际上是在计算效率和梯度估计质量之间做折中。
+
+从实现角度看，PyTorch 中常见的训练循环其实就是 mini-batch SGD 的形式：
+
+```{python}
+model = nn.Linear(1, 1)
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+x = torch.randn(32, 1)
+y = 2 * x + 1
+
+pred = model(x)
+loss = F.mse_loss(pred, y)
+
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+
+print('Mini-batch loss:', loss.item())
+```
+
+这里的 `x` 和 `y` 就是一个 mini-batch。`loss.backward()` 计算的是当前 mini-batch 上的梯度，并存储在模型参数的 `.grad` 属性里；而`optimizer.step()` 则根据这些梯度更新参数。
+
+也就是说，PyTorch 里的这三行代码：
+
+```python
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+```
+
+背后对应的就是：
+
+$$
+\theta_{t+1} = \theta_t - \eta \nabla_\theta L_{\mathcal{B}}(\theta_t)
+$$
+
+## 4.1.6 为什么训练时要打乱数据？
+
+如果我们每次都使用 mini-batch，那么还有一个问题：这些 mini-batch 应该怎么取？
+
+通常做法是在每个 epoch 开始时打乱训练数据，然后按顺序切成一个个 mini-batch。这样可以避免模型总是看到固定顺序的数据。
+
+如果数据不打乱，mini-batch 之间可能带有很强的偏差。比如一个分类数据集里，前一部分全是猫，后一部分全是狗。如果不打乱数据，模型在前几步只看到猫，后几步只看到狗，梯度方向就会非常不稳定。打乱数据的目的，是让每个 mini-batch 尽量像整个训练集的一个小型随机样本。这样 mini-batch 梯度虽然仍然有噪声，但它至少不会长期偏向某一类数据。
+
+这也是为什么在 PyTorch 的 DataLoader 中，训练集通常会设置 `shuffle=True` 的原因。
+
+```python
+dataloader = utils.DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+)
+```
+
+而验证集和测试集通常不需要 `shuffle=True`。因为验证和测试阶段不更新参数，只需要稳定地评估模型性能，数据顺序并不影响最终平均指标。
+
+## 4.1.7 SGD 中的 Weight Decay
+
+前面我们讨论的 SGD 只关心一件事：让训练损失下降。也就是说，参数更新完全由当前 mini-batch 上的梯度决定：
+
+$$
+\theta_{t+1} = \theta_t - \eta g_t
+$$
+
+其中，$g_t = \nabla_\theta L_{\mathcal{B}}(\theta_t)$。但是在训练神经网络时，我们通常希望模型不仅能在训练集上表现好，还能在未见过的数据上泛化得好。为了提高泛化能力，我们经常会使用一些正则化手段，来约束模型的复杂度。
+
+一个常见做法是在损失函数里额外加入一个惩罚项，让模型倾向于使用更小的权重：
+
+$$
+L_{\text{reg}}(\theta) = L(\theta) + \frac{\lambda}{2}\|\theta\|_2^2
+$$
+
+这里的 $\lambda$ 是正则化强度，控制我们有多希望参数变小。$\|\theta\|_2^2$ 表示参数平方和。这个项越大，说明参数整体越大；加入它之后，优化器不仅要降低原来的训练损失，也要避免参数无限变大。
+
+这通常被称为 **L2 regularization**。而在 SGD 里，它也经常被叫做 **weight decay**。
+
+这个名字来自它对参数更新的影响。因为：
+
+$$
+\nabla_\theta \frac{\lambda}{2}\|\theta\|_2^2 = \lambda \theta
+$$
+
+所以加入 L2 正则项之后，梯度变成：
+
+$$
+g_t + \lambda \theta_t
+$$
+
+于是 SGD 的更新规则变成：
+
+$$
+\theta_{t+1} = \theta_t - \eta (g_t + \lambda \theta_t)
+$$
+
+把它展开一下：
+
+$$
+\theta_{t+1} = (1 - \eta \lambda)\theta_t - \eta g_t
+$$
+
+这一步很重要。除了正常的梯度更新 $-\eta g_t$ 之外，参数本身还会被乘上一个小于 1 的系数 $(1 - \eta\lambda)$。也就是说，每一步更新都会让权重稍微向 0 衰减一点，所以它被称为 weight decay。
+
+直观来说，普通 SGD 只问：
+
+> **为了降低当前 batch 的损失，参数应该怎么动？**
+
+而带 weight decay 的 SGD 还会额外问：
+
+> **在降低损失的同时，能不能让参数别变得太大？**
+
+所以 weight decay 可以看成一种约束模型复杂度的手段。它不会直接减少模型参数个数，而是让模型更倾向于使用较小的权重。
+
+在最基础的 SGD 中，实现 weight decay 非常简单。我们只需要在更新参数前，把 $\lambda \theta$ 加到梯度上：
+
+```{python}
+class SimpleSGDWithWeightDecay(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1e-3,
+        weight_decay: float = 0.0,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.weight_decay = weight_decay
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        for p in self.params:
+            if p.grad is None:
+                continue
+
+            grad = p.grad
+            if self.weight_decay > 0:
+                grad = grad.add(p, alpha=self.weight_decay)
+
+            p.sub_(grad, alpha=self.lr)
+```
+
+注意，这里的 `weight_decay` 并不是直接从参数里减去一个固定值，而是按照参数当前的大小成比例地衰减。参数越大，衰减项也越大；参数越接近 0，衰减项也越小。
+
+我们可以用同一个简单二次函数看一下它的效果：
+
+```{python}
+theta1 = torch.tensor([-5.0, 2.0], requires_grad=True)
+theta2 = torch.tensor([-5.0, 2.0], requires_grad=True)
+optimizer1 = SimpleSGD([theta1], lr=0.4)
+optimizer2 = SimpleSGDWithWeightDecay([theta2], lr=0.4, weight_decay=0.2)
+
+history_no_decay = dopt.run_optimizer(optimizer1, loss_fn, steps=40)
+history_with_decay = dopt.run_optimizer(optimizer2, loss_fn, steps=40)
+
+print('Without weight decay:')
+print('Final theta:', history_no_decay[-1])
+print('Final loss:', loss_fn(history_no_decay[-1]).item())
+
+print('With weight decay:')
+print('Final theta:', history_with_decay[-1])
+print('Final loss:', loss_fn(history_with_decay[-1]).item())
+```
+
+画出参数更新轨迹：
+
+```{python}
+fig = plt.figure(2)
+ax = fig.add_subplot(1, 1, 1)
+h1 = ax.plot(history_no_decay, color='royalblue')
+h2 = ax.plot(history_with_decay, color='coral')
+h3 = ax.axhline(2, linestyle='--', color='gray', linewidth=1, zorder=0)
+h4 = ax.axhline(-1, linestyle='--', color='gray', linewidth=1, zorder=0)
+ax.set_xlabel('Step')
+ax.set_ylabel(r'$\theta$')
+labels = ['Without weight decay', 'With weight decay', 'Optimal point']
+ax.legend([h1[0], h2[0], h3], labels)
+ax.set_title('SGD with Weight Decay')
+plt.show()
+```
+
+在没有 weight decay 时，参数会逐渐靠近原始损失函数的最优点 $(2, -1)$。加入 weight decay 之后，参数会受到额外的拉回 0 的力量，所以最后 $x$ 停在一个比 2 更小的位置，$y$ 停在一个比 -1 更大的位置。这并不是优化器出了问题，而是因为我们优化的目标已经变了。加入 weight decay 之后，优化器不再只最小化
+
+$$
+L(\theta) = 0.1 (x - 2)^2 + 2.0 (y + 1)^2
+$$
+
+而是在最小化
+
+$$
+L(\theta) = 0.1 (x - 2)^2 + 2.0 (y + 1)^2 + \frac{\lambda}{2}(x^2 + y^2)
+$$
+
+因此，新的最优点会在原始最优点和 0 之间。
+
+在 PyTorch 里，`optim.SGD` 也提供了 `weight_decay` 参数：
+
+```{python}
+model = nn.Linear(1, 1)
+optimizer = optim.SGD(
+    model.parameters(),
+    lr=0.1,
+    weight_decay=1e-4,
+)
+```
+
+不过需要注意，通常我们不会对所有参数都使用 weight decay。比如 Linear 的 bias、LayerNorm 的 scale 和 shift 参数常常不做 weight decay，因为这些参数不是普通线性层或卷积层的权重，对它们衰减不一定有帮助。实际项目中，经常会通过参数组给不同参数设置不同的 `weight_decay`。这部分我们在 PyTorch 优化器的章节里曾经提过。
+
+## 4.1.8 SGD 的优点和问题
+
+到这里，我们可以总结一下 SGD 为什么重要。
+
+首先，SGD 让大规模训练变得可行。模型不需要每次更新都遍历完整训练集，而是可以用 mini-batch 梯度近似整体梯度。这极大降低了每一步更新的成本。
+
+其次，SGD 的更新规则非常简单：
+
+$$
+\theta_{t+1} = \theta_t - \eta g_t
+$$
+
+其中，$g_t$ 是当前 mini-batch 上的梯度。正因为它简单，我们才能更清楚地看到后续优化器到底改进了什么。Momentum 会修改更新方向，让参数更新具有惯性；Adagrad、RMSprop 和 Adam 会修改不同参数的有效学习率；AdamW 则会重新处理权重衰减和梯度更新之间的关系。
+
+但是，SGD 本身也有明显问题。
+
+第一个问题是更新方向容易抖动。Mini-batch 梯度只是整体梯度的一个估计，不同 batch 之间可能差异很大，因此参数更新轨迹会比较杂乱。
+
+第二个问题是所有参数共享同一个学习率。无论某个参数梯度经常很大，还是另一个参数梯度长期很小，基础版本的 SGD 都用同一个 $\eta$ 控制它们的更新。这在复杂神经网络中可能不够灵活。
+
+第三个问题是 SGD 不会记住过去的梯度。每一步更新只看当前 mini-batch 的梯度，过去的更新方向不会直接影响当前更新。这会导致参数在某些方向上来回震荡，尤其是在损失曲面形状很狭长的时候。
+
+这些问题正是后续优化器要解决的。
+
+- Momentum 会问：既然当前梯度带有噪声，我们能不能参考过去一段时间的更新方向？
+- Adagrad 和 RMSprop 会问：既然不同参数的梯度尺度不同，我们能不能给每个参数分配不同的学习率？
+- Adam 会问：能不能同时结合 momentum 的方向平滑和 RMSprop 的自适应缩放？
+
+所以，SGD 不只是一个基础优化器，它也是理解后面所有优化器的起点。
+
+## 4.1.9 本章小结
+
+这一节我们从最基本的问题出发：有了梯度之后，参数应该如何更新？
+
+梯度告诉我们损失上升最快的方向，因此负梯度方向就是局部下降最快的方向。梯度下降的核心思想就是沿着负梯度方向更新参数，并用学习率控制每一步走多远。
+
+对于完整训练集，批量梯度下降每次使用所有样本来计算梯度，方向稳定，但计算代价很高。随机梯度下降则用随机样本或 mini-batch 的梯度近似整体梯度，大幅降低了每一步的计算成本，也引入了适度的随机性。
+
+在现代深度学习中，我们通常使用 mini-batch SGD。它在计算效率和梯度稳定性之间取得折中，是神经网络训练的基本形式。PyTorch 中常见的 `zero_grad()`、`backward()` 和 `step()` 训练流程，本质上就是在 mini-batch 上计算梯度并更新参数。
+
+此外，我们还介绍了 SGD 中的 weight decay。它可以理解为在损失函数中加入 L2 正则项，让参数在降低训练损失的同时也倾向于保持较小的规模。对于基础 SGD 来说，L2 regularization 和 weight decay 是等价的。但对于 Adam 这类自适应优化器，二者会产生差异，因此后面讲 AdamW 时还会重新回到这个问题。
+
+不过，基础 SGD 也有局限：它的更新方向容易受 mini-batch 噪声影响，所有参数共享同一个学习率，并且不会记住过去的梯度方向。下一节我们会看到，momentum 正是从这些问题出发，对 SGD 做出的第一个重要改进。

@@ -1,0 +1,556 @@
+---
+author: jshn9515
+date: 2026-05-29
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.4-rmsprop-adadelta
+  description: "4.4 RMSprop and Adadelta: Fixing Learning Rate Decay"
+title: "4.4 RMSprop 与 Adadelta：修正学习率衰减"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.4-rmsprop-adadelta.ipynb){fig-align="left"}
+
+上一节我们介绍了 Adagrad。它的核心思想是：不要让所有参数共享同一个学习率，而是为每个参数维护历史平方梯度累计量：
+
+$$
+s_t = s_{t-1} + g_t^2
+$$
+
+然后用这个累计量缩放当前梯度：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{g_t}{\sqrt{s_t} + \epsilon}
+$$
+
+如果某个参数过去经常有很大的梯度，那么它对应的 $s_t$ 会变大，后续有效学习率会变小。如果某个参数很少被更新，那么它对应的 $s_t$ 增长较慢，后续仍然可以保持相对较大的有效学习率。这让 Adagrad 很适合处理稀疏特征。
+
+但是 Adagrad 也有一个明显的问题：$s_t$ 只会越来越大，所以**有效学习率只会越来越小**。
+
+也就是说，Adagrad 的记忆太长了。它会把训练开始以来所有历史梯度平方都加起来，不管很久以前的梯度是否还代表当前的优化状态。这会带来一个问题：训练到后期，分母可能变得很大，导致参数几乎不再更新。
+
+那么，一个自然的问题就是：
+
+> **能不能仍然保留 Adagrad 的自适应学习率思想，但不要让历史累计量无限增长？**
+
+RMSprop [@tieleman2012RMSprop] 和 Adadelta [@zeiler2012Adadelta] 都是沿着这个问题发展出来的。它们不再使用完整历史平方梯度的累计和，而是使用**指数滑动平均（Exponential Moving Average, EMA）**来记录最近一段时间的梯度尺度。
+
+```{python}
+from collections.abc import Iterable
+from typing import override
+
+import dnnlpy
+import dnnlpy.optim as dopt
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.4.1 Adagrad 的问题：历史记忆太长
+
+先回顾 Adagrad 的有效学习率。它的更新方式是：
+
+$$
+\theta_{t+1} = \theta_{t} - \frac{\eta}{\sqrt{s_{t}} + \epsilon} g_{t}
+$$
+
+其中：
+
+$$
+s_{t} = \sum_{\tau=1}^{t} g_{\tau}^2
+$$
+
+因此有效学习率是：
+
+$$
+\eta_{t} = \frac{\eta}{\sqrt{s_{t}} + \epsilon}
+$$
+
+由于 $g_{\tau}^2 > 0$，所以 $s_{t}$ 只会增加，不会减少。
+
+这意味着：
+
+$$
+s_{1} \le s_{2} \le \cdots \le s_{t}
+$$
+
+于是有效学习率会越来越小：
+
+$$
+\eta_{1} \ge \eta_{2} \ge \cdots \ge \eta_{t}
+$$
+
+这个性质有时候是好的。比如某个参数被频繁更新，Adagrad 会逐渐降低它的步长，让训练更稳定。但问题是，Adagrad 不会忘记很久以前的梯度。即使模型已经进入了一个新的区域，过去早期的大梯度仍然会留在 $s_t$ 里面，继续压低有效学习率。结果就是训练后期可能走得越来越慢。
+
+我们可以用一个简单例子来看看这个现象。假设某个参数的梯度大小呈周期性变化。Adagrad 的历史平方梯度累计量会不断增加，因此有效学习率会持续下降：
+
+```{python}
+num_steps = 200
+initial_lr = 1.0
+eps = 1e-10
+
+simulated_grad = torch.arange(1, num_steps + 1, dtype=torch.float32)
+simulated_grad = 1.0 + 0.5 * (simulated_grad / 10.0).sin()
+
+sum_of_sq_grad = torch.tensor(0.0)
+adagrad_lr_history = []
+
+for grad in simulated_grad:
+    sum_of_sq_grad += grad.square()
+    lr = initial_lr / (sum_of_sq_grad.sqrt() + eps)
+    adagrad_lr_history.append(lr.item())
+
+fig = plt.figure(1, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+ax.plot(adagrad_lr_history)
+ax.set_xlabel('Step')
+ax.set_ylabel('Effective Learning Rate')
+ax.set_title('Adagrad Effective Learning Rate Keeps Decreasing')
+plt.show()
+```
+
+从图中可以看到，即使每一步的梯度大小具有周期性，Adagrad 的有效学习率也会不断下降。这说明 Adagrad 的问题不在于它做了自适应缩放，而在于它用的是从训练开始到当前时刻的完整历史累计。如果我们想修正这个问题，就需要换一种方式估计梯度尺度。
+
+## 4.4.2 从累计和到滑动平均
+
+Adagrad 维护的是历史平方梯度累计和：
+
+$$
+s_t = s_{t-1} + g_t^2
+$$
+
+这个公式的问题是：过去所有梯度都被永久保留下来。
+
+一种自然的改法是：
+
+> **不要累计全部历史，而是只保留最近一段时间的梯度尺度。**
+
+但我们不一定真的要保存最近 $k$ 步的所有梯度。更常见的做法是使用指数滑动平均：
+
+$$
+v_t = \rho v_{t-1} + (1 - \rho) g_t^2
+$$
+
+这里 $\rho$ 通常是一个接近 1 的数，比如 0.9 或 0.99。
+
+这个公式可以理解为：
+
+- $\rho v_{t-1}$：保留过去的估计；
+- $(1 - \rho)g_t^2$：加入当前梯度平方的信息。
+
+如果 $\rho$ 很大，说明历史信息保留得更多，变化更平滑；如果 $\rho$ 较小，说明当前梯度的影响更大，估计变化更快。关键区别在于，旧梯度的影响会随着时间指数衰减。
+
+例如，展开这个递推式可以看到：
+
+$$
+v_t = (1-\rho)g_t^2 + \rho(1-\rho)g_{t-1}^2 + \rho^2(1-\rho)g_{t-2}^2 + \cdots
+$$
+
+越久以前的梯度，权重越小。这就像给 Adagrad 加上了遗忘机制：最近的梯度更重要，很久以前的梯度会慢慢淡出。
+
+## 4.4.3 RMSprop：用滑动平均估计梯度尺度
+
+RMSprop [@tieleman2012RMSprop] 的核心就是把 Adagrad 的历史平方梯度累计和，改成平方梯度的指数滑动平均。
+
+它维护：
+
+$$
+v_t = \rho v_{t-1} + (1 - \rho) g_t^2
+$$
+
+然后用 $v_t$ 缩放梯度：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{g_t}{\sqrt{v_t} + \epsilon}
+$$
+
+从形式上看，RMSprop 和 Adagrad 非常像：
+
+$$
+\text{Adagrad:} \quad s_t = s_{t-1} + g_t^2
+$$
+
+$$
+\text{RMSprop:} \quad v_t = \rho v_{t-1} + (1 - \rho) g_t^2
+$$
+
+其中，$v_t$ 可以理解成当前参数最近一段时间的梯度平方平均。如果某个参数最近梯度经常很大，那么 $v_t$ 会变大，分母变大，有效学习率变小。这样可以防止这个参数更新过猛。如果某个参数最近梯度一直很小，那么 $v_t$ 会变小，分母变小，有效学习率变大。这样可以避免这个参数更新太慢。注意这里强调的是**最近**。
+
+这和 Adagrad 的区别很重要。
+
+- Adagrad 问的是：这个参数从训练开始以来一共积累了多少平方梯度？
+- RMSprop 问的是：这个参数最近一段时间的梯度尺度大概是多少？
+
+因此，RMSprop 更适合非平稳的训练过程。
+
+神经网络训练本来就是非平稳的。随着参数不断变化，模型进入的损失区域也会变化。很早以前的梯度统计不一定还适合当前区域。RMSprop 用滑动平均替代完整累计，让优化器可以逐渐适应新的梯度尺度。
+
+我们可以把 Adagrad 和 RMSprop 的有效学习率放在一起比较一下：
+
+```{python}
+rho = 0.9
+velocity = torch.tensor(0.0)
+rmsprop_lr_history = []
+
+for t, grad in enumerate(simulated_grad, start=1):
+    velocity = rho * velocity + (1 - rho) * grad.square()
+    # We do bias correction to make it comparable to Adagrad's
+    # effective learning rate.
+    velocity_adj = velocity / (1 - pow(rho, t))
+    lr = initial_lr / (velocity_adj.sqrt() + eps)
+    rmsprop_lr_history.append(lr.item())
+
+fig = plt.figure(2, figsize=(6, 4))
+ax = fig.add_subplot(1, 1, 1)
+ax.plot(adagrad_lr_history)
+ax.plot(rmsprop_lr_history)
+ax.set_xlabel('Step')
+ax.set_ylabel('Effective Learning Rate')
+ax.legend(['Adagrad', 'RMSprop'])
+ax.set_title('Adagrad vs. RMSprop')
+plt.show()
+```
+
+在这个例子里，我们使用了一个简单的周期性梯度序列。可以发现，Adagrad 的有效学习率持续下降，而 RMSprop 的有效学习率随着梯度的变化而波动。这说明 RMSprop 通过滑动平均成功地避免了 Adagrad 的学习率衰减问题。
+
+## 4.4.4 RMSprop 的 PyTorch 实现
+
+下面我们实现一个简化版 RMSprop。它需要维护一个状态 `square_avgs`，用来记录每个参数的平方梯度滑动平均。
+
+```{python}
+class RMSprop(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1e-2,
+        rho: float = 0.99,
+        eps: float = 1e-8,
+        weight_decay: float = 0.0,
+        momentum: float = 0.0,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.rho = rho
+        self.eps = eps
+        self.weight_decay = weight_decay
+        self.momentum = momentum
+
+        self.ema_of_sq_grads = [torch.zeros_like(p) for p in self.params]
+        self.momentum_buffers = [torch.zeros_like(p) for p in self.params]
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        for p, v, buffer in zip(
+            self.params,
+            self.ema_of_sq_grads,
+            self.momentum_buffers,
+            strict=True,
+        ):
+            if p.grad is None:
+                continue
+
+            grad = p.grad
+            if self.weight_decay > 0:
+                grad = grad.add(p, alpha=self.weight_decay)
+
+            v.mul_(self.rho).add_(grad.square(), alpha=1 - self.rho)
+
+            if self.momentum > 0:
+                buffer.mul_(self.momentum).addcdiv_(grad, v.sqrt() + self.eps)
+                p.sub_(buffer, alpha=self.lr)
+            else:
+                p.addcdiv_(grad, v.sqrt() + self.eps, value=-self.lr)
+
+    @torch.no_grad()
+    def get_effective_lr(self) -> list[Tensor]:
+        effective_lr = []
+
+        for v in self.ema_of_sq_grads:
+            lr = self.lr / (v.sqrt() + self.eps).clone()
+            effective_lr.append(lr)
+
+        return effective_lr
+```
+
+其中最关键的是这一行：
+
+```python
+v.mul_(self.rho).add_(grad.square(), alpha=1 - self.rho)
+```
+
+它对应公式：
+
+$$
+v_t = \rho v_{t-1} + (1 - \rho) g_t^2
+$$
+
+需要注意的是，`zero_grad()` 清空的是参数的 `.grad` 属性，而不是 RMSprop 的 `square_avgs`。`.grad` 是当前 mini-batch 计算出来的梯度缓存，每一轮反向传播前都要清空；`square_avgs` 是优化器的内部状态，用来记录历史梯度平方的滑动平均，应该跨 step 保留下来。这一点和 Adagrad 一样。
+
+## 4.4.5 Adadelta：连学习率也想少依赖一点
+
+RMSprop 修正了 Adagrad 的核心问题：把历史平方梯度累计和改成了滑动平均。但是它仍然保留了一个全局学习率 $\eta$：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{g_t}{\sqrt{v_t} + \epsilon}
+$$
+
+这时可以继续问一个问题：
+
+> **既然我们已经在根据梯度尺度调整步长，能不能进一步减少对手动学习率的依赖？**
+
+Adadelta [@zeiler2012Adadelta] 就是沿着这个方向提出的。它和 RMSprop 一样，也维护平方梯度的指数滑动平均：
+
+$$
+E[g^2]_t = \rho E[g^2]_{t-1} + (1 - \rho)g_t^2
+$$
+
+但 Adadelta 还额外维护参数更新量平方的指数滑动平均：
+
+$$
+E[\Delta \theta^2]_t = \rho E[\Delta \theta^2]_{t-1} + (1 - \rho)(\Delta \theta_t)^2
+$$
+
+它的更新方向写成：
+
+$$
+\Delta \theta_t = -\frac{\sqrt{E[\Delta \theta^2]_{t-1} + \epsilon}}{\sqrt{E[g^2]_t + \epsilon}} g_t
+$$
+
+然后：
+
+$$
+\theta_{t+1} = \theta_t + \Delta \theta_t
+$$
+
+这看起来比 RMSprop 复杂一些，但直觉并不难。
+
+RMSprop 用 $\sqrt{v_t}$ 估计最近梯度的尺度，然后用它缩放梯度。Adadelta 在这个基础上又问：过去参数更新量本身大概是什么尺度？如果过去更新量很大，这一步可以相对大一些；如果过去更新量很小，这一步也应该相对谨慎。
+
+所以 Adadelta 的更新比例中有两个部分：
+
+$$
+\frac{\mathrm{RMS}[\Delta \theta]_{t-1}}{\mathrm{RMS}[g]_t}
+$$
+
+其中，分母来自最近梯度的尺度，分子来自最近更新量的尺度。
+
+这也是为什么 Adadelta 经常被描述为减少对全局学习率依赖的优化器。它试图让参数更新的尺度由历史更新量自己来校准。因此，在原始 Adadelta 里，是不需要全局学习率 `lr` 的。不过在 PyTorch 的 Adadelta 实现中，仍然保留了 `lr` 参数。也就是说，实践实现里通常还是允许用一个全局系数继续缩放更新量。
+
+## 4.4.6 Adadelta 的 PyTorch 实现
+
+下面实现一个简化版 Adadelta。它需要维护两个状态：
+
+- `square_avgs`：梯度平方的滑动平均；
+- `accumulate_updates`：更新量平方的滑动平均。
+
+```{python}
+class Adadelta(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1.0,
+        rho: float = 0.9,
+        eps: float = 1e-6,
+        weight_decay: float = 0.0,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.rho = rho
+        self.eps = eps
+        self.weight_decay = weight_decay
+
+        self.ema_of_sq_grads = [torch.zeros_like(p) for p in self.params]
+        self.ema_of_sq_updates = [torch.zeros_like(p) for p in self.params]
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        for p, v, u in zip(
+            self.params,
+            self.ema_of_sq_grads,
+            self.ema_of_sq_updates,
+            strict=True,
+        ):
+            if p.grad is None:
+                continue
+
+            grad = p.grad
+            if self.weight_decay > 0:
+                grad = grad.add(p, alpha=self.weight_decay)
+
+            v.mul_(self.rho).add_(grad.square(), alpha=1 - self.rho)
+            delta_x = (u + self.eps).sqrt() / (v + self.eps).sqrt() * grad
+
+            u.mul_(self.rho).add_(delta_x.square(), alpha=1 - self.rho)
+            p.sub_(delta_x, alpha=self.lr)
+
+    @torch.no_grad()
+    def get_effective_lr(self) -> list[Tensor]:
+        effective_lr = []
+
+        for v, u in zip(
+            self.ema_of_sq_grads,
+            self.ema_of_sq_updates,
+            strict=True,
+        ):
+            lr = self.lr * (u + self.eps).sqrt() / (v + self.eps).sqrt()
+            effective_lr.append(lr)
+
+        return effective_lr
+```
+
+这段代码里最重要的是：
+
+```python
+delta_x = (u + self.eps).sqrt() / (v + self.eps).sqrt() * grad
+```
+
+它对应公式：
+
+$$
+\Delta \theta_t = -\frac{\sqrt{E[\Delta \theta^2]_{t-1} + \epsilon}}{\sqrt{E[g^2]_t + \epsilon}} g_t
+$$
+
+更新完参数后，再用当前更新量更新 `ema_of_sq_updates`：
+
+```python
+u.mul_(self.rho).add_(
+    delta_x.square(),
+    alpha=1 - self.rho,
+)
+```
+
+这对应：
+
+$$
+E[\Delta \theta^2]_t = \rho E[\Delta \theta^2]_{t-1} + (1 - \rho)(\Delta \theta_t)^2
+$$
+
+## 4.4.7 RMSprop 和 Adadelta 的关系
+
+现在我们可以把 Adagrad、RMSprop 和 Adadelta 放在一起看。
+
+Adagrad 的核心是：
+
+$$
+s_t = s_{t-1} + g_t^2
+$$
+
+RMSprop 的核心是：
+
+$$
+v_t = \rho v_{t-1} + (1 - \rho) g_t^2
+$$
+
+Adadelta 的核心是：
+
+$$
+E[g^2]_t = \rho E[g^2]_{t-1} + (1 - \rho)g_t^2
+$$
+
+并且额外维护：
+
+$$
+E[\Delta \theta^2]_t = \rho E[\Delta \theta^2]_{t-1} + (1 - \rho)(\Delta \theta_t)^2
+$$
+
+因此，可以这样理解三者的关系：
+
+- Adagrad：用完整历史平方梯度累计量调整每个参数的有效学习率；
+- RMSprop：把 Adagrad 的完整历史累计改成滑动平均，避免有效学习率持续衰减；
+- Adadelta：在 RMSprop 的基础上进一步引入历史更新量的尺度，减少对全局学习率的依赖。
+
+从主线看，RMSprop 比 Adadelta 更重要，因为 Adam 的二阶矩估计和 RMSprop 非常接近。
+
+下一节要讲的 Adam，可以看成把 momentum 和 RMSprop 的思想结合起来：
+
+- Momentum 维护梯度的一阶动量，用来平滑更新方向；
+- RMSprop 维护梯度平方的滑动平均，用来调整每个参数的有效学习率。
+
+Adam 同时维护这两个量，因此自然接在 momentum 和 RMSprop 后面。
+
+## 4.4.8 一个小实验：比较几种优化器
+
+最后，我们用一个简单的线性回归例子，比较 Adagrad、RMSprop 和 Adadelta 的训练曲线。
+
+```{python}
+def loss_fn(theta: Tensor) -> Tensor:
+    x, y = theta[0], theta[1]
+    return 0.1 * (x - 2) ** 2 + 2.0 * (y + 1) ** 2
+
+
+theta1 = torch.tensor([-5.0, 2.0], requires_grad=True)
+theta2 = torch.tensor([-5.0, 2.0], requires_grad=True)
+theta3 = torch.tensor([-5.0, 2.0], requires_grad=True)
+
+optimizer1 = dopt.Adagrad([theta1], lr=1.2)
+optimizer2 = RMSprop([theta2], lr=0.5, rho=0.9)
+optimizer3 = Adadelta([theta3], lr=100.0, rho=0.99)
+
+adagrad_history = dopt.run_optimizer(optimizer1, loss_fn, steps=40)
+rmsprop_history = dopt.run_optimizer(optimizer2, loss_fn, steps=40)
+adadelta_history = dopt.run_optimizer(optimizer3, loss_fn, steps=40)
+
+x = torch.linspace(-6.5, 5.5, 200)
+y = torch.linspace(-3.5, 2.5, 200)
+X, Y = torch.meshgrid(x, y, indexing='ij')
+Z = 0.1 * (X - 2) ** 2 + 2.0 * (Y + 1) ** 2
+
+fig = plt.figure(3)
+ax = fig.add_subplot(1, 1, 1)
+ax.contourf(X, Y, Z, levels=25, cmap='YlGnBu')
+common_kwargs = dict(
+    marker='o',
+    markersize=3,
+    markeredgecolor='white',
+    markeredgewidth=0.5,
+)
+ax.plot(
+    adagrad_history[:, 0],
+    adagrad_history[:, 1],
+    color='#EC705B',
+    markerfacecolor='#C0392B',
+    **common_kwargs,
+)
+ax.plot(
+    rmsprop_history[:, 0],
+    rmsprop_history[:, 1],
+    color='#4B96EB',
+    markerfacecolor='#2A74C8',
+    **common_kwargs,
+)
+ax.plot(
+    adadelta_history[:, 0],
+    adadelta_history[:, 1],
+    color='#58D68D',
+    markerfacecolor='#27AE60',
+    **common_kwargs,
+)
+ax.set_xlabel(r'$\theta_1$')
+ax.set_ylabel(r'$\theta_2$')
+ax.legend(['Adagrad', 'RMSprop', 'Adadelta'])
+ax.set_title('Adagrad vs. RMSprop vs. Adadelta Trajectory')
+plt.show()
+```
+
+可以看到，在这个简单任务中，Adagrad 因为累积了完整历史平方梯度，有效学习率会持续变小，所以后期下降明显变慢。相比之下，RMSprop 和 Adadelta 都使用了指数滑动平均，因此不会让早期梯度主导后续更新。不过，在这个任务上，它们之间的曲线差异并不明显。真正的差别要在更复杂的任务上才能体现出来。
+
+## 4.4.9 本章小结
+
+这一节我们从 Adagrad 的问题出发，介绍了 RMSprop 和 Adadelta。
+
+Adagrad 为每个参数维护历史平方梯度累计量，从而实现自适应学习率。但是这个累计量只增不减，会导致有效学习率持续下降。训练到后期，参数更新可能变得非常小。
+
+RMSprop 的核心改进是把完整历史累计换成指数滑动平均。这样旧梯度的影响会逐渐衰减，优化器可以根据最近一段时间的梯度尺度调整每个参数的有效学习率。
+
+Adadelta 进一步引入历史更新量平方的滑动平均，用过去更新量的尺度来校准当前更新量，试图减少对手动学习率的依赖。
+
+从优化器演化的主线看，RMSprop 尤其重要。因为 Adam 可以理解为 momentum 和 RMSprop 的结合：它既维护一阶动量来平滑梯度方向，也维护二阶矩估计来缩放每个参数的更新。
+
+下一节，我们就从这个角度引出 Adam。

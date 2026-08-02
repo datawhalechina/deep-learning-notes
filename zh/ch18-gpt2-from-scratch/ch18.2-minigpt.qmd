@@ -1,0 +1,704 @@
+---
+author: jshn9515
+date: 2026-06-20
+date-modified: 2026-06-20
+open-graph:
+  title: ch18.2-minigpt
+  description: "18.2 MiniGPT: From a Causal GPT Block to a Decoder-only Language Model"
+title: "18.2 MiniGPT：从 Causal GPT Block 到语言模型"
+order: 2
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch18-gpt2-from-scratch/ch18.2-minigpt.ipynb){fig-align="left"}
+
+上一节我们从 next-token prediction 出发，明确了语言模型的训练目标：给定前面的 token，预测下一个 token。
+
+从原始 Transformer 的角度看，GPT 可以理解成一种 **decoder-only** 架构。它不再使用 encoder，也不再需要 decoder 中读取 encoder 输出的 cross-attention，只保留：
+
+- Causal self-attention；
+- MLP；
+- LayerNorm；
+- Residual connection。
+
+这些组件组成 GPT block。多个 GPT blocks 再配上 token embedding、positional embedding 和 LM head，就得到一个完整的 GPT 语言模型。
+
+这一节不会重新推导 self-attention、Pre-LN 和 residual connection，它们已经在第 8 章详细介绍过。这里真正要解决的问题是：
+
+> **怎样把第 8 章学过的 Transformer 组件连接起来，得到一个可以接收 token ids、输出词表 logits，并计算 next-token prediction loss 的 GPT？**
+
+这一节，我们先来实现一个 GPT-2 的缩小版，MiniGPT [@nanoGPT]。MiniGPT 的整体数据流如下：
+
+```{mermaid}
+%%| fig-height: 400px
+%%| fig-cap: "图 18.2.0 MiniGPT 的数据流"
+
+flowchart TD
+    A[Input token ids]
+    B[Token embedding + positional embedding]
+    C[Causal GPT blocks]
+    D[Final layer norm]
+    E[LM head]
+    F[Logits over vocabulary]
+
+    A --> B --> C --> D --> E --> F
+```
+
+```{python}
+from typing import cast
+
+import dnnlpy
+import dnnlpy.nn as dnn
+import dnnlpy.nn.functional as dF
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 18.2.1 从 Transformer Decoder 到 MiniGPT
+
+原始 Transformer decoder block 主要包含三个子层：
+
+- Masked self-attention；
+- Cross-attention；
+- Feed-forward network。
+
+其中，cross-attention 用来读取 encoder 输出的 memory。GPT 没有 encoder，因此也没有另一段序列可以读取。删掉 cross-attention 后，block 变成：
+
+- Causal self-attention；
+- MLP。
+
+现代 GPT 类模型通常使用 Pre-LN 结构：
+
+$$
+\begin{aligned}
+H &= X + \operatorname{CausalSelfAttention}(\operatorname{LayerNorm}(X)) \\
+Y &= H + \operatorname{MLP}(\operatorname{LayerNorm}(H))
+\end{aligned}
+$$
+
+写成代码就是：
+
+```python
+x = x + self.attn(self.norm1(x))
+x = x + self.mlp(self.norm2(x))
+```
+
+这部分结构在第 8 章已经讲过。这里需要特别强调的是 **causal**：第 $t$ 个位置只能读取位置 $1,2,\dots,t$，不能读取右边未来的 token。
+
+因此，一个 MiniGPT block 接收和输出相同形状的 hidden states：
+
+$$
+(B,T,D) \rightarrow (B,T,D)
+$$
+
+但第 $t$ 个位置的输出已经融合了它能够看到的左侧上下文：
+
+$$
+h_t = f(x_1,x_2,\dots,x_t)
+$$
+
+## 18.2.2 Causal Self-Attention：训练时并行，但不能看到未来
+
+训练语言模型时，我们通常会把整段序列一次送进模型，而不是一个 token 一个 token 地计算。例如输入：
+
+```text
+Deep learning is fun
+```
+
+模型会同时完成下面这些预测：
+
+```text
+Deep              -> learning
+Deep learning     -> is
+Deep learning is  -> fun
+```
+
+虽然这些位置是并行计算的，但它们能看到的上下文不同：
+
+```text
+position 0 -> 只能看 position 0
+position 1 -> 可以看 position 0, 1
+position 2 -> 可以看 position 0, 1, 2
+position 3 -> 可以看 position 0, 1, 2, 3
+```
+
+这就是 causal mask 的作用。
+
+PyTorch 的 SDPA 可以直接通过 `is_causal=True` 使用下三角 causal mask。这里我们直接使用我们在第 8 章实现的 `MultiheadAttention`，并在 forward 时传入 `is_causal=True`。
+
+```{python}
+class MiniGPTCausalSelfAttention(nn.Module):
+    """Causal self-attention module for MiniGPT block."""
+
+    def __init__(
+        self,
+        embed_dim: int = 128,
+        num_heads: int = 4,
+        bias: bool = True,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.attn = dnn.MultiheadAttention(
+            embed_dim, num_heads, bias=bias, dropout=dropout
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        attn_output, _ = self.attn(x, x, x, is_causal=True, need_weights=False)
+        return attn_output
+```
+
+测试输入输出形状：
+
+```{python}
+B, T, D = 2, 6, 32
+x = torch.randn(B, T, D)
+
+attn = MiniGPTCausalSelfAttention(embed_dim=D, num_heads=4)
+y = attn(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', y.shape)
+```
+
+可以看到，causal self-attention 不改变张量形状：
+
+$$
+(B,T,D) \rightarrow (B,T,D)
+$$
+
+它改变的是每个位置 hidden state 中包含的信息。
+
+## 18.2.3 实现 MiniGPT Block
+
+有了 causal self-attention 后，就可以构造 MiniGPT block。
+
+首先，我们来实现一下 MLP。在 MiniGPT block 里，MLP 通常是两层线性层，中间接一个激活函数。隐藏维度一般会扩展到原来的几倍，常见形式是：
+
+$$
+D \rightarrow 4D \rightarrow D
+$$
+
+也就是先把每个 token 的表示投影到更高维空间里，再投影回原来的 hidden size。
+
+```{python}
+class MiniGPTMLP(nn.Module):
+    """MLP module for MiniGPT block."""
+
+    def __init__(
+        self,
+        embed_dim: int = 128,
+        hidden_dim: int = 512,
+        bias: bool = True,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.net = nn.Sequential(
+            dnn.Linear(embed_dim, hidden_dim, bias=bias),
+            dnn.GELU(),
+            dnn.Linear(hidden_dim, embed_dim, bias=bias),
+            dnn.Dropout(dropout),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.net(x)
+```
+
+然后实现一下 MiniGPT block：
+
+```{python}
+class MiniGPTBlock(nn.Module):
+    """A single block of MiniGPT, consisting of causal self-attention and MLP."""
+
+    def __init__(
+        self,
+        embed_dim: int = 128,
+        num_heads: int = 4,
+        hidden_dim: int = 512,
+        bias: bool = True,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.norm1 = dnn.LayerNorm(embed_dim, bias=bias)
+        self.attn = MiniGPTCausalSelfAttention(
+            embed_dim, num_heads, bias=bias, dropout=dropout
+        )
+        self.norm2 = dnn.LayerNorm(embed_dim, bias=bias)
+        self.mlp = MiniGPTMLP(embed_dim, hidden_dim, bias=bias, dropout=dropout)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
+```
+
+测试一下输入输出形状：
+
+```{python}
+block = MiniGPTBlock(embed_dim=D, num_heads=4)
+y = block(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', y.shape)
+```
+
+因为 MiniGPT block 始终保持 `(B, T, D)`，所以我们可以堆叠多个 MiniGPT block：
+
+```{python}
+num_blocks = 3
+minigpt_blocks = nn.Sequential(
+    *[MiniGPTBlock(embed_dim=D, num_heads=4) for _ in range(num_blocks)]
+)
+
+y = minigpt_blocks(x)
+print(f'After {num_blocks} GPT blocks:', y.shape)
+```
+
+不过这里的 MiniGPT block 本身还不是语言模型。它接收的是 hidden states，输出的仍然是 hidden states。完整语言模型还必须完成：
+
+$$
+(B,T) \rightarrow (B,T,V)
+$$
+
+也就是把 token ids 变成每个位置对整个词表的预测 logits。
+
+## 18.2.4 从 Token IDs 到 Hidden States
+
+语言模型真正接收的是 token ids：
+
+$$
+\text{input\_ids} \in \mathbb{N}^{B \times T}
+$$
+
+例如：
+
+```text
+[[10, 25, 31,  7],
+ [42, 18,  9, 13]]
+```
+
+这些整数只是词表中的索引，编号之间没有连续数值意义。模型首先要通过 token embedding 查表，把每个 token id 变成一个 $D$ 维向量：
+
+$$
+E_{\text{token}} \in \mathbb{R}^{V \times D}
+$$
+
+于是：
+
+$$
+(B,T) \rightarrow (B,T,D)
+$$
+
+```{python}
+vocab_size = 100
+embed_dim = 32
+block_size = 8
+
+input_ids = torch.randint(vocab_size, (2, 5))
+token_embed = nn.Embedding(vocab_size, embed_dim)
+x_tok = token_embed(input_ids)
+
+print('input_ids.shape:', input_ids.shape)
+print('x_tok.shape:', x_tok.shape)
+```
+
+Self-attention 本身不包含顺序信息，因此还需要 positional embedding：
+
+$$
+E_{\text{pos}} \in \mathbb{R}^{T_{\max} \times D}
+$$
+
+对于长度为 $T$ 的输入，取前 $T$ 个位置向量并与 token embedding 相加：
+
+$$
+X = E_{\text{token}}(\text{input\_ids}) + E_{\text{pos}}(0,1,\dots,T-1)
+$$
+
+```{python}
+pos_embed = nn.Embedding(block_size, embed_dim)
+
+B, T = input_ids.size()
+pos = torch.arange(T)
+x_pos = pos_embed(pos)
+x = x_tok + x_pos
+
+print('Positions:', pos)
+print('x_tok.shape:', x_tok.shape)
+print('x_pos.shape:', x_pos.shape)
+print('x.shape:', x.shape)
+```
+
+这里 `x_tok` 的形状是 `(B, T, D)`，`x_pos` 的形状是 `(T, D)`。相加时，位置向量会自动广播到 batch 维度。
+
+这里的位置编码使用的最容易理解的 learned absolute positional embedding。其他位置编码方法已经在第 8 章介绍过，后面复现 GPT-2 时还会再次看到这种设计。
+
+## 18.2.5 从 Hidden States 到词表 Logits
+
+多个 MiniGPT blocks 输出：
+
+$$
+H \in \mathbb{R}^{B \times T \times D}
+$$
+
+但语言模型需要在每个位置预测下一个 token，因此还要把 hidden size 映射到 vocab size：
+
+$$
+\operatorname{LMHead}: \mathbb{R}^{D} \rightarrow \mathbb{R}^{V}
+$$
+
+最终得到：
+
+$$
+\text{logits} \in \mathbb{R}^{B \times T \times V}
+$$
+
+```{python}
+final_norm = nn.LayerNorm(embed_dim)
+lm_head = dnn.Linear(embed_dim, vocab_size)
+
+h = final_norm(x)
+logits = lm_head(h)
+
+print('Hidden states shape:', h.shape)
+print('Logits shape:', logits.shape)
+```
+
+其中，`logits[b, t]` 是一个长度为 `vocab_size` 的向量，表示第 `b` 个样本在第 `t` 个位置对下一个 token 的预测打分：
+
+$$
+\text{logits}_{b,t,:} \quad \longleftrightarrow \quad p(x_{t+1}\mid x_{\le t})
+$$
+
+严格来说，这里的 logits 还不是概率。训练时不需要手动做 softmax，而是直接把 logits 交给 cross entropy。生成时才会根据 logits 进行 greedy decoding 或采样。
+
+## 18.2.6 把所有组件合成 MiniGPT
+
+现在把完整的数据流组装起来：
+
+```text
+input_ids: (B, T)
+      ↓ Token Embedding + Positional Embedding
+hidden states: (B, T, D)
+      ↓ MiniGPT blocks
+contextual hidden states: (B, T, D)
+      ↓ final LayerNorm + LM head
+logits: (B, T, V)
+```
+
+```{python}
+class MiniGPT(nn.Module):
+    """A mini GPT-2 style language model."""
+
+    def __init__(
+        self,
+        vocab_size: int,
+        block_size: int,  # or context window
+        embed_dim: int = 128,
+        num_layers: int = 4,
+        num_heads: int = 4,
+        hidden_dim: int = 512,
+        bias: bool = True,
+        dropout: float = 0.0,
+        weight_tying: bool = True,
+    ):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.block_size = block_size
+        self.weight_tying = weight_tying
+
+        self.token_embed = dnn.Embedding(vocab_size, embed_dim)
+        self.pos_embed = dnn.Embedding(block_size, embed_dim)
+        self.embed_dropout = dnn.Dropout(dropout)
+
+        self.blocks = nn.Sequential(
+            *[
+                MiniGPTBlock(
+                    embed_dim=embed_dim,
+                    num_heads=num_heads,
+                    hidden_dim=hidden_dim,
+                    bias=bias,
+                    dropout=dropout,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.final_norm = dnn.LayerNorm(embed_dim, bias=bias)
+        self.lm_head = dnn.Linear(embed_dim, vocab_size, bias=bias)
+
+        if weight_tying:
+            self.lm_head.weight = cast(nn.Parameter, self.token_embed.weight)
+            assert self.lm_head.weight is self.token_embed.weight
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        """Initialize the model parameters."""
+        for module in self.modules():
+            if isinstance(module, dnn.Embedding):
+                nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+            elif isinstance(module, dnn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=0.02)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+            elif isinstance(module, dnn.LayerNorm):
+                nn.init.ones_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        """Compute the logits for a batch of input sequences."""
+        if input_ids.ndim != 2:
+            raise AssertionError('`input_ids` must have shape (B, T).')
+
+        T = input_ids.size(1)
+        if T > self.block_size:
+            raise AssertionError(
+                f'Sequence length {T} exceeds block_size {self.block_size}.'
+            )
+
+        pos = torch.arange(T, device=input_ids.device)
+        x_tok = self.token_embed(input_ids)
+        x_pos = self.pos_embed(pos)
+        x = self.embed_dropout(x_tok + x_pos)
+
+        x = self.blocks(x)
+        x = self.final_norm(x)
+        logits = self.lm_head(x)
+        return logits
+
+    def loss(self, input_ids: Tensor, targets: Tensor | None = None) -> Tensor:
+        """Compute the cross-entropy loss for a batch of input sequences."""
+        if targets is not None and targets.ndim != 2:
+            raise AssertionError('`targets` must have shape (B, T).')
+
+        logits = self(input_ids)
+
+        if targets is None:
+            logits = logits[:, :-1, :]
+            targets = input_ids[:, 1:]
+
+        return dF.cross_entropy_loss(
+            logits.reshape(-1, self.vocab_size),
+            targets.reshape(-1),
+        )
+```
+
+这个模型虽然很小，但已经包含 GPT 的核心结构：
+
+- Token embedding；
+- Positional embedding；
+- Multi-layer causal GPT blocks；
+- Final LayerNorm；
+- LM head；
+- Next-token prediction loss。
+
+我们来测试一下。构造一个小模型：
+
+```{python}
+model = MiniGPT(
+    vocab_size=100,
+    block_size=8,
+    embed_dim=32,
+    weight_tying=False,
+)
+```
+
+上一节已经讲过，next-token prediction 的输入和监督信号来自同一段 token sequence，只是错开一位。
+
+例如：
+
+```text
+tokens: [10, 25, 31, 7, 42, 18]
+input:  [10, 25, 31, 7, 42]
+label:  [25, 31, 7, 42, 18]
+```
+
+对 batch 中的每条序列都做同样的切分：
+
+```{python}
+token_ids = torch.tensor(
+    [
+        [10, 25, 31, 7, 42, 18],
+        [3, 14, 15, 92, 65, 35],
+    ]
+)
+
+input_ids = token_ids[:, :-1]
+labels = token_ids[:, 1:]
+
+print('Input_ids:', input_ids, sep='\n')
+print()
+print('Labels:', labels, sep='\n')
+```
+
+送进模型：
+
+```{python}
+logits = model(input_ids)
+loss = model.loss(input_ids, labels)
+
+print('input_ids.shape:', input_ids.shape)
+print('labels.shape:', labels.shape)
+print('logits.shape:', logits.shape)
+print('loss:', loss.item())
+```
+
+这里：
+
+```text
+input_ids: (B, T)
+labels:    (B, T)
+logits:    (B, T, V)
+```
+
+模型为 batch 中每个样本的每个位置，都输出了一个长度为 $V$ 的预测向量。例如，`logits[0, 2]` 表示第 0 个样本在看到 `input_ids[0, :3]` 这个前缀后，对下一个 token 的预测。
+
+```{python}
+b = 0
+t = 2
+
+print('Prefix token ids:', input_ids[b, : t + 1].tolist())
+print('Target token id:', labels[b, t].item())
+print('Logits vector shape:', logits[b, t].shape)
+```
+
+## 18.2.7 训练时为什么并行计算所有位置
+
+Causal mask 保证每个位置只能看到左侧上下文，因此一段长度为 $T$ 的输入可以同时产生 $T$ 个训练样本：
+
+$$
+\begin{aligned}
+x_1 &\rightarrow x_2, \\
+x_1,x_2 &\rightarrow x_3, \\
+&\vdots \\
+x_1,\dots,x_T &\rightarrow x_{T+1}
+\end{aligned}
+$$
+
+模型输出：
+
+$$
+\text{logits} \in \mathbb{R}^{B \times T \times V}
+$$
+
+labels 的形状是：
+
+$$
+\text{labels} \in \mathbb{N}^{B \times T}
+$$
+
+为了交给 `F.cross_entropy`，代码将前两维展平：
+
+$$
+(B,T,V) \rightarrow (BT,V)
+$$
+
+同时将 labels 展平：
+
+$$
+(B,T) \rightarrow (BT)
+$$
+
+于是 loss 可以理解成 batch 中所有位置 next-token prediction loss 的平均值：
+
+$$
+\mathcal{L} = -\frac{1}{BT}
+\sum_{b=1}^{B} \sum_{t=1}^{T} \log p_\theta(x_{b,t+1}\mid x_{b,\le t})
+$$
+
+这正是 causal language modeling 高效的地方：
+
+> **一次 forward 不只训练最后一个位置，而是并行训练序列中的所有位置。**
+
+## 18.2.8 生成时为什么只取最后一个位置
+
+训练时我们需要所有位置的 logits，因为每个位置都提供监督信号。但生成时情况不同。给定一个已有前缀，我们只需要预测它后面的一个新 token，因此只取最后一个位置的 logits：
+
+```{python}
+prefix = torch.tensor([[10, 25, 31]])
+logits = model(prefix)
+
+next_token_logits = logits[:, -1, :]
+next_token = next_token_logits.argmax(dim=-1).item()
+
+print('Prefix:', prefix)
+print('All logits shape:', logits.shape)
+print('Next token logits shape:', next_token_logits.shape)
+print('Next token:', next_token)
+```
+
+到此，我们已经完成了从 token ids 到 logits 的完整数据流：
+
+```{mermaid}
+%%| fig-height: 350px
+%%| fig-cap: "图 18.2.8 MiniGPT 的数据流"
+
+flowchart TD
+    A[Given a Prefix] --> B[Run MiniGPT]
+    B --> C[Take the logits at the last position]
+    C --> D[Select the next token]
+    D --> E[Append the new token to the prefix]
+    E --> B
+```
+
+后面讲 generation 时，我们会在这个基础上加入 temperature、top-k 和 top-p sampling。
+
+## 18.2.9 MiniGPT 的参数在哪里
+
+我们可以简单统计模型参数量：
+
+```{python}
+params = dnnlpy.count_params(model)
+print(f'Total parameters: {params:,}.')
+```
+
+按顶层模块查看：
+
+```{python}
+for name, module in model.named_children():
+    print(f'{name}: {dnnlpy.count_params(module):,}')
+```
+
+MiniGPT 的参数主要来自：
+
+1. Token embedding；
+2. Positional embedding；
+3. Attention 中的 QKV projection 和 output projection；
+4. MLP 中的两层线性层；
+5. LM head。
+
+对于词表很大的语言模型，token embedding 和 LM head 都可能占用大量参数。后面专门讨论 embedding、LM head 和 weight tying 时，我们会进一步分析为什么输入 embedding 与输出 projection 可以共享权重。
+
+## 18.2.10 本章小结
+
+这一节我们把 causal GPT block 和完整 MiniGPT 合并到了一条连续的数据流中。
+
+MiniGPT block 完成的是：
+
+$$
+(B,T,D) \rightarrow (B,T,D)
+$$
+
+完整 MiniGPT 完成的是：
+
+$$
+(B,T) \rightarrow (B,T,V)
+$$
+
+其中，causal mask 保证第 $t$ 个位置只能依赖当前位置和左侧 token，因此模型可以在一次 forward 中安全地并行训练所有位置。对于生成，由于我们只需要预测下一个 token，因此每次只取最后一个位置的 logits。
+
+到这里，我们已经得到了一个结构完整的小型 decoder-only language model。它已经可以：
+
+- 接收 token ids；
+- 构造 token 和位置表示；
+- 通过多层 GPT blocks 建模左侧上下文；
+- 输出每个位置的词表 logits；
+- 计算 next-token prediction loss；
+- 为自回归生成提供最后一个位置的 logits。
+
+不过，这里的 token ids 还是人为构造的整数。下一节我们会开始讨论 tokenizer：真实文本怎样被切分成 token，以及字符级 tokenizer、BPE 和词表之间是什么关系。

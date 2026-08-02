@@ -1,0 +1,511 @@
+---
+author: jshn9515
+date: 2026-06-29
+date-modified: 2026-06-29
+open-graph:
+  title: ch7.7-rms-normalization
+  description: "7.7 RMS Normalization: Normalizing Feature Magnitudes Without Mean Centering"
+title: "7.7 RMSNorm：不做均值中心化的特征尺度归一化"
+order: 7
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.7-rms-normalization.ipynb){fig-align="left"}
+
+上一节介绍了 Group Normalization。到目前为止，我们已经看到，BatchNorm、LayerNorm、InstanceNorm 和 GroupNorm 虽然使用场景不同，但都包含两个基本步骤：
+
+1. 减去某组元素的均值；
+2. 除以这组元素的标准差。
+
+其中，LayerNorm 已经成为 Transformer 中最经典的归一化方法。对于每个 token 的隐藏向量，LayerNorm 会先减去特征均值，再根据特征方差调整整体尺度。
+
+不过，均值中心化是否一定是必要的？
+
+**Root Mean Square Normalization (RMSNorm)** [@zhang2019RMSNorm] 给出了一种更简单的答案：它不再减去均值，而是只根据特征的均方根调整向量尺度。
+
+近年来，RMSNorm 已经成为大语言模型中非常常见的归一化方法。它和 LayerNorm 一样，不依赖 batch 中的其他样本，也不需要维护运行时统计量，但计算形式更加简单。
+
+这一节将回答以下问题：
+
+- RMSNorm 中的 RMS 到底是什么？
+- RMSNorm 与 LayerNorm 在公式上有什么区别？
+- 不减去均值会带来什么影响？
+- `nn.RMSNorm(hidden_size)` 对哪些维度进行归一化？
+- 为什么 RMSNorm 适合 Transformer 和大语言模型？
+- 如何从零实现一个 RMSNorm？
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.7.1 从均方根开始
+
+对于一个长度为 $D$ 的向量：
+
+$$
+x=[x_1,x_2,\ldots,x_D]
+$$
+
+它的均方根定义为：
+
+$$
+\operatorname{RMS}(x) = \sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2}
+$$
+
+它和标准差看起来很相似，但两者并不相同。
+
+标准差会先减去均值：
+
+$$
+\sigma(x) = \sqrt{\frac{1}{D}\sum_{i=1}^{D}(x_i-\mu)^2}
+$$
+
+而均方根直接根据原始数值的平方计算整体尺度。
+
+```{python}
+x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+
+mean = x.mean()
+std = x.std(correction=0)
+rms = x.square().mean().sqrt()
+
+print('Mean:', mean.item())
+print('Standard deviation:', std.item())
+print('Root mean square:', rms.item())
+```
+
+如果一个向量的均值不是 0，那么它的 RMS 通常会大于标准差。两者满足：
+
+$$ \operatorname{RMS}(x)^2 = \operatorname{Var}(x)+\mu^2
+$$
+
+```{python}
+left = rms.square()
+right = x.var(correction=0) + x.mean().square()
+
+print('RMS squared:', left.item())
+print('Variance + mean squared:', right.item())
+print('Difference:', (left - right).abs().item())
+```
+
+这说明，RMS 同时包含了向量的波动和整体偏移信息，而标准差只描述围绕均值的波动。
+
+## 7.7.2 RMSNorm 的公式
+
+RMSNorm 首先根据最后一个或最后若干个特征维度计算均方根：
+
+$$
+\operatorname{RMS}(x) = \sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2+\epsilon}
+$$
+
+然后用它调整特征向量的尺度：
+
+$$
+\hat{x}_i = \frac{x_i}{\operatorname{RMS}(x)}
+$$
+
+最后乘上可学习的缩放参数：
+
+$$
+y_i = \gamma_i\hat{x}_i
+$$
+
+完整写成：
+
+$$
+\operatorname{RMSNorm}(x) =
+\frac{x}{\sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2+\epsilon}} \odot\gamma
+$$
+
+和 LayerNorm 相比，这里没有减去均值，也通常没有可学习的 bias。
+
+```{python}
+x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+eps = 1e-5
+
+rms = (x.square().mean() + eps).sqrt()
+x_hat = x / rms
+
+print('RMS:', rms.item())
+print('Normalized values:', x_hat)
+print('RMS after normalization:', x_hat.square().mean().sqrt().item())
+print('Mean after normalization:', x_hat.mean().item())
+```
+
+归一化之后，向量的 RMS 接近 1，但均值不一定为 0。这正是 RMSNorm 和 LayerNorm 最直接的区别：
+
+- LayerNorm 同时进行均值中心化和尺度归一化；
+- RMSNorm 只进行尺度归一化。
+
+## 7.7.3 RMSNorm 与 LayerNorm 的差异
+
+对于同一个向量，LayerNorm 计算：
+
+$$
+\operatorname{LayerNorm}(x) =
+\frac{x-\mu}{\sqrt{\frac{1}{D}\sum_{i=1}^{D}(x_i-\mu)^2+\epsilon}}
+\odot\gamma+\beta
+$$
+
+RMSNorm 计算：
+
+$$
+\operatorname{RMSNorm}(x) =
+\frac{x}{\sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2+\epsilon}}
+\odot\gamma
+$$
+
+可以直接比较两者的输出：
+
+```{python}
+x = torch.tensor([[1.0, 2.0, 3.0, 4.0]])
+
+layer_norm = nn.LayerNorm(4, elementwise_affine=False)
+rms_norm = nn.RMSNorm(4, elementwise_affine=False)
+
+ln_output = layer_norm(x)
+rms_output = rms_norm(x)
+
+print('LayerNorm output:', ln_output)
+print('LayerNorm mean:', ln_output.mean(dim=-1))
+print('LayerNorm RMS:', ln_output.square().mean(dim=-1).sqrt())
+print('RMSNorm output:', rms_output)
+print('RMSNorm mean:', rms_output.mean(dim=-1))
+print('RMSNorm RMS:', rms_output.square().mean(dim=-1).sqrt())
+```
+
+LayerNorm 输出的均值接近 0，方差接近 1；RMSNorm 输出的 RMS 接近 1，但均值仍然保留。
+
+注意，我们不应该把 RMSNorm 简单理解成少了一个减法的 LayerNorm。它们对表示施加的约束不同：
+
+- LayerNorm 消除了向量的整体平移和尺度；
+- RMSNorm 只消除了整体尺度。
+
+## 7.7.4 平移与缩放会发生什么
+
+RMSNorm 对正比例缩放具有近似不变性。假设：
+
+$$
+x' = a x, \quad a > 0
+$$
+
+那么：
+
+$$
+\operatorname{RMSNorm}(ax) \approx \operatorname{RMSNorm}(x)
+$$
+
+```{python}
+x = torch.randn(2, 6)
+rms_norm = nn.RMSNorm(6, elementwise_affine=False)
+
+original = rms_norm(x)
+scaled = rms_norm(5.0 * x)
+
+max_diff = (original - scaled).abs().max()
+print('Maximum difference after positive scaling:', max_diff.item())
+```
+
+但是，给所有特征加上相同常数时，RMSNorm 的输出会发生变化：
+
+```{python}
+shifted = rms_norm(x + 10.0)
+
+max_diff = (original - shifted).abs().max()
+print('Maximum difference after shifting:', max_diff.item())
+```
+
+LayerNorm 因为会减去均值，所以对整体平移近似不变：
+
+```{python}
+layer_norm = nn.LayerNorm(6, elementwise_affine=False)
+
+ln_original = layer_norm(x)
+ln_shifted = layer_norm(x + 10.0)
+
+max_diff = (ln_original - ln_shifted).abs().max()
+print('LayerNorm difference after shifting:', max_diff.item())
+```
+
+## 7.7.5 `normalized_shape` 的含义
+
+`nn.RMSNorm` 和 `nn.LayerNorm` 使用相同的 `normalized_shape` 约定：
+
+```python
+nn.RMSNorm(normalized_shape)
+```
+
+RMSNorm 会对输入最后若干个维度计算均方根，同时将可学习参数 `weight` 设置为 `normalized_shape` 对应的形状。
+
+最常见的 Transformer 输入形状是：
+
+$$
+(N,L,D)
+$$
+
+其中，$N$ 是 batch size，$L$ 是 sequence length，$D$ 是 hidden size。
+
+当我们写：
+
+```{python}
+hidden_size = 8
+rms_norm = nn.RMSNorm(hidden_size)
+
+x = torch.randn(2, 4, hidden_size)
+y = rms_norm(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', y.shape)
+print('Normalized shape:', rms_norm.normalized_shape)
+print('Weight shape:', rms_norm.weight.shape)
+```
+
+RMSNorm 会分别处理每个 token 的隐藏向量。
+
+对于每个位置 $(n,l)$：
+
+$$
+\operatorname{RMS}_{n,l} =
+\sqrt{\frac{1}{D}\sum_{d=1}^{D}x_{n,l,d}^2+\epsilon}
+$$
+
+不同 token 之间不会共享统计量，batch 中不同样本之间也不会共享统计量。
+
+```{python}
+rms_per_token = y.square().mean(dim=-1).sqrt()
+print('RMS of every normalized token:', rms_per_token, sep='\n')
+```
+
+## 7.7.6 RMSNorm 的可学习参数只有 weight
+
+PyTorch 的 `nn.RMSNorm` 默认包含一个可学习的缩放参数 `weight`：
+
+```{python}
+rms_norm = nn.RMSNorm(6)
+
+print('Weight:', rms_norm.weight)
+```
+
+它默认不包含 bias。这和常见的 RMSNorm 定义一致：
+
+$$
+y=\hat{x}\odot\gamma
+$$
+
+由于 RMSNorm 不进行均值中心化，额外加入 bias 并不是其标准定义的一部分。不过，后续线性层通常已经包含偏置或其他可学习变换，因此模型仍然可以调整表示的位置。
+
+如果不需要可学习缩放，可以设置：
+
+```python
+nn.RMSNorm(6, elementwise_affine=False)
+```
+
+## 7.7.7 RMSNorm 没有运行时统计量
+
+RMSNorm 的统计量来自当前 token 或当前样本自身的特征，不依赖 batch 中其他样本。因此它不需要像 BatchNorm 一样维护：
+
+- `running_mean`；
+- `running_var`；
+- `num_batches_tracked`。
+
+```{python}
+rms_norm = nn.RMSNorm(6)
+
+print(dict(rms_norm.state_dict()))
+```
+
+默认情况下，`state_dict` 中只有 `weight`。
+
+也因为没有运行时统计量，RMSNorm 在 `train()` 和 `eval()` 模式下使用相同的计算方式：
+
+```{python}
+x = torch.randn(3, 6)
+rms_norm = nn.RMSNorm(6)
+
+rms_norm.train()
+y_train = rms_norm(x)
+
+rms_norm.eval()
+y_eval = rms_norm(x)
+
+max_diff = (y_train - y_eval).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+`train()` 和 `eval()` 仍然会递归修改模块的 `training` 属性，但这个属性不会改变 RMSNorm 的前向计算。
+
+## 7.7.8 RMSNorm 的 PyTorch 实现
+
+一个最小的函数版 RMSNorm 只需要以下步骤：
+
+1. 对最后若干个维度计算平方均值；
+2. 使用 `rsqrt` 计算均方根的倒数；
+3. 将输入乘上均方根的倒数；
+4. 乘上可学习权重（可选）。
+
+```{python}
+def rms_norm(
+    x: Tensor,
+    normalized_shape: int | tuple[int, ...],
+    weight: Tensor | None = None,
+    eps: float | None = None,
+) -> Tensor:
+    """Apply root mean square normalization to an input tensor."""
+    if isinstance(normalized_shape, int):
+        normalized_shape = (normalized_shape,)
+
+    if x.shape[-len(normalized_shape) :] != normalized_shape:
+        raise AssertionError(
+            f'Expected the trailing input dimensions to match '
+            f'`normalized_shape={normalized_shape}`, '
+            f'but got input shape {tuple(x.shape)}.'
+        )
+
+    if eps is None:
+        eps = torch.finfo(x.dtype).eps
+
+    # Normalize over the trailing dimensions specified by normalized_shape.
+    reduce_dims = tuple(range(x.ndim - len(normalized_shape), x.ndim))
+
+    mean_square = x.square().mean(dim=reduce_dims, keepdim=True)
+    y = x * (mean_square + eps).rsqrt()
+
+    if weight is not None:
+        # (..., normalized_shape) -> (1, ..., 1, normalized_shape)
+        broadcast_shape = (1,) * (x.ndim - len(normalized_shape)) + normalized_shape
+        y = y * weight.reshape(broadcast_shape)
+
+    return y
+```
+
+和 `F.rms_norm` 对比：
+
+```{python}
+x = torch.randn(2, 3, 5)
+weight = torch.randn(5)
+eps = 1e-5
+
+actual = rms_norm(x, 5, weight=weight, eps=eps)
+expected = F.rms_norm(x, (5,), weight=weight, eps=eps)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+这里使用 `torch.rsqrt`，是因为：
+
+$$
+\operatorname{rsqrt}(z)=\frac{1}{\sqrt{z}}
+$$
+
+因此可以直接计算归一化所需的倒数平方根。
+
+下面把函数包装成一个模块：
+
+```{python}
+class RMSNorm(nn.Module):
+    """Apply root mean square normalization over the trailing input dimensions."""
+
+    weight: Tensor | None
+
+    def __init__(
+        self,
+        normalized_shape: int | tuple[int, ...],
+        eps: float | None = None,
+        elementwise_affine: bool = True,
+    ):
+        """Initialize a root mean square normalization module"""
+        super().__init__()
+        if isinstance(normalized_shape, int):
+            normalized_shape = (normalized_shape,)
+
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+        if elementwise_affine:
+            self.weight = nn.Parameter(torch.empty(self.normalized_shape))
+        else:
+            self.register_parameter('weight', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.weight is not None:
+            nn.init.ones_(self.weight)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return rms_norm(x, self.normalized_shape, weight=self.weight, eps=self.eps)
+
+    def extra_repr(self) -> str:
+        return (
+            f'normalized_shape={self.normalized_shape}, eps={self.eps}, '
+            f'elementwise_affine={self.elementwise_affine}'
+        )
+```
+
+验证自定义实现：
+
+```{python}
+x = torch.randn(2, 4, 8)
+
+rms_norm1 = RMSNorm(8, eps=1e-5)
+rms_norm2 = nn.RMSNorm(8, eps=1e-5)
+
+with torch.no_grad():
+    rms_norm2.weight.copy_(rms_norm1.weight)
+
+actual = rms_norm1(x)
+expected = rms_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+这个实现保留了 RMSNorm 最核心的行为，但实际 PyTorch 实现还会处理更多设备、dtype 和性能优化细节。
+
+## 7.7.9 为什么现代大语言模型常用 RMSNorm
+
+在现代大语言模型中，RMSNorm 已经成为非常常见的归一化方法。早期 Transformer 更普遍地使用 LayerNorm，而随着模型规模、序列长度和训练成本不断增加，研究者开始更加关注归一化层本身的计算复杂度、数值稳定性以及它与高效实现之间的关系。
+
+RMSNorm 保留了 LayerNorm 中最关键的尺度归一化作用，但省略了均值中心化步骤，因此计算路径更短、形式更简单。与此同时，它仍然像 LayerNorm 一样只依赖当前 token 或当前样本内部的隐藏特征，不依赖 batch 中的其他样本，也不需要维护运行时统计量。这使它很适合大语言模型常见的训练与推理场景，例如变长序列、梯度累积、小 batch 训练和逐 token 解码。
+
+因此，关于 RMSNorm 在现代大语言模型中流行，我们可以从以下几个角度理解。
+
+1. 它和 LayerNorm 一样不依赖 batch size，因此适合变长序列、梯度累积和单样本推理。
+2. 它不需要运行时统计量，因此训练和推理阶段使用完全相同的计算规则。
+3. 它省略了均值中心化，数学形式更简单，也更容易与高效 kernel 结合。
+4. 实践表明，在许多 Transformer 架构中，只控制隐藏向量的尺度已经足以获得稳定训练，因此并不总是需要显式减去均值。
+
+不过，不能由此得出 RMSNorm 永远优于 LayerNorm 的结论。归一化方式仍然是模型架构设计的一部分：
+
+- 不同网络可能对均值中心化有不同需求；
+- RMSNorm 和 LayerNorm 的输出分布并不相同；
+- 不能在预训练模型中随意替换归一化层；
+- 选择哪一种方法通常应遵循原始架构和实验结果。
+
+## 7.7.10 本章小结
+
+RMSNorm 的核心公式是：
+
+$$
+\operatorname{RMSNorm}(x) =
+\frac{x}{\sqrt{\operatorname{mean}(x^2)+\epsilon}} \odot\gamma
+$$
+
+这一节最重要的结论包括：
+
+1. RMSNorm 使用均方根调整特征尺度，但不减去特征均值；
+2. 归一化后的向量 RMS 接近 1，但均值不一定为 0；
+3. RMSNorm 对整体正比例缩放近似不变，但对整体平移并不保持不变；
+4. `normalized_shape` 表示被归一化的最后若干个维度，也是 `weight` 的形状；
+5. RMSNorm 不依赖 batch，也不维护 running statistics；
+6. `train()` 和 `eval()` 模式下的计算相同；
+7. RMSNorm 已经成为现代大语言模型中非常常见的选择；
+8. RMSNorm 与 LayerNorm 的行为不同，不能在预训练模型中随意互换。
+
+下一节，我们将把 BatchNorm、LayerNorm、InstanceNorm、GroupNorm 和 RMSNorm 放进同一个框架，统一比较它们的统计维度、参数化方式和适用场景。

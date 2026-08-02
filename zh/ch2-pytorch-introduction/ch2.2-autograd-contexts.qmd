@@ -1,0 +1,291 @@
+---
+author: jshn9515
+date: 2026-03-19
+date-modified: 2026-05-23
+open-graph:
+  title: ch2.2-autograd-contexts
+  description: "2.2 Gradient Modes in PyTorch: Controlling How Computation Graphs Are Recorded"
+title: "2.2 PyTorch 中的梯度模式：控制计算图的记录"
+order: 2
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch2-pytorch-introduction/ch2.2-autograd-contexts.ipynb){fig-align="left"}
+
+在上一节里，我们讨论了 PyTorch 的自动微分。只要某个张量需要梯度，PyTorch 就会在前向传播时记录依赖关系并搭建计算图，在调用 `backward()` 时沿着这张图把梯度传回去。
+
+但是，当我们写代码时，很快会遇到一个问题：并不是所有计算都需要被记录。
+
+比如，在训练阶段，我们确实需要记录前向传播，因为后面要根据损失反向传播。但是在验证阶段，我们通常只是想看看模型预测得怎么样，并不会更新参数。如果这时候还继续构建计算图，PyTorch 就会保存很多反向传播需要的中间结果，占用额外显存和时间。
+
+所以，新的问题来了：
+
+> **什么时候应该让 Autograd 记录计算，什么时候应该让它只算结果，不记计算图？**
+
+这一节就围绕这个问题展开。我们会看到，`requires_grad` 决定的是一个张量有没有资格被 Autograd 追踪，而 `no_grad()`、`enable_grad()` 和 `inference_mode()` 控制的是某一段代码里到底要不要记录梯度。这也是 PyTorch 的一个设计理念：计算怎么做是算子的事，要不要记账是 Autograd 的事。
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 2.2.1 默认情况下，PyTorch 会尽量记账
+
+先看一个最普通的前向传播：
+
+```{python}
+model = nn.Linear(6, 4)
+x = torch.randn(10, 6)
+y = torch.randn(10, 4)
+
+y_pred = model(x)
+print('y_pred.requires_grad:', y_pred.requires_grad)
+print('y_pred.grad_fn:', y_pred.grad_fn.name())
+```
+
+这里 `x` 本身虽然没有设置 `requires_grad=True`，但是模型参数默认是需要梯度的：
+
+```{python}
+for name, param in model.named_parameters():
+    print(f'{name}.requires_grad: {param.requires_grad}')
+```
+
+因为 `y_pred` 依赖了模型参数，所以它会被 Autograd 追踪。换句话说，只要一次计算中有任何输入需要梯度，那么这个结果通常也会进入计算图。这正是我们训练模型时需要的行为：
+
+```{python}
+loss = F.mse_loss(y_pred, y)
+loss.backward()
+
+assert model.weight.grad is not None
+assert model.bias.grad is not None
+```
+
+但是，在验证模型性能时，我们通常不需要计算梯度，因为我们不会进行反向传播。或者，在推理阶段，我们只关心模型的输出结果，而不关心它是怎么算出来的。这时候，如果我们继续让 Autograd 记账，不仅浪费显存，还可能导致性能下降。如果还让 Autograd 构建计算图，那就是多此一举。
+
+这就引出了最常用的梯度控制工具：`torch.no_grad()`。
+
+## 2.2.2 no_grad()：这段计算先别记
+
+`torch.no_grad()` 的思路很直接：在 `with` 代码块里，正常执行计算，但不要让 Autograd 记录计算图。
+
+```{python}
+with torch.no_grad():
+    y_pred = model(x)
+
+print('y_pred.requires_grad:', y_pred.requires_grad)
+print('y_pred.grad_fn:', y_pred.grad_fn)
+```
+
+可以看到，前向传播仍然正常得到结果，但是 `y_pred` 不再带有 `grad_fn`。这就说明这次计算没有被记录进计算图。如果我们继续基于这个 `y_pred` 计算 `loss`，`loss` 也不会自动变成可反向传播的张量：
+
+```{python}
+loss = F.mse_loss(y_pred, y)
+print('loss.requires_grad:', loss.requires_grad)
+
+try:
+    loss.backward()
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+也就是说，在 `no_grad()` 模式下，所有前向传播正常执行，只是得到的结果不再被 Autograd 追踪。而一旦某个张量不再被追踪，后续所有基于它的计算也都不再被追踪。这就是为什么验证循环里经常会写成：
+
+```python
+model.eval()
+
+with torch.no_grad():
+    for X, y in valid_loader:
+        y_pred = model(X)
+        loss = loss_fn(y_pred, y)
+```
+
+这就相当于告诉 PyTorch，这段前向传播只是为了得到结果，不需要为后面的 `backward()` 做准备。
+
+不过，`no_grad()` 有一个很容易误解的地方：它不会修改张量本身的 `requires_grad` 属性。
+
+```{python}
+x = torch.randn(10, 6, requires_grad=True)
+
+with torch.no_grad():
+    print('x.requires_grad:', x.requires_grad)
+    z = x.sin()
+    print('z.requires_grad:', z.requires_grad)
+```
+
+这里 `x.requires_grad` 仍然是 `True`，说明 `x` 仍然有被求导的资格。但是 `z` 是在 `no_grad()` 里面被创建的，所以这次 `sin()` 没有被记录。
+
+因此，我们可以把两者这样区分：
+
+- `requires_grad` 是张量的属性，表示这个张量是否有资格被 Autograd 追踪；
+- `no_grad()` 是上下文状态，表示当前这段计算是否需要被记录。
+
+需要注意的是，`no_grad()` 只是暂时关闭记录。离开这个代码块之后，梯度记录会恢复。
+
+```{python}
+x = torch.randn(10, 6, requires_grad=True)
+
+with torch.no_grad():
+    a = x.sin()
+
+b = x.cos()
+
+print('a.requires_grad:', a.requires_grad)
+print('b.requires_grad:', b.requires_grad)
+```
+
+而且，即使是在 `no_grad()` 里创建的张量，也可以在之后设置 `requires_grad=True`，让它重新加入自动微分系统：
+
+```{python}
+x = torch.randn(10, 6, requires_grad=True)
+
+with torch.no_grad():
+    a = x.sin()
+
+print('a.requires_grad:', a.requires_grad)
+a.requires_grad_()
+print('a.requires_grad:', a.requires_grad)
+```
+
+所以，`no_grad()` 最适合表达的是：
+
+> **这段代码现在不需要梯度，但它仍然处在普通 PyTorch 张量系统里，以后需要的话还可以重新参与自动微分。**
+
+## 2.2.3 enable_grad()：局部重新打开记录
+
+既然梯度记录可以关闭，那自然也可以重新打开。
+
+一个常见场景是：外层代码整体处在 `no_grad()` 里，但里面有一小段计算临时需要梯度。比如，我们在调试推理代码时想看某个中间量对输入的梯度。这时候就可以用 `torch.enable_grad()`：
+
+```{python}
+x = torch.randn(4, requires_grad=True)
+
+with torch.no_grad():
+    a = x.sin()
+    print('a.requires_grad:', a.requires_grad)
+
+    with torch.enable_grad():
+        b = x.cos()
+        print('b.requires_grad:', b.requires_grad)
+
+    c = x.tan()
+    print('c.requires_grad:', c.requires_grad)
+```
+
+我们来分析一下这段代码：
+
+- `a` 在外层 `no_grad()` 中计算，所以不记录；
+- `b` 在内层 `enable_grad()` 中计算，所以重新记录；
+- `c` 离开内层之后，又回到外层 `no_grad()`，所以不记录。
+
+也就是说，PyTorch 的梯度模式是可以嵌套的。进入一个上下文，就临时切换模式；退出之后，就恢复到之前的模式。这其实有点像栈的结构：每次进入一个新的上下文，就把当前模式压入栈顶；每次退出一个上下文，就把栈顶的模式弹出，恢复到之前的状态。
+
+有时候，我们不想手写两个分支：训练时记录梯度，验证时不记录梯度。这时可以用更通用的 `torch.set_grad_enabled()`。它接受一个布尔值参数，直接设置当前的梯度模式：
+
+```{python}
+is_training = False
+x = torch.randn(10, 6)
+
+with torch.set_grad_enabled(is_training):
+    y_pred = model(x)
+
+print('y_pred.requires_grad:', y_pred.requires_grad)
+```
+
+当 `is_training=True` 时，它相当于 `enable_grad()`；当 `is_training=False` 时，它相当于 `no_grad()`。
+
+所以，如果一段代码同时服务训练和验证，可以写成：
+
+```python
+def run_one_epoch(model: Module, dataloader: DataLoader, training: bool):
+    model.train(training)
+
+    with torch.set_grad_enabled(training):
+        for X, y in dataloader:
+            y_pred = model(X)
+            loss = loss_fn(y_pred, y)
+
+            if training:
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+```
+
+这时候，梯度记录不再写死，而是由 `training` 这个状态统一控制。
+
+## 2.2.4 inference_mode()：这就是纯推理
+
+在前面两节中，我们已经有了一个相当灵活的机制：
+
+- `no_grad()` 可以关闭梯度记录；
+- `enable_grad()` 可以局部恢复梯度记录；
+- `set_grad_enabled()` 是一个更通用的接口，可以直接设置当前的梯度模式；
+- 梯度模式是可嵌套、可恢复的。
+
+从表面上看，似乎已经足够了。那为什么 PyTorch 还要提供 `torch.inference_mode()`？
+
+原因是，`no_grad()` 的语义还比较保守。它只是说这段代码暂时不记录梯度。但是 PyTorch 仍然会维护一些和 Autograd 有关的内部信息，比如版本计数器和视图追踪。这些机制在训练中很重要，因为它们可以帮助 PyTorch 检查原地操作、共享存储等情况是否会破坏梯度计算。但是，如果我们不仅知道当前不需要梯度，还知道这段计算以后永远不可能参与反向传播，那么框架是不是可以做得更激进一点？把所有和梯度有关的开销全部去掉？
+
+这就是 `inference_mode()` 的设计动机[^2.2.4]：
+
+> **这段代码不仅现在不需要梯度，而且它产生的结果也不准备再加入自动微分系统。**
+
+所以它通常比 `no_grad()` 更快、更省内存，但限制也更强。
+
+[^2.2.4]: `torch.inference_mode()` 是在 PyTorch 1.9 版本引入的，专门针对推理阶段的性能优化。关于它的具体实现，可以参考 [RFC-0011-InferenceMode](https://github.com/pytorch/rfcs/blob/master/RFC-0011-InferenceMode.md)。
+
+先看普通 `no_grad()`：
+
+```{python}
+with torch.no_grad():
+    x = torch.randn(4)
+
+x.requires_grad_()
+y = x.dot(x)
+y.backward()
+
+print('x.grad:', x.grad)
+```
+
+虽然 `x` 是在 `no_grad()` 里创建的，但离开上下文后，我们仍然可以给它设置 `requires_grad=True`，让它重新加入自动微分系统。这样，后续的计算也会被追踪，`backward()` 也能正常工作。
+
+但 `inference_mode()` 不一样。在 `inference_mode()` 中创建的张量是**推理张量（inference tensor）**。它们从一开始就被标记为不参与 Autograd，因此 PyTorch 不会为它们维护任何和梯度相关的内部状态。这也就意味着，之后不能再通过设置 `requires_grad=True` 把它们改回普通可导张量。
+
+```{python}
+with torch.inference_mode():
+    x = torch.randn(4)
+
+try:
+    x.requires_grad_()
+except RuntimeError as err:
+    print('RuntimeError:', err)
+```
+
+因此，`inference_mode()` 不是临时不记，而更像是告诉 PyTorch：
+
+> **这段计算就是纯推理，不要再为反向传播保留任何可能性。**
+
+这也是它和 `no_grad()` 最大的区别。
+
+## 2.2.5 三种模式怎么选
+
+现在我们可以把这几种模式放在一起看。
+
+- 默认模式下，PyTorch 会尽量记录计算图。只要计算依赖了需要梯度的张量，结果就会被追踪。这是训练时的默认选择。
+- `no_grad()` 模式适合验证、评估、特征提取等场景。我们只是不想在这段代码里记录梯度，但仍然希望张量之后可以回到普通的 PyTorch 自动微分流程中。
+- `inference_mode()` 适合更明确的纯推理场景。比如模型部署、批量生成预测结果，或者一整段代码都确定不会参与反向传播。它给 PyTorch 的承诺更强，所以 PyTorch 也能做更激进的优化。
+
+不过，在刚开始写代码时，最重要的不是追求哪个最快，而是保证语义正确。只要一段代码后面还可能需要梯度，就不要放进 `inference_mode()`。如果只是常规验证，`no_grad()` 已经足够。因此，如果你去看 PyTorch 官方的训练和验证示例，会看到验证循环里通常都是 `no_grad()`，而不是 `inference_mode()`。
+
+## 2.2.6 本章小结
+
+这一节，我们讨论了 PyTorch 中的梯度记录控制。上一节的重点是梯度怎么被算出来，这一节的重点是哪些计算需要被记录。
+
+`requires_grad` 决定一个张量有没有资格被 Autograd 追踪，而 `no_grad()`、`enable_grad()` 和 `set_grad_enabled()` 则控制某段代码当前是否记录计算图。训练时通常使用默认模式，验证和评估时常用 `no_grad()`，而纯推理场景可以使用更激进的 `inference_mode()`。
+
+一个简单的判断方式是：如果我们只是暂时不想记录梯度，比如验证模型效果，可以用 `no_grad()`；如果我们已经确定这段代码只用于推理，后面不会再参与训练，那么可以用 `inference_mode()`。前者像是“先别记计算图”，后者更像是“这就是纯推理，不要再为反向传播做准备”。
+
+到这里，我们已经知道了训练过程中一条数据进入模型以后，前向计算、损失计算、反向传播以及梯度记录大概是怎么发生的。不过，真实训练时我们并不是手动一张一张地把数据喂给模型。模型需要不断从数据集中取样本，把多个样本组成 batch，并且在训练过程中反复打乱、读取、预处理这些数据。
+
+所以下一节我们会把视角往前挪一步，不再只看模型内部的计算，而是讨论数据是如何进入训练循环的。也就是 PyTorch 里的 `Dataset` 和 `DataLoader`：前者负责定义数据从哪里来、长什么样，后者负责把这些样本组织成可以送进模型的 batch。

@@ -1,0 +1,576 @@
+---
+author: jshn9515
+date: 2026-06-27
+date-modified: 2026-06-27
+open-graph:
+  title: ch7.6-group-normalization
+  description: "7.6 Group Normalization: Normalizing Features Within Channel Groups"
+title: "7.6 GroupNorm：在通道组内归一化特征"
+order: 6
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.6-group-normalization.ipynb){fig-align="left"}
+
+上一节我们介绍了 Instance Normalization。对于形状为 `(N, C, H, W)` 的图像特征，InstanceNorm 会固定样本和通道，只沿空间维度 `H`、`W` 计算均值和方差。它不依赖 batch 中的其他样本，因此即使 batch size 很小，也不会出现 BatchNorm 那样的统计量不稳定问题。
+
+但是，InstanceNorm 也带来了一个新的问题：每个通道都被完全独立地归一化，不同通道之间不再共享统计信息。对于风格迁移和图像生成，这种性质往往很有用；但对于目标检测、语义分割等视觉任务，我们可能希望在不依赖 batch 的同时，仍然保留一部分通道之间的联系。
+
+**Group Normalization (GroupNorm)** [@wu2018GroupNorm] 正是在这两个目标之间做折中。它把通道划分为若干组，然后在每个样本内部，对同一组中的通道和空间位置一起计算均值和方差。
+
+因此，理解 GroupNorm 的关键仍然是统计维度：
+
+- 通道是如何分组的？
+- 每一组会在哪些维度上计算均值和方差？
+- 为什么 GroupNorm 不依赖 batch size？
+- `num_groups=1` 和 `num_groups=C` 分别对应什么？
+- GroupNorm 与 LayerNorm、InstanceNorm 到底是什么关系？
+- 为什么它常用于小 batch 的视觉任务？
+
+这一节会从一个小型张量开始，逐步建立 GroupNorm 的统计视角，并从零实现一个与 `nn.GroupNorm` 对应的版本。
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.6.1 为什么还需要 GroupNorm
+
+BatchNorm 对输入 `(N, C, H, W)` 固定通道 `C`，沿 batch 和空间维度 `N, H, W` 计算统计量。它在 batch 足够大时通常工作的很好，但当显存限制使得每个设备只能容纳很少的样本时，batch statistics 会变得不稳定。这在目标检测和语义分割中尤其常见。高分辨率图像会消耗大量显存，因此单张 GPU 上的 batch size 往往很小，有时甚至只有 1 或 2。InstanceNorm 可以避免这个问题，因为它完全不跨样本统计。但它把每个通道都单独处理，可能会移除过多的通道级信息。
+
+GroupNorm 的思路是：
+
+> **不跨样本统计，但也不把每个通道完全分开，而是把若干通道组成一组，在组内共享统计量。**
+
+假设输入有 8 个通道，我们可以把它们分成 4 组，每组包含 2 个通道：
+
+```text
+Group 1: channel 0, channel 1
+Group 2: channel 2, channel 3
+Group 3: channel 4, channel 5
+Group 4: channel 6, channel 7
+```
+
+每个样本都会独立完成这次分组和归一化，因此 batch 中的其他样本不会影响当前样本的输出。
+
+## 7.6.2 对 (N, C, H, W) 输入如何分组
+
+设输入为：
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+GroupNorm 使用 `G` 个组，并要求：
+
+$$
+C \bmod G = 0
+$$
+
+也就是说，通道数必须能被组数整除。每组包含的通道数为：
+
+$$
+C_g=\frac{C}{G}
+$$
+
+实现时，我们可以先把输入从 `(N, C, H, W)` reshape 为 `(N, G, C/G, H, W)`，这样第二个维度对应 group，第三个维度对应组内通道。
+
+```{python}
+num_groups = 4
+x = torch.arange(2 * 8 * 2 * 2, dtype=torch.float32)
+x = x.reshape(2, 8, 2, 2)
+
+x_grouped = x.reshape(2, num_groups, 8 // num_groups, 2, 2)
+
+print('Original shape:', x.shape)
+print('Grouped shape:', x_grouped.shape)
+```
+
+对于每个样本和每个 group，GroupNorm 会沿组内通道和空间维度计算统计量，也就是沿：
+
+```python
+dim = (2, 3, 4)
+```
+
+进行归约。
+
+因此，均值和方差的形状为 `(N, G, 1, 1, 1)`。
+
+```{python}
+mean = x_grouped.mean(dim=(2, 3, 4), keepdim=True)
+var = x_grouped.var(dim=(2, 3, 4), correction=0, keepdim=True)
+
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+可以把 GroupNorm 的规则概括成一句话：
+
+> **对于 `(N, C, H, W)` 输入，GroupNorm 固定样本和 group，沿组内通道以及空间维度进行归一化。**
+
+## 7.6.3 GroupNorm 的数学形式
+
+对于第 $n$ 个样本和第 $g$ 个 group，设该组包含的元素集合为 $S_{n,g}$，其元素个数为：
+
+$$
+|S_{n,g}|=\frac{C}{G}HW
+$$
+
+组内均值为：
+
+$$
+\mu_{n,g} = \frac{1}{|S_{n,g}|} \sum_{i\in S_{n,g}}x_i
+$$
+
+组内方差为：
+
+$$
+\sigma_{n,g}^2 = \frac{1}{|S_{n,g}|} \sum_{i\in S_{n,g}}(x_i-\mu_{n,g})^2
+$$
+
+然后对组内每个元素进行标准化：
+
+$$
+\hat{x}_i = \frac{x_i-\mu_{n,g}}{\sqrt{\sigma_{n,g}^2+\epsilon}}
+$$
+
+最后，GroupNorm 和其他归一化层一样，使用可学习参数恢复表达能力：
+
+$$
+y_{n,c,h,w} = \gamma_c\hat{x}_{n,c,h,w}+\beta_c
+$$
+
+这里需要注意，虽然统计量是按 group 计算的，但可学习参数仍然是**每个通道一组**：
+
+$$
+\gamma,\beta\in\mathbb{R}^{C}
+$$
+
+```{python}
+group_norm = nn.GroupNorm(num_groups=4, num_channels=8)
+
+print('Weight shape:', group_norm.weight.shape)
+print('Bias shape:', group_norm.bias.shape)
+```
+
+因此，同一个 group 内的通道共享均值和方差，但仍然可以通过不同的 `weight` 和 `bias` 学习不同的缩放和平移。
+
+## 7.6.4 手动计算一次 GroupNorm
+
+下面我们先不使用可学习仿射变换，只手动完成分组、标准化和 reshape。
+
+```{python}
+num_groups = 4
+x = torch.randn(2, 8, 4, 4)
+n, c, h, w = x.size()
+
+dim = (2, 3, 4)
+x_grouped = x.reshape(n, num_groups, c // num_groups, h, w)
+mean = x_grouped.mean(dim, keepdim=True)
+var = x_grouped.var(dim, correction=0, keepdim=True)
+
+x_hat_grouped = (x_grouped - mean) / (var + 1e-5).sqrt()
+x_hat = x_hat_grouped.reshape_as(x)
+
+output_grouped = x_hat.reshape(n, num_groups, c // num_groups, h, w)
+
+print('Output means by group:')
+print(output_grouped.mean(dim))
+print('\nOutput variances by group:')
+print(output_grouped.var(dim, correction=0))
+```
+
+每个样本的每个 group 都会得到接近 0 的均值和接近 1 的方差。为了避免除 0，我们在方差上加了一个 $\epsilon$。
+
+## 7.6.5 GroupNorm 不依赖 batch 中的其他样本
+
+GroupNorm 的统计过程不会沿 batch 维度进行，因此改变 batch 中的其他样本，不会改变当前样本的输出。
+
+```{python}
+sample = torch.randn(1, 8, 4, 4)
+other_sample1 = torch.randn(1, 8, 4, 4)
+other_sample2 = torch.randn(1, 8, 4, 4) * 100.0 + 500.0
+
+batch1 = torch.concat([sample, other_sample1], dim=0)
+batch2 = torch.concat([sample, other_sample2], dim=0)
+
+group_norm = nn.GroupNorm(4, 8, affine=False)
+
+output1 = group_norm(batch1)[0]
+output2 = group_norm(batch2)[0]
+
+max_diff = (output1 - output2).abs().max()
+print('Maximum difference for the fixed sample:', max_diff.item())
+```
+
+由于第一个样本完全相同，因此它的 GroupNorm 输出也完全相同。这和 BatchNorm 不同。BatchNorm 会把 batch 中同一通道的所有样本一起统计，所以其他样本发生变化时，当前样本使用的均值和方差也会变化。
+
+GroupNorm 的这一性质意味着：
+
+- Batch size 为 1 时仍然可以正常工作；
+- 不同设备上的 local batch size 不会改变统计方式；
+- 不需要跨设备同步 batch statistics；
+- 训练结果对 batch size 的敏感程度通常低于 BatchNorm。
+
+## 7.6.6 `num_groups=1`：所有通道属于同一组
+
+当 $G=1$ 时，所有通道都被放进同一个 group。对于 `(N, C, H, W)` 输入，统计量会沿 `C`、`H`、`W` 一起计算。这在统计维度上和 `nn.LayerNorm((C, H, W))` 很相似。两者都会为每个样本在整个 `(C, H, W)` 上计算均值和方差。
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+group_norm = nn.GroupNorm(1, 4, affine=False)
+layer_norm = nn.LayerNorm((4, 3, 3), elementwise_affine=False)
+
+gn_output = group_norm(x)
+ln_output = layer_norm(x)
+
+max_diff = (gn_output - ln_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+在关闭仿射变换后，两者的标准化结果相同，但默认仿射参数的形状并不相同：
+
+- `GroupNorm(1, C)` 的参数形状是 `(C,)`；
+- `LayerNorm((C, H, W))` 的参数形状是 `(C, H, W)`。
+
+因此更准确的说法是：
+
+> **`num_groups=1` 时，GroupNorm 的统计方式等价于对 `(C, H, W)` 做 LayerNorm，但默认仿射参数化方式不同。**
+
+## 7.6.7 `num_groups=C`：每个通道单独成组
+
+当 $G=C$ 时，每个 group 中只有一个通道。此时 GroupNorm 会固定样本和通道，沿空间维度 `H`、`W` 计算统计量。这正是 InstanceNorm 的统计方式。
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+group_norm = nn.GroupNorm(4, 4, affine=False)
+instance_norm = nn.InstanceNorm2d(4)
+
+gn_output = group_norm(x)
+in_output = instance_norm(x)
+
+max_diff = (gn_output - in_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+两者输出相同，因为它们都为每个样本的每个通道独立计算空间统计量。
+
+因此，GroupNorm 可以看成 LayerNorm 和 InstanceNorm 之间的桥梁：
+
+- 当 $G=1$ 时，所有通道共享一组统计量，统计方式接近 LayerNorm；
+- 当 $1<G<C$ 时，多个通道共享一组统计量；
+- 当 $G=C$ 时，每个通道独立计算统计量，统计方式等价于 InstanceNorm。
+
+这也是 GroupNorm 名字的来源：组数决定了通道之间共享统计信息的粒度。
+
+## 7.6.8 GroupNorm 的 PyTorch 实现
+
+下面实现一个函数版 GroupNorm。这里我们支持任意空间维度，而不仅限于二维图像。
+
+```{python}
+def group_norm(
+    x: Tensor,
+    num_groups: int,
+    weight: Tensor | None = None,
+    bias: Tensor | None = None,
+    eps: float = 1e-5,
+) -> Tensor:
+    """Apply group normalization to an input tensor."""
+    if x.ndim < 2:
+        raise AssertionError(
+            f'Expected input tensor to have at least 2 dimensions, but got {x.ndim}.'
+        )
+    if num_groups <= 0:
+        raise AssertionError(
+            f'Expected `num_groups` to be greater than 0, but got {num_groups}.'
+        )
+
+    num_channels = x.size(1)
+    channels_per_group = num_channels // num_groups
+    if num_channels % num_groups != 0:
+        raise AssertionError(
+            f'Expected the number of channels ({num_channels}) to be divisible '
+            f'by `num_groups` ({num_groups}).'
+        )
+
+    # (N, C, H, W) -> (N, G, C // G, H, W)
+    grouped_shape = (x.size(0), num_groups, channels_per_group, *x.shape[2:])
+    grouped_x = x.reshape(grouped_shape)
+
+    # Reduce over the channels in each group and all spatial dimensions.
+    # (N, G, C // G, H, W) -> reduce_dims = (2, 3, 4)
+    reduce_dims = tuple(range(2, grouped_x.ndim))
+
+    group_mean = grouped_x.mean(dim=reduce_dims, keepdim=True)
+    group_var = grouped_x.var(dim=reduce_dims, correction=0, keepdim=True)
+
+    grouped_y = (grouped_x - group_mean) * (group_var + eps).rsqrt()
+    y = grouped_y.reshape_as(x)
+
+    # (C,) -> (1, C, 1, 1)
+    broadcast_shape = (1, num_channels) + (1,) * (x.ndim - 2)
+
+    if weight is not None:
+        y = y * weight.reshape(broadcast_shape)
+
+    if bias is not None:
+        y = y + bias.reshape(broadcast_shape)
+
+    return y
+```
+
+现在与 `F.group_norm` 对照一下：
+
+```{python}
+x = torch.randn(3, 8, 5, 5)
+weight = torch.randn(8)
+bias = torch.randn(8)
+
+actual = group_norm(x, num_groups=4, weight=weight, bias=bias)
+expected = F.group_norm(x, num_groups=4, weight=weight, bias=bias)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+两者的误差应该只来自浮点数计算顺序。
+
+整个实现最核心的三步是：
+
+1. 把 `(N, C, ...)` reshape 为 `(N, G, C/G, ...)`；
+2. 沿组内通道和所有空间维度计算均值、方差；
+3. Reshape 回原始形状，再应用每通道仿射变换。
+
+接下来把函数封装成一个模块。
+
+```{python}
+class GroupNorm(nn.Module):
+    """Apply group normalization over channel groups."""
+
+    weight: Tensor | None
+    bias: Tensor | None
+
+    def __init__(
+        self,
+        num_groups: int,
+        num_channels: int,
+        eps: float = 1e-5,
+        affine: bool = True,
+    ):
+        """Initialize a group normalization module."""
+        super().__init__()
+        if num_channels % num_groups != 0:
+            raise AssertionError('`num_channels` must be divisible by `num_groups`.')
+
+        self.num_groups = num_groups
+        self.num_channels = num_channels
+        self.eps = eps
+        self.affine = affine
+
+        if affine:
+            self.weight = nn.Parameter(torch.empty(num_channels))
+            self.bias = nn.Parameter(torch.empty(num_channels))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.weight is not None:
+            nn.init.ones_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.size(1) != self.num_channels:
+            raise AssertionError(
+                f'Expected {self.num_channels} channels, but got {x.size(1)} channels.'
+            )
+
+        return group_norm(
+            x,
+            self.num_groups,
+            weight=self.weight,
+            bias=self.bias,
+            eps=self.eps,
+        )
+
+    def extra_repr(self) -> str:
+        return (
+            f'{self.num_groups}, {self.num_channels}, eps={self.eps}, '
+            f'affine={self.affine}'
+        )
+```
+
+将参数复制到 PyTorch 模块中，再比较输出：
+
+```{python}
+x = torch.randn(2, 8, 4, 4)
+
+group_norm1 = GroupNorm(4, 8)
+group_norm2 = nn.GroupNorm(4, 8)
+
+with torch.no_grad():
+    group_norm2.weight.copy_(group_norm1.weight)
+    group_norm2.bias.copy_(group_norm1.bias)
+
+actual = group_norm1(x)
+expected = group_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+结果应该只有浮点数计算顺序带来的误差。
+
+和 LayerNorm 一样，同一个 `nn.GroupNorm` 可以处理 `(N, C, *)`，只要第二个维度是通道维度即可。
+
+```{python}
+group_norm = nn.GroupNorm(2, 4)
+
+x_1d = torch.randn(2, 4, 10)
+x_2d = torch.randn(2, 4, 8, 8)
+x_3d = torch.randn(2, 4, 4, 8, 8)
+
+print('1D output shape:', group_norm(x_1d).shape)
+print('2D output shape:', group_norm(x_2d).shape)
+print('3D output shape:', group_norm(x_3d).shape)
+```
+
+对于这些输入，GroupNorm 总是：
+
+- 把第二维视为通道；
+- 将通道划分为 `num_groups` 组；
+- 沿组内通道和后面的所有空间维度统计。
+
+因此，不存在 `GroupNorm1d`、`GroupNorm2d` 和 `GroupNorm3d` 的分类方式。
+
+## 7.6.9 train() 和 eval() 下行为相同
+
+GroupNorm 不维护 `running_mean` 和 `running_var`。无论训练还是推理，它都会使用当前样本自己的 group statistics。因此，`train()` 和 `eval()` 不会改变 GroupNorm 的计算方式。
+
+```{python}
+x = torch.randn(2, 8, 4, 4)
+group_norm = nn.GroupNorm(4, 8)
+
+group_norm.train()
+train_output = group_norm(x)
+
+group_norm.eval()
+eval_output = group_norm(x)
+
+max_diff = (train_output - eval_output).abs().max()
+print('Maximum difference:', max_diff.item())
+print('State dict keys:', dict(group_norm.state_dict()))
+```
+
+`state_dict` 中只有可学习的 `weight` 和 `bias`，没有 BatchNorm 中的：
+
+- `running_mean`；
+- `running_var`；
+- `num_batches_tracked`。
+
+这也意味着 GroupNorm 不需要像 BatchNorm 那样在推理前确保 running statistics 已经正确估计。
+
+## 7.6.10 `num_groups` 应该如何选择
+
+GroupNorm 最重要的超参数是 `num_groups`。它必须满足：
+
+$$
+C \bmod G = 0
+$$
+
+组数越小，每组包含的通道越多，更多通道会共享统计量；组数越大，每组包含的通道越少，归一化行为越接近 InstanceNorm。
+
+经典 GroupNorm 工作中常用 32 组，但它不是对所有网络都固定最优的规则。当通道数较小时，应该选择能整除通道数、且不会让每组过小的组数。
+
+例如：
+
+```python
+nn.GroupNorm(32, 256)
+nn.GroupNorm(16, 128)
+nn.GroupNorm(8, 64)
+```
+
+都让每组包含 8 个通道。
+
+因此，选择 num_groups 时，更值得关注的是每组包含多少通道，以及不同层的通道数是否能被组数整除。
+
+## 7.6.11 GroupNorm 在网络中的常见位置
+
+在 CNN 中，GroupNorm 通常放在卷积层之后、激活函数之前：
+
+```python
+block = nn.Sequential(
+    nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+    nn.GroupNorm(32, 128),
+    nn.ReLU(),
+)
+```
+
+由于 GroupNorm 自带可学习偏置，紧跟在它前面的卷积层通常可以设置：
+
+```python
+bias = False
+```
+
+原因和 Conv-BN 结构类似：卷积产生的常数偏置会在标准化时被减去，随后 GroupNorm 的 `bias` 可以完成平移。
+
+但是，GroupNorm 通常不能像推理阶段的 BatchNorm 那样简单融合进卷积层。BatchNorm 在 `eval()` 模式下使用固定的 running statistics，因此整体是固定仿射变换；GroupNorm 在推理时仍然需要根据当前输入动态计算均值和方差，所以不能预先吸收到卷积权重中。
+
+## 7.6.12 GroupNorm 的适用场景与局限
+
+GroupNorm 最典型的使用场景是小 batch 的视觉任务，例如：
+
+- 目标检测；
+- 实例分割；
+- 语义分割；
+- 高分辨率图像模型；
+- 显存限制下的 CNN 训练。
+
+它的主要优点包括：
+
+- 不依赖 batch size；
+- 训练和推理行为一致；
+- 不需要 running statistics；
+- 不需要跨设备同步统计量；
+- 在小 batch 条件下通常比 BatchNorm 更稳定。
+
+但 GroupNorm 也不是所有任务中的默认最优选择。
+
+当 batch 足够大，并且训练和推理数据分布接近时，BatchNorm 往往仍然是 CNN 中非常有效的选择。而且 BatchNorm 使用跨样本统计，还会引入一定的随机扰动，这可能带来额外的正则化效果。此外，GroupNorm 需要人为选择 `num_groups`。不同层的通道数可能不同，因此必须保证每一层的通道数都能被组数整除。最后，GroupNorm 在推理时仍然需要计算当前输入的均值和方差，不能像 BatchNorm 那样进行简单的 Conv-BN Fusion。
+
+## 7.6.13 本章小结
+
+这一节我们介绍了 Group Normalization。
+
+对于输入 `(N, C, H, W)`，GroupNorm 首先把通道划分为 `G` 组，将输入 reshape 为：
+
+$$
+\left(N, G, \frac{C}{G}, H, W \right)
+$$
+
+然后固定样本和 group，沿组内通道以及空间维度计算均值和方差。
+
+它最重要的特点是：
+
+- 不跨样本计算统计量，因此不依赖 batch size；
+- 同一组中的多个通道共享统计量；
+- 可学习参数仍然按通道设置；
+- 不维护 running statistics；
+- 训练和推理阶段行为相同；
+- `num_groups=1` 时统计方式接近 LayerNorm；
+- `num_groups=C` 时统计方式等价于 InstanceNorm；
+- 适合目标检测、分割等小 batch 视觉任务。
+
+到这里，我们已经分别介绍了 BatchNorm、LayerNorm、InstanceNorm 和 GroupNorm。它们都先计算均值和方差，再完成中心化与尺度归一化。真正不同的是，哪些元素被放进同一组中共享统计量。
+
+不过，并不是所有归一化方法都会同时使用均值和方差。在现代 Transformer 和大语言模型中，RMSNorm 也已经成为非常常见的选择。它不再减去均值，而是只根据特征的均方根控制隐藏向量的整体尺度。
+
+下一节我们将介绍 **Root Mean Square Normalization** [@zhang2019RMSNorm]，并比较它与 LayerNorm 的联系和区别。之后再把 BatchNorm、LayerNorm、InstanceNorm、GroupNorm 和 RMSNorm 放进统一框架中，从“对哪些维度计算什么统计量”这个角度重新比较它们。

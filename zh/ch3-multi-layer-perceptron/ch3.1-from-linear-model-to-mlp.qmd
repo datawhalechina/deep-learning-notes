@@ -1,0 +1,341 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.1-from-linear-model-to-mlp
+  description: "3.1 From Linear Model to MLP: Why We Need Hidden Layers"
+title: "3.1 从线性分类器到 MLP：为什么需要隐藏层"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch3-multi-layer-perceptron/ch3.1-from-linear-model-to-mlp.ipynb){fig-align="left"}
+
+在前面的章节中，我们已经把神经网络看成了一个**可学习的函数**。给定输入 $x$，模型通过一系列计算得到输出 $\hat{y}$；给定真实标签 $y$，我们再用损失函数衡量预测和标签之间的差距。训练模型的过程，本质上就是不断调整参数，让这个损失变小。
+
+这一章我们从最经典的**多层感知机（Multi-Layer Perceptron, MLP）**开始，完整走一遍神经网络训练的基本流程。不过，这一章的重点不是直接调用 PyTorch 的 `nn.Linear`、`nn.ReLU` 和 `nn.CrossEntropyLoss`，而是先用 NumPy 把这些模块的前向传播和反向传播都写出来。
+
+这样做的目的就是：
+
+> **先亲手看清楚每一层到底在算什么，再回到 PyTorch 看框架帮我们自动做了什么。**
+
+这一节我们先从一个具体任务开始：用 MNIST 手写数字图片做分类。我们会先把图像分类问题写成一个线性分类器，然后观察线性模型的局限，最后自然引出 MLP 中的隐藏层和激活函数。
+
+```{python}
+import numpy as np
+
+rng = np.random.default_rng(seed=42)
+print('NumPy version:', np.__version__)
+```
+
+## 3.1.1 MNIST 分类问题
+
+MNIST 是一个手写数字分类数据集。每张图片是一张灰度图，大小为 $28 \times 28$，对应一个数字标签：
+
+$$
+y \in \{0, 1, 2, \dots, 9\}
+$$
+
+也就是说，这是一个 10 分类问题。模型看到一张手写数字图片之后，需要判断它属于哪一个类别。
+
+![图 3.1.1：MNIST 手写数字分类数据集 [@enwiki:MNIST]](figures/ch3.1-mnist-samples.png)
+
+对于计算机来说，一张 $28 \times 28$ 的灰度图可以看成一个矩阵：
+
+$$
+X_{\text{image}} \in \mathbb{R}^{28 \times 28}
+$$
+
+矩阵中的每个元素表示一个像素的灰度值。
+
+当然，最基本的 MLP 是由全连接层组成的。全连接层通常接收一维特征向量，而不是直接接收二维图像矩阵。这和传统机器学习里的支持向量机（SVM）分类器一样。因此，为了把它送进最简单的全连接模型，我们通常会先把二维图像展平成一个一维向量：
+
+$$
+x \in \mathbb{R}^{28 \times 28} \rightarrow x \in \mathbb{R}^{784}
+$$
+
+如果一个 batch 中有 $B$ 张图片，那么输入就可以写成：
+
+$$
+X \in \mathbb{R}^{B \times 784}
+$$
+
+其中每一行是一张图片展开后的向量。
+
+不过，这一步会丢掉图像原本的二维空间结构。比如，一个像素的上、下、左、右邻居是谁，展平之后并不会被模型直接知道。后面讲 CNN 和 ViT 时，我们会重新讨论如何更好地利用图像结构。但在 MLP 中，我们先把图像当成一个普通向量来处理。
+
+```{python}
+batch_size = 4
+image_height = 28
+image_width = 28
+
+images = rng.random((batch_size, image_height, image_width))
+x = images.reshape(batch_size, -1)
+
+print('x.shape:', x.shape)
+```
+
+输出的形状是 `(4, 784)`。这说明，每张图片已经从一个 $28 \times 28$ 的矩阵变成了一个 784 维向量。
+
+## 3.1.2 最简单的分类器：线性模型
+
+有了输入向量之后，最直接的想法是使用一个线性模型，把 784 维输入直接映射到 10 个类别分数：
+
+$$
+Z = XW + b
+$$
+
+其中：
+
+$$
+\begin{aligned}
+X &\in \mathbb{R}^{B \times 784} \\
+W &\in \mathbb{R}^{784 \times 10} \\
+b &\in \mathbb{R}^{10} \\
+Z &\in \mathbb{R}^{B \times 10}
+\end{aligned}
+$$
+
+这里的 $Z$ 通常叫做 **logits**，表示模型对每个类别的未归一化分数。对于每一张图片，模型会输出 10 个数，分别表示它对 10 个类别的打分。打分越高，表示模型越倾向于认为图片属于那个类别。
+
+比如，对于一张图片，模型输出：
+
+$$
+z = [z_0, z_1, z_2, \dots, z_9]
+$$
+
+如果 $z_7$ 最大，我们就可以暂时把模型的预测看成数字 7：
+
+$$
+\hat{y} = \arg\max_j z_j
+$$
+
+注意，logits 还不是概率，它们只是未归一化的类别分数。后面我们会用 softmax 把 logits 转成概率，再用 cross entropy 衡量预测和真实标签之间的差距。
+
+先用 NumPy 写一下这个线性分类器的前向传播：
+
+```{python}
+input_dim = 784
+num_classes = 10
+
+W = rng.random((input_dim, num_classes))
+b = np.zeros(num_classes)
+logits = x @ W + b
+
+print('logits.shape:', logits.shape)
+```
+
+输出的形状是 `(4, 10)`。这说明，对于 batch 中的 4 张图片，模型分别输出了 10 个类别分数。
+
+## 3.1.3 线性分类器学到了什么？
+
+线性分类器的形式非常简单：
+
+$$
+Z = XW + b
+$$
+
+![图 3.1.3：线性分类器模型 [@zhang2023d2l, fig. 3.1.2]](figures/ch3.1-single-neuron.svg)
+
+其中，$X$ 是输入图片的特征矩阵，$W$ 是权重矩阵，$b$ 是偏置向量。就上面的图来说，输入层就是 $X$，输出层就是 $Z$，中间的线条表示权重矩阵 $W$。同时，输出节点还有一个对应的偏置 $b$，上面的图没有画出来。
+
+如果只看某一个类别 $j$，它的 logit 是：
+
+$$
+z_j = x^\top w_j + b_j
+$$
+
+其中 $w_j$ 是矩阵 $W$ 的第 $j$ 列。也就是说，每个类别都会有一个自己的权重向量 $w_j$。模型会拿输入图片 $x$ 和这个权重向量做内积，再加上偏置 $b_j$，得到类别 $j$ 的分数。从直觉上看，$w_j$ 可以被理解成类别 $j$ 的一个模板。如果输入图片和这个模板比较匹配，那么内积就会比较大，这个类别的分数也会比较高。我们反复的训练模型，就是为了调整不同数字对应的 $W$ 和 $b$，让它们能够学到匹配对应数字的模板，从而在 MNIST 上作出正确的分类。
+
+但是，这种模型的表达能力毕竟是有限的。它只能对输入做一次线性变换。对于 MNIST 这种相对简单的数据集，线性分类器也能学到一些有用模式；但如果图像中的形状变化更复杂，比如数字有平移、旋转、粗细变化，单纯线性模型就很难把这些变化都处理好。
+
+其实，线性分类器只能学习形如下面这样的决策边界：
+
+$$
+x^\top w + b = 0
+$$
+
+这是一条直线、一个平面，或者高维空间中的超平面。它适合处理线性可分的数据，但对于更复杂的非线性关系就不够了。这其实和传统机器学习里的 SVM 分类器是一样的，它们都只能学到线性的决策边界。
+
+但这时候肯定就有人说了，如果一个线性层不够，那多堆几个不就行了？
+
+## 3.1.4 只堆线性层有用吗？
+
+假设我们把两个线性层连起来：
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+Z &= HW_2 + b_2
+\end{aligned}
+$$
+
+把第一行代入第二行，可以得到：
+
+$$
+Z = (XW_1 + b_1)W_2 + b_2
+$$
+
+展开以后：
+
+$$
+Z = X(W_1W_2) + b_1W_2 + b_2
+$$
+
+令：
+
+$$
+\begin{aligned}
+W' &= W_1W_2 \\
+b' &= b_1W_2 + b_2
+\end{aligned}
+$$
+
+那么整个模型就变成：
+
+$$
+Z = XW' + b'
+$$
+
+这仍然是一个线性模型。也就是说，如果中间没有任何非线性操作，多个线性层叠在一起，最终仍然等价于一个线性层。层数变多了，但模型表达能力并没有本质提升。
+
+这就是为什么神经网络不能只靠线性层堆起来。我们需要在层与层之间加入一个非线性函数，让模型不再只是一个大的纯线性变换。这个非线性函数就是**激活函数（activation function）**。
+
+## 3.1.5 加入隐藏层和激活函数
+
+激活函数这个名字来自生物学。一个生物神经元会接收很多输入信号，信号加权求和之后，如果刺激足够强，它就会被激活，然后向下一个神经元传递信号。在人工神经网络中，激活函数就是模拟这个生物神经元被激活的过程。它是一个非线性函数，能够对输入做非线性变换。在神经网络中，激活函数只要满足一些基本条件，比如非线性、可微或几乎处处可微，通常就可以使用。
+
+现在我们在两个线性层之间加入一个激活函数 $\phi$：
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \phi(H) \\
+Z &= AW_2 + b_2
+\end{aligned}
+$$
+
+这里的 $H$ 是隐藏层的 pre-activation，也就是激活函数之前的值；$A$ 是隐藏层经过激活函数之后的表示。$\phi$ 是一个非线性函数，比如 sin、cos 等（虽然我们后面不用它们，但它们也确实算激活函数）。
+
+这时模型就不再等价于一个线性层了。因为 $\phi$ 会对中间表示做非线性变换，使得模型可以组合出更复杂的函数。
+
+对于 MNIST，我们可以写成：
+
+$$
+\begin{aligned}
+X &\in \mathbb{R}^{B \times 784} \\
+W_1 &\in \mathbb{R}^{784 \times H} \\
+b_1 &\in \mathbb{R}^{H} \\
+A &\in \mathbb{R}^{B \times H} \\
+W_2 &\in \mathbb{R}^{H \times 10} \\
+b_2 &\in \mathbb{R}^{10} \\
+Z &\in \mathbb{R}^{B \times 10}
+\end{aligned}
+$$
+
+其中，$H$ 是隐藏层维度。比如我们可以令 $H=256$，表示每张图片会先被映射成一个 256 维的隐藏表示，再由这个隐藏表示预测 10 个类别。这样做的好处是，模型可以先从输入中提取出一些有用的特征（隐藏表示），再用这些特征来做分类。$H$ 是一个超参数，我们可以根据数据集的复杂度和希望模型实现的表达能力来调整它。
+
+用 NumPy 写出来就是：
+
+```{python}
+hidden_dim = 256
+
+W1 = rng.random((input_dim, hidden_dim))
+b1 = np.zeros(hidden_dim)
+W2 = rng.random((hidden_dim, num_classes))
+b2 = np.zeros(num_classes)
+
+h = x @ W1 + b1
+a = np.maximum(0, h)  # activation function: ReLU
+logits = a @ W2 + b2
+
+print('h.shape:', h.shape)
+print('a.shape:', a.shape)
+print('logits.shape:', logits.shape)
+```
+
+这里我们使用的激活函数是 ReLU：
+
+$$
+\operatorname{ReLU}(x) = \max(0, x)
+$$
+
+ReLU 会把负数变成 0，正数保持不变。它看起来很简单，但正是这个非线性操作，让两层线性变换的组合不再能够被压缩成一个线性变换。同时，它也是现代神经网络中最常用的激活函数之一。
+
+## 3.1.6 MLP 的基本结构
+
+现在我们得到的模型就是一个最简单的 MLP：
+
+$$
+X
+\rightarrow
+\operatorname{Linear}_1
+\rightarrow
+H_1
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+H_2
+\rightarrow
+\operatorname{Linear}_2
+\rightarrow
+Z
+$$
+
+![图 3.1.6：MLP 模型 [@zhang2023d2l, fig. 4.1.1]](figures/ch3.1-mlp.svg)
+
+其中，$\operatorname{Linear}_1$ 表示第一个线性层，$\operatorname{ReLU}$ 是激活函数，$\operatorname{Linear}_2$ 是第二个线性层，$H_1, H_2$ 是隐藏层的 pre-activation 和 post-activation 表示，$Z$ 是输出的 logits。
+
+它也可以写成一个函数：
+
+$$
+f(X) = \operatorname{ReLU}(XW_1 + b_1)W_2 + b_2
+$$
+
+这里有两点需要注意。
+
+第一，MLP 中的每一层通常都是对最后一个维度做线性变换。对于 MNIST，我们把每张图片展平成 784 维向量，所以第一层把 784 维映射到隐藏维度 $H$。
+
+第二，我们现在的输出 $Z$ 是 logits，还不是概率。因此，我们需要一个工具，来把这个 logits 转成概率，并且计算损失。这个工具就是 softmax 和 cross entropy。后面我们会专门讲它们的前向传播和反向传播。
+
+所以，MLP 的分类流程可以概括为：
+
+$$
+\text{image}
+\rightarrow
+\text{flatten}
+\rightarrow
+\text{hidden representation}
+\rightarrow
+\text{logits}
+\rightarrow
+\text{loss}
+$$
+
+本章后面要做的事情，就是把这个流程中的每一个部分拆开：
+
+- 激活函数前向传播和反向传播怎么写？
+- Softmax 和 cross entropy 如何把 logits 变成分类损失？
+- 线性层的参数梯度怎么推导？
+- 多个模块连起来之后，梯度如何一层一层传回去？
+- 如何用 NumPy 在 MNIST 上完整训练这个模型？
+
+## 3.1.7 本章小结
+
+这一节我们从 MNIST 分类问题出发，介绍了从线性分类器到 MLP 的基本思路。
+
+MNIST 的每张图片可以从 $28 \times 28$ 的矩阵展平成 784 维向量。最简单的分类器可以用一个线性变换把输入直接映射到 10 个类别 logits：
+
+$$
+Z = XW + b
+$$
+
+不过，线性分类器的表达能力有限。如果只是堆叠多个线性层，而中间不加入非线性操作，那么整个模型仍然等价于一个线性层。因此，MLP 会在线性层之间加入激活函数：
+
+$$
+Z = \phi(XW_1 + b_1)W_2 + b_2
+$$
+
+激活函数让模型能够表示更复杂的非线性关系，也是神经网络表达能力的重要来源。
+
+下一节我们会专门讨论常见激活函数。我们不仅会看它们的前向传播形式，还会推导它们在反向传播中如何把梯度传回去。

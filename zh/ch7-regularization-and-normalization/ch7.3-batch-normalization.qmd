@@ -1,0 +1,894 @@
+---
+author: jshn9515
+date: 2026-06-26
+date-modified: 2026-06-26
+open-graph:
+  title: ch7.3-batch-normalization
+  description: "7.3 BatchNorm: Stabilizing Training with Batch Statistics"
+title: "7.3 BatchNorm：利用 batch 统计量稳定训练"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.3-batch-normalization.ipynb){fig-align="left"}
+
+
+上一节我们介绍了 dropout。它通过随机丢弃中间激活，迫使网络不能过度依赖少数固定特征，主要用于缓解过拟合。
+
+这一节讨论另一类常见操作：**Batch Normalization (BatchNorm)** [@ioffe2015BatchNorm]。BatchNorm 在训练过程中利用 mini-batch 的均值和方差，对中间特征进行标准化，然后通过可学习参数对其重新缩放和平移。这样可以稳定不同层输入的数值尺度，改善优化过程，并在一定程度上缓解梯度过大或过小的问题。
+
+这一节，我们会回答以下问题：
+
+- 它到底对哪些维度计算均值和方差？
+- 为什么全连接层和卷积层使用的是同一套思想？
+- 训练阶段和推理阶段为什么行为不同？
+- `running_mean`、`running_var` 和 `momentum` 分别是什么？
+- 为什么推理时可以把 BatchNorm 合并进前面的卷积层？
+
+这一节我们会从一个二维张量开始，逐步扩展到 CNN 中的四维特征图，最后从零实现 BatchNorm 和 Conv-BN Fusion。
+
+```{python}
+import copy
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.3.1 为什么需要控制中间激活的尺度
+
+神经网络由许多层连续组成。前一层参数发生变化后，它输出给后一层的激活分布也会随之变化。后一层不仅要学习当前任务，还要不断适应输入数值尺度的变化。
+
+例如，下面两个 batch 表达的相对关系相同，但整体尺度明显不同：
+
+```text
+batch 1: [1, 2, 3, 4]
+batch 2: [100, 200, 300, 400]
+```
+
+对于线性层来说，大尺度输入通常会产生更大的输出和梯度。网络越深，这种尺度变化越可能在多层运算中不断累积，使训练对初始化和学习率更加敏感。
+
+BatchNorm 的基本想法就是：
+
+> **在每一层接收激活以后，先根据当前 batch 的均值和方差进行标准化，再交给后续计算。**
+
+对于一组标量 $x_1,x_2,\dots,x_m$，先计算均值：
+
+$$
+\mu_B = \frac{1}{m}\sum_{i=1}^{m}x_i
+$$
+
+再计算方差：
+
+$$
+\sigma_B^2 = \frac{1}{m}\sum_{i=1}^{m}(x_i-\mu_B)^2
+$$
+
+标准化结果为：
+
+$$
+\hat{x}_i = \frac{x_i-\mu_B}{\sqrt{\sigma_B^2+\epsilon}}
+$$
+
+其中，$\epsilon$ 是一个很小的正数，用于避免方差接近 0 时发生除零或数值不稳定。
+
+标准化以后，这组数据的均值接近 0，方差接近 1：
+
+```{python}
+x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+mean = x.mean()
+var = x.var(correction=0)
+
+x_hat = (x - mean) / (var + 1e-5).sqrt()
+x_hat_mean = x_hat.mean()
+x_hat_var = x_hat.var(correction=0)
+
+print('Input values:', x)
+print('Mean before normalization:', mean.item())
+print('Variance before normalization:', var.item())
+print('Normalized values:', x_hat)
+print('Mean after normalization:', x_hat_mean.item())
+print('Variance after normalization:', x_hat_var.item())
+```
+
+不过，BatchNorm 并不只是把所有激活统一变成均值 0、方差 1。真正的 BatchNorm 还包含可学习的缩放和平移参数。我们稍后会看到，这一步允许模型在需要时恢复甚至改变原来的尺度。
+
+## 7.3.2 BatchNorm 在对哪些维度归一化
+
+理解 BatchNorm 最重要的问题是：**均值和方差在哪些维度上计算？**
+
+先考虑全连接层常见的二维输入：
+
+$$
+X\in\mathbb{R}^{N\times C}
+$$
+
+其中，$N$ 是 batch size，$C$ 是特征数。
+
+BatchNorm 会为每个特征 $c$ 单独计算统计量，并在 batch 维度 $N$ 上聚合：
+
+$$
+\begin{aligned}
+\mu_c &= \frac{1}{N}\sum_{n=1}^{N}x_{n,c} \\
+\sigma_c^2 &= \frac{1}{N}\sum_{n=1}^{N}(x_{n,c}-\mu_c)^2
+\end{aligned}
+$$
+
+因此，每一列都有自己的均值和方差。BatchNorm 不会把不同特征混在一起统计。
+
+```{python}
+x = torch.tensor(
+    [
+        [1.0, 10.0, 100.0],
+        [2.0, 20.0, 200.0],
+        [3.0, 30.0, 300.0],
+        [4.0, 40.0, 400.0],
+    ]
+)
+
+feature_mean = x.mean(dim=0)
+feature_var = x.var(dim=0, correction=0)
+x_hat = (x - feature_mean) / (feature_var + 1e-5).sqrt()
+
+print('Feature means:', feature_mean)
+print('Feature variances:', feature_var)
+print('Normalized tensor:')
+print(x_hat)
+print('Mean of each feature:', x_hat.mean(dim=0))
+print('Variance of each feature:', x_hat.var(dim=0, correction=0))
+```
+
+这里 `dim=0` 表示沿 batch 维度统计。输出仍然保持 `(N, C)`，只是每个特征都使用自己的统计量进行了标准化，让每个特征的均值接近 0，方差接近 1。
+
+我们可以把 BatchNorm 的规则概括为：
+
+> **保留特征维度 $C$，在其余属于同一特征的样本维度上计算统计量。**
+
+这个规则到了 CNN 中仍然成立，只是一个通道中的样本不再只有 batch 维度，还包含空间位置。
+
+卷积层常见的输入形状为：
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+其中，$C$ 表示通道数。卷积核的每个输出通道负责提取一种特征，因此 BatchNorm 仍然为每个通道维护一组独立统计量。
+
+对于第 $c$ 个通道，均值会在 $N$、$H$ 和 $W$ 三个维度上计算：
+
+$$
+\mu_c = \frac{1}{NHW} \sum_{n=1}^{N} \sum_{h=1}^{H} \sum_{w=1}^{W} x_{n,c,h,w}
+$$
+
+方差同样在 $N,H,W$ 上计算：
+
+$$
+\sigma_c^2 = \frac{1}{NHW} \sum_{n,h,w} (x_{n,c,h,w}-\mu_c)^2
+$$
+
+也就是说，BatchNorm 会把同一通道中来自不同样本、不同空间位置的值放在一起统计，但不会把不同通道混在一起。
+
+```{python}
+x = torch.arange(2 * 3 * 2 * 2, dtype=torch.float32)
+x = x.reshape(2, 3, 2, 2)
+
+dim = (0, 2, 3)  # batch, height, width
+channel_mean = x.mean(dim, keepdim=True)
+channel_var = x.var(dim, correction=0, keepdim=True)
+x_hat = (x - channel_mean) / (channel_var + 1e-5).sqrt()
+
+print('Input shape:', x.shape)
+print('Channel mean shape:', channel_mean.shape)
+print('Channel means:', channel_mean.flatten())
+print('Channel variances:', channel_var.flatten())
+print('Normalized channel means:', x_hat.mean(dim))
+print('Normalized channel variances:', x_hat.var(dim, correction=0))
+```
+
+这里统计量的形状是 `(1, C, 1, 1)`。保留这些长度为 1 的维度后，均值和方差可以通过 broadcasting 作用到整个输入。这也解释了 `BatchNorm2d` 中 `num_features` 的含义：它不是图像的高度或宽度，而是输入的通道数 $C$。
+
+例如：
+
+```{python}
+batch_norm = nn.BatchNorm2d(3)
+print(batch_norm)
+```
+
+对于输入 `(N, 3, H, W)`，这个层会维护 3 组独立参数和统计量，每个通道一组。
+
+## 7.3.3 为什么标准化以后还需要 gamma 和 beta
+
+如果 BatchNorm 总是强制输出均值为 0、方差为 1，它可能会限制网络的表达能力。例如，假设前一层已经学到了某个非常合适的尺度，但标准化会把这个尺度直接移除。为了解决这个问题，BatchNorm 在标准化之后加入两个可学习参数：
+
+$$
+y_{n,c} = \gamma_c\hat{x}_{n,c}+\beta_c
+$$
+
+其中，$\gamma_c$ 控制第 $c$ 个特征或通道的缩放；$\beta_c$ 控制第 $c$ 个特征或通道的平移。对于 CNN 输入，这两个参数的形状可以看成 `(1, C, 1, 1)`，通过 broadcasting 作用到所有样本和空间位置。
+
+如果模型认为标准化后的尺度正合适，可以学习到：
+
+$$
+\gamma_c\approx 1, \qquad \beta_c\approx 0
+$$
+
+如果模型希望恢复其他均值和尺度，也可以通过 $\gamma_c$ 和 $\beta_c$ 实现。因此，BatchNorm 不是简单地永久删除原始分布，而是先把数据放到统一坐标系中，再让网络学习合适的缩放和平移。
+
+PyTorch 默认将 `weight`，也就是 $\gamma$，初始化为 1，将 `bias`，也就是 $\beta$，初始化为 0：
+
+```{python}
+batch_norm = nn.BatchNorm1d(4)
+
+print('gamma:', batch_norm.weight)
+print('beta:', batch_norm.bias)
+```
+
+当 `affine=False` 时，BatchNorm 不再包含这两个可学习参数：
+
+```{python}
+batch_norm = nn.BatchNorm1d(4, affine=False)
+
+print('weight:', batch_norm.weight)
+print('bias:', batch_norm.bias)
+```
+
+不过，大多数模型会保留默认的 `affine=True`。
+
+## 7.3.4 训练阶段的统计量计算与 batch 依赖
+
+训练阶段，BatchNorm 使用当前 mini-batch 的均值和方差：
+
+$$
+\mu_B, \qquad \sigma_B^2
+$$
+
+对输入进行标准化。因此，一个样本经过 BatchNorm 后的输出，不仅取决于样本自身，还会受到同一 batch 中其他样本的影响。这种现象称为 BatchNorm 的 **batch 依赖性**。
+
+我们可以把同一个样本放进两个不同的 batch，观察 BatchNorm 的输出：
+
+```{python}
+batch_norm = nn.BatchNorm1d(2, affine=False, track_running_stats=False)
+batch_norm.train()
+
+sample = torch.tensor([[1.0, 2.0]])
+other_sample1 = torch.tensor([[2.0, 4.0], [3.0, 6.0], [4.0, 8.0]])
+other_sample2 = torch.tensor([[10.0, 20.0], [20.0, 40.0], [30.0, 60.0]])
+
+batch1 = torch.concat([sample, other_sample1], dim=0)
+batch2 = torch.concat([sample, other_sample2], dim=0)
+
+output1 = batch_norm(batch1)[0]
+output2 = batch_norm(batch2)[0]
+
+print('Same sample in batch A:', output1)
+print('Same sample in batch B:', output2)
+```
+
+虽然第一个样本完全相同，但它在两个 batch 中对应的均值和方差不同，因此标准化结果也不同。
+
+这种 batch 依赖性有两个结果。一方面，BatchNorm 能动态适应训练过程中不断变化的激活尺度，使优化通常更加稳定。另一方面，当 batch 很小时，统计量的估计会更加嘈杂。极端情况下，如果每个通道只有一个参与统计的值，方差甚至无法提供有效信息。
+
+因此，BatchNorm 通常更适合 batch 统计量相对可靠的场景。对于 batch size 很小的视觉任务，后面介绍的 GroupNorm 往往更加稳定。
+
+## 7.3.5 推理阶段为什么不能继续依赖当前 batch
+
+推理时，输入可能只有一个样本，也可能每次请求的 batch size 都不同。如果继续使用当前 batch 的统计量，会产生两个问题：
+
+1. 单样本或小 batch 的均值、方差不可靠；
+2. 同一个样本的预测会受到同批其他样本影响。
+
+因此，BatchNorm 在训练期间会额外维护两个 buffer：
+
+- `running_mean`：训练过程中均值的滑动估计；
+- `running_var`：训练过程中方差的滑动估计。
+
+推理时不再使用当前输入的 batch statistics，而是使用这些已经积累好的 running statistics：
+
+$$
+y = \gamma \frac{x-\mu_{\text{running}}} {\sqrt{\sigma^2_{\text{running}}+\epsilon}} + \beta
+$$
+
+我们可以直接观察 `train()` 和 `eval()` 的区别：
+
+```{python}
+x = torch.tensor(
+    [
+        [1.0, 10.0, 100.0],
+        [2.0, 20.0, 200.0],
+        [3.0, 30.0, 300.0],
+        [4.0, 40.0, 400.0],
+    ]
+)
+
+batch_norm = nn.BatchNorm1d(3)
+batch_norm.train()
+
+for _ in range(10):
+    y = batch_norm(x + torch.randn_like(x))
+
+print('Running mean:', batch_norm.running_mean)
+print('Running variance:', batch_norm.running_var)
+
+batch_norm.eval()
+with torch.inference_mode():
+    y_eval = batch_norm(x)
+
+print('Training output mean:', y.mean(dim=0))
+print('Evaluation output mean:', y_eval.mean(dim=0))
+```
+
+训练输出使用当前 batch 的统计量，因此每个特征的输出均值接近 0。推理输出使用 running statistics，而只训练了 10 个 batch 时，running statistics 还没有完全接近当前数据分布，所以输出均值不一定是 0。
+
+这里需要特别注意：
+
+> **`torch.inference_mode()` 只负责关闭 autograd，并不会自动把模型切换到推理行为。BatchNorm 是否使用 running statistics，由模块的 `training` 状态决定。**
+
+因此，推理时一定要记得加上 `model.eval()`，否则 BatchNorm 仍然会使用当前 batch 的统计量。
+
+## 7.3.6 Running Statistics 和 Momentum
+
+PyTorch 使用 `momentum` 更新 running statistics。对于 running mean，更新形式可以写成：
+
+$$
+\mu_{\text{running}} \leftarrow (1-m)\mu_{\text{running}} + m\mu_B
+$$
+
+其中，$m$ 是 BatchNorm 的 `momentum`。
+
+Running variance 的更新也使用类似形式：
+
+$$
+\sigma^2_{\text{running}} \leftarrow (1-m)\sigma^2_{\text{running}} + m\sigma_B^2
+$$
+
+需要注意，这里的 `momentum` 和优化器中的 `momentum` 命名相同，但含义和常见写法不同。BatchNorm 默认的 `momentum=0.1` 表示保留旧统计量的 $90\%$，加入当前 batch 统计量的 $10\%$。这和优化器是相反的。
+
+```{python}
+batch_norm = nn.BatchNorm1d(2, momentum=0.1)
+batch_norm.train()
+
+x1 = torch.tensor([[0.0, 10.0], [2.0, 14.0]])
+x2 = torch.tensor([[10.0, 20.0], [14.0, 28.0]])
+print('Initial running mean:', batch_norm.running_mean)
+
+y1 = batch_norm(x1)
+print('After batch 1:', batch_norm.running_mean)
+
+y2 = batch_norm(x2)
+print('After batch 2:', batch_norm.running_mean)
+```
+
+初始 running mean 为 0。第一个 batch 的均值是 `[1, 12]`，因此更新后约为 `[0.1, 1.2]`。第二个 batch 会在这个结果上继续更新。
+
+PyTorch 还维护 `num_batches_tracked`，记录模块处理过多少个训练 batch：
+
+```{python}
+print('Number of tracked batches:', batch_norm.num_batches_tracked)
+```
+
+当 `momentum=None` 时，BatchNorm 会使用累计移动平均，而不是固定权重的指数移动平均。
+
+另一个容易忽略的细节是：PyTorch 在当前 batch 的标准化计算中使用总体方差形式，也就是除以 $m$；更新 `running_var` 时会使用经过无偏修正的方差估计。因此，手动复现 PyTorch 的 running variance 时，需要区分这两个方差定义。
+
+对于理解 BatchNorm，最重要的不是背住这个实现细节，而是明确两套统计量的用途：
+
+- Batch statistics：训练前向传播时立即使用；
+- Running statistics：训练期间积累，推理前向传播时使用。
+
+## 7.3.7 BatchNorm 的 PyTorch 实现
+
+下面实现一个支持四维 `(N, C, H, W)` 输入的简化版 BatchNorm。这个实现包含：
+
+- 可学习参数 `weight` 和 `bias`；
+- Buffer `running_mean` 和 `running_var`；
+- 训练阶段的 batch statistics；
+- 推理阶段的 running statistics；
+- 对 running variance 的无偏修正。
+
+先写一个函数 `batch_norm`：
+
+```{python}
+def batch_norm(
+    x: Tensor,
+    running_mean: Tensor,
+    running_var: Tensor,
+    weight: Tensor | None = None,
+    bias: Tensor | None = None,
+    training: bool = False,
+    momentum: float = 0.1,
+    eps: float = 1e-5,
+) -> Tensor:
+    """Apply batch normalization to an input tensor."""
+    if x.ndim < 2:
+        raise AssertionError(
+            f'Expected at least 2D input, but got shape {tuple(x.shape)}.'
+        )
+
+    # (N, C, H, W) -> reduce_dims = (0, 2, 3)
+    reduce_dims = (0, *range(2, x.ndim))
+    # (C,) -> broadcast_shape = (1, C, 1, 1)
+    broadcast_shape = (1, x.size(1)) + (1,) * (x.ndim - 2)
+
+    if training:
+        sample_count = x.numel() // x.size(1)
+        if sample_count <= 1:
+            raise ValueError(
+                'Expected more than 1 value per channel when training, '
+                f'but got input shape {tuple(x.shape)}.'
+            )
+
+        batch_mean = x.mean(dim=reduce_dims)
+        batch_var = x.var(dim=reduce_dims, correction=0)
+        unbiased_var = batch_var * sample_count / (sample_count - 1)
+
+        with torch.no_grad():
+            running_mean.lerp_(batch_mean, momentum)
+            running_var.lerp_(unbiased_var, momentum)
+
+    else:
+        batch_mean = running_mean
+        batch_var = running_var
+
+    batch_mean = batch_mean.reshape(broadcast_shape)
+    batch_var = batch_var.reshape(broadcast_shape)
+
+    y = (x - batch_mean) * (batch_var + eps).rsqrt()
+    if weight is not None:
+        y = y * weight.reshape(broadcast_shape)
+    if bias is not None:
+        y = y + bias.reshape(broadcast_shape)
+
+    return y
+```
+
+我们可以测试这个函数和 `F.batch_norm` 的输出是否一致：
+
+```{python}
+x = torch.randn(16, 3, 32, 32)
+weight = torch.randn(3)
+bias = torch.randn(3)
+running_mean = torch.zeros(3)
+running_var = torch.ones(3)
+
+actual = batch_norm(
+    x,
+    running_mean=running_mean,
+    running_var=running_var,
+    weight=weight,
+    bias=bias,
+)
+expected = F.batch_norm(
+    x,
+    running_mean=running_mean,
+    running_var=running_var,
+    weight=weight,
+    bias=bias,
+)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+两者的误差应该只来自浮点计算顺序。
+
+接下来，我们可以用这个函数实现一个简化版的 `nn.BatchNorm`：
+
+```{python}
+class BatchNorm(nn.Module):
+    """Base class for batch normalization modules."""
+
+    weight: Tensor | None
+    bias: Tensor | None
+    running_mean: Tensor
+    running_var: Tensor
+
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 1e-5,
+        momentum: float = 0.1,
+        affine: bool = True,
+    ):
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+        self.affine = affine
+
+        if affine:
+            self.weight = nn.Parameter(torch.ones(num_features))
+            self.bias = nn.Parameter(torch.zeros(num_features))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.size(1) != self.num_features:
+            raise AssertionError(
+                f'Expected {self.num_features} channels, but got {x.size(1)} channels.'
+            )
+
+        return batch_norm(
+            x,
+            self.running_mean,
+            self.running_var,
+            weight=self.weight,
+            bias=self.bias,
+            training=self.training,
+            momentum=self.momentum,
+            eps=self.eps,
+        )
+
+    def extra_repr(self) -> str:
+        return (
+            f'{self.num_features}, eps={self.eps}, momentum={self.momentum}, '
+            f'affine={self.affine}'
+        )
+```
+
+先用二维输入和 `BatchNorm` 对照：
+
+```{python}
+x = torch.randn(8, 4)
+batch_norm1 = BatchNorm(4)
+batch_norm2 = nn.BatchNorm1d(4)
+
+with torch.no_grad():
+    batch_norm2.weight.copy_(batch_norm1.weight)
+    batch_norm2.bias.copy_(batch_norm1.bias)
+
+batch_norm1.train()
+batch_norm2.train()
+
+actual = batch_norm1(x)
+expected = batch_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+diff_mean = (batch_norm1.running_mean - batch_norm2.running_mean).abs().max()
+diff_var = (batch_norm1.running_var - batch_norm2.running_var).abs().max()
+
+print('Maximum training difference:', max_diff.item())
+print('Running mean difference:', diff_mean.item())
+print('Running variance difference:', diff_var.item())
+```
+
+再测试四维 CNN 输入：
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+batch_norm1 = BatchNorm(3)
+batch_norm2 = nn.BatchNorm2d(3)
+
+with torch.no_grad():
+    batch_norm2.weight.copy_(batch_norm1.weight)
+    batch_norm2.bias.copy_(batch_norm1.bias)
+
+batch_norm1.train()
+batch_norm2.train()
+
+actual = batch_norm1(x)
+expected = batch_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+diff_mean = (batch_norm1.running_mean - batch_norm2.running_mean).abs().max()
+diff_var = (batch_norm1.running_var - batch_norm2.running_var).abs().max()
+
+print('Maximum training difference:', max_diff.item())
+print('Running mean difference:', diff_mean.item())
+print('Running variance difference:', diff_var.item())
+```
+
+这个实现省略了一些完整 PyTorch 模块中的选项，例如 `track_running_stats=False` 和 `momentum=None`，但它已经包含了 BatchNorm 最核心的计算流程。完整实现在 `dnnlpy` 源码中。
+
+## 7.3.8 BatchNorm1d、BatchNorm2d 和 BatchNorm3d
+
+PyTorch 提供了三个常用 BatchNorm 模块：
+
+- `nn.BatchNorm1d`
+- `nn.BatchNorm2d`
+- `nn.BatchNorm3d`
+
+它们的区别主要在于期望的输入形状，而不是归一化思想不同。
+
+::: {.list-table}
+表 1：PyTorch BatchNorm 模块与常见输入形状
+
+- - 模块
+  - 常见输入形状
+  - 每个通道的统计维度
+
+- - `BatchNorm1d(C)`
+  - $(N, C)$
+  - $N$
+
+- - `BatchNorm1d(C)`
+  - $(N, C, L)$
+  - $N, L$
+
+- - `BatchNorm2d(C)`
+  - $(N, C, H, W)$
+  - $N, H, W$
+
+- - `BatchNorm3d(C)`
+  - $(N, C, D, H, W)$
+  - $N, D, H, W$
+:::
+
+无论输入有几个空间或序列维度，BatchNorm 都保留通道维度 $C$，并在其他维度上计算统计量。
+
+```{python}
+x_1d = torch.randn(4, 8, 16)
+x_2d = torch.randn(4, 8, 16, 16)
+x_3d = torch.randn(4, 8, 4, 16, 16)
+
+batch_norm_1d = nn.BatchNorm1d(8)
+batch_norm_2d = nn.BatchNorm2d(8)
+batch_norm_3d = nn.BatchNorm3d(8)
+
+print('BatchNorm1d output:', batch_norm_1d(x_1d).shape)
+print('BatchNorm2d output:', batch_norm_2d(x_2d).shape)
+print('BatchNorm3d output:', batch_norm_3d(x_3d).shape)
+```
+
+需要注意，`1d`、`2d` 和 `3d` 描述的是数据中额外的序列或空间结构，而 `num_features` 始终对应通道维度。
+
+## 7.3.9 Conv-BN Fusion：为什么推理时可以合并
+
+在推理模式下，BatchNorm 使用固定的 running statistics：
+
+$$
+y = \gamma \frac{z-\mu}{\sqrt{\sigma^2+\epsilon}} + \beta
+$$
+
+其中，$z$ 是卷积输出：
+
+$$
+z = W * x + b
+$$
+
+将卷积代入 BatchNorm：
+
+$$
+y = \gamma \frac{W*x+b-\mu}{\sqrt{\sigma^2 + \epsilon}} + \beta
+$$
+
+令：
+
+$$
+s = \frac{\gamma}{\sqrt{\sigma^2 + \epsilon}}
+$$
+
+就可以写成：
+
+$$
+y = s(W*x+b-\mu) + \beta
+$$
+
+展开得到：
+
+$$
+y = (sW)*x + [s(b-\mu)+\beta]
+$$
+
+因此，可以构造一个新的卷积层：
+
+$$
+\begin{aligned}
+W_{\text{fused}} &= sW, \\
+b_{\text{fused}} &= s(b-\mu)+\beta
+\end{aligned}
+$$
+
+这个新卷积层的输出与原来的 `Conv2d + BatchNorm2d` 相同。这样，推理时就不必再单独执行 BatchNorm。
+
+这里每个输出通道都有一个独立的 $s_c$。因此，对于卷积核：
+
+$$
+W\in\mathbb{R}^{C_{\text{out}}\times C_{\text{in}}\times K_H\times K_W}
+$$
+
+缩放因子需要 reshape 为：
+
+$$
+(C_{\text{out}},1,1,1)
+$$
+
+再乘到对应输出通道的整个卷积核上。
+
+::: {.callout-Warning}
+注意，Conv-BN Fusion 只适用于推理语义。训练阶段 BatchNorm 使用当前 batch 的动态统计量，不能提前吸收到固定卷积参数中。
+:::
+
+## 7.3.10 Conv-BN Fusion 的 PyTorch 实现
+
+下面实现一个简化版 `fuse_conv_bn_eval`。它要求卷积层和 BatchNorm 都已经处于 `eval` 模式，并且 BatchNorm 已经维护好 running statistics。
+
+```{python}
+def fuse_conv_bn_eval(
+    conv: nn.Conv2d,
+    bn: nn.BatchNorm2d,
+) -> nn.Conv2d:
+    if conv.training or bn.training:
+        raise AssertionError('Both `conv` and `bn` must be in eval mode.')
+
+    if conv.out_channels != bn.num_features:
+        raise AssertionError('`conv.out_channels` must equal `bn.num_features`.')
+
+    fused_conv = copy.deepcopy(conv)
+
+    conv_weight = conv.weight
+    if conv.bias is None:
+        conv_bias = torch.zeros(
+            conv.out_channels,
+            device=conv_weight.device,
+            dtype=conv_weight.dtype,
+        )
+    else:
+        conv_bias = conv.bias
+
+    if bn.affine:
+        gamma = bn.weight
+        beta = bn.bias
+    else:
+        gamma = torch.ones_like(bn.running_mean)
+        beta = torch.zeros_like(bn.running_mean)
+
+    scale = gamma * (bn.running_var + bn.eps).rsqrt()
+
+    fused_weight = conv_weight * scale.reshape(-1, 1, 1, 1)
+    fused_bias = (conv_bias - bn.running_mean) * scale + beta
+
+    fused_conv.weight = nn.Parameter(fused_weight)
+    fused_conv.bias = nn.Parameter(fused_bias)
+
+    return fused_conv
+```
+
+构造一个卷积和 BatchNorm，先用若干 batch 更新 running statistics，再比较融合前后的输出：
+
+```{python}
+conv = nn.Conv2d(
+    in_channels=3,
+    out_channels=8,
+    kernel_size=3,
+    padding=1,
+    bias=False,
+)
+batch_norm = nn.BatchNorm2d(8)
+
+conv.train()
+batch_norm.train()
+
+for _ in range(20):
+    x = torch.randn(16, 3, 16, 16)
+    y = batch_norm(conv(x))
+
+conv.eval()
+batch_norm.eval()
+
+fused_conv = fuse_conv_bn_eval(conv, batch_norm)
+fused_conv.eval()
+
+x = torch.randn(4, 3, 16, 16)
+
+with torch.inference_mode():
+    output = batch_norm(conv(x))
+    fused_output = fused_conv(x)
+
+max_diff = (output - fused_output).abs().max()
+print('Maximum fusion difference:', max_diff.item())
+```
+
+由于浮点舍入误差，两者不一定逐位完全相同，但最大误差应该非常小。
+
+融合后的模块只剩一个卷积层：
+
+```{python}
+print('Original convolution bias:', conv.bias)
+print('Fused convolution bias shape:', fused_conv.bias.shape)
+```
+
+即使原卷积设置了 `bias=False`，融合后的卷积也通常需要 bias，因为 BatchNorm 的 running mean 和 $\beta$ 会产生新的平移项。
+
+PyTorch 也提供了对应工具函数：
+
+```{python}
+from torch.nn.utils import fuse_conv_bn_eval as torch_fuse_conv_bn_eval
+
+torch_fused_conv = torch_fuse_conv_bn_eval(conv, batch_norm)
+
+with torch.inference_mode():
+    torch_fused_output = torch_fused_conv(x)
+
+max_diff = (fused_output - torch_fused_output).abs().max()
+print('Difference from PyTorch fusion:', max_diff.item())
+```
+
+Conv-BN Fusion 并不会改变模型学到的函数，它只是利用推理阶段 BatchNorm 已经变成固定仿射变换这一事实，把两个连续算子重新写成一个卷积算子。
+
+## 7.3.11 BatchNorm 通常放在网络的什么位置
+
+在经典 CNN 中，一个常见结构是：
+
+```text
+Convolution
+    ↓
+Batch Normalization
+    ↓
+Activation
+```
+
+也就是：
+
+```python
+nn.Conv2d(..., bias=False)
+n.BatchNorm2d(...)
+n.ReLU()
+```
+
+卷积先产生每个通道的线性响应，BatchNorm 调整这些响应的尺度，激活函数再加入非线性。
+
+```{python}
+block = nn.Sequential(
+    nn.Conv2d(3, 16, kernel_size=3, padding=1, bias=False),
+    nn.BatchNorm2d(16),
+    nn.ReLU(),
+)
+
+x = torch.randn(4, 3, 32, 32)
+output = block(x)
+print('Output shape:', output.shape)
+```
+
+这里卷积层通常可以设置 `bias=False`，原因是 BatchNorm 后面本身包含可学习平移参数 $\beta$。即使卷积增加一个固定偏置，它也会在训练时计算均值的过程中被消去：
+
+$$
+\operatorname{Conv}(x)+b - \mathbb{E}[\operatorname{Conv}(x)+b] =
+\operatorname{Conv}(x) - \mathbb{E}[\operatorname{Conv}(x)]
+$$
+
+因此，在紧跟 BatchNorm 的卷积层中，卷积 bias 通常是冗余的。
+
+不过，模块顺序并不是数学定律。不同架构可能采用不同位置，现代网络中也存在 pre-activation 等设计。阅读模型代码时，应该以具体架构为准，而不是认为所有 BatchNorm 都必须放在激活函数之前。
+
+## 7.3.12 BatchNorm 的局限
+
+BatchNorm 很有效，但它并不适合所有场景。
+
+首先，它依赖 batch statistics。如果 batch size 很小，均值和方差的估计会更加嘈杂。在目标检测、语义分割等高分辨率任务中，显存限制可能导致每张 GPU 上只能放很少的样本，这时 BatchNorm 的效果可能下降。
+
+其次，训练和推理使用不同统计量。如果 running statistics 没有得到充分更新，或者推理数据与训练数据分布差异很大，模型的表现可能受到影响。
+
+然后，同一个样本的训练输出会受到 batch 中其他样本影响。这使得 BatchNorm 不完全是逐样本独立的操作，也让它在某些序列建模和自回归任务中不够自然。
+
+最后，在分布式训练中，每张设备可能只看到本地 mini-batch。普通 BatchNorm 默认使用本设备上的统计量；如果希望跨设备共同计算统计量，需要使用类似 `SyncBatchNorm` 的同步方案，但这会增加通信开销。
+
+这些限制解释了为什么后面还会出现 layer normalization、instance normalization 和 group normalization。它们的公式都很相似，真正变化的是统计量计算维度，以及是否依赖 batch。
+
+## 7.3.13 本章小结
+
+这一节介绍了 batch normalization 的核心思想。
+
+对于二维输入 `(N, C)`，BatchNorm 为每个特征 `C` 单独统计，并在 batch 维度 `N` 上计算均值和方差。对于 CNN 输入 `(N, C, H, W)`，它仍然保留通道维度 `C`，但会在 `N, H, W` 上共同统计。标准化之后，BatchNorm 通过可学习参数 $\gamma$ 和 $\beta$ 恢复模型对特征尺度和平移的表达能力：
+
+$$
+y = \gamma \frac{x-\mu}{\sqrt{\sigma^2+\epsilon}} + \beta
+$$
+
+训练阶段使用当前 batch statistics，同时更新 running statistics；推理阶段则使用固定的 `running_mean` 和 `running_var`。因此，BatchNorm 是一个训练和推理行为不同的模块，调用 `model.eval()` 非常重要。
+
+BatchNorm 的核心可以概括为：
+
+1. 保留通道维度 `C`；
+2. 在 batch 和空间维度上计算统计量；
+3. 标准化到统一尺度；
+4. 使用 $\gamma$ 和 $\beta$ 学习合适的仿射变换。
+
+在 CNN 中，推理阶段的 BatchNorm 是一个固定仿射变换，所以可以合并进前面的卷积层。这就是 Conv-BN Fusion 的基础。
+
+BatchNorm 的主要限制是对 batch statistics 的依赖。下一节我们会介绍 **Layer Normalization** [@ba2016LayerNorm]。它不再跨样本计算统计量，而是在每个样本内部对最后若干特征维度进行归一化，因此训练和推理阶段使用完全相同的计算过程。

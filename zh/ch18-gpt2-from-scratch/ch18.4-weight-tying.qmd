@@ -1,0 +1,615 @@
+---
+author: jshn9515
+date: 2026-06-18
+date-modified: 2026-06-18
+open-graph:
+  title: ch18.4-weight-tying
+  description: "18.4 Embedding, LM Head, and Weight Tying"
+title: "18.4 Embedding、LM Head 与 Weight Tying"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch18-gpt2-from-scratch/ch18.4-weight-tying.ipynb){fig-align="left"}
+
+前面几节里，我们已经完成了三件事：
+
+- 18.1 讲清楚了语言模型的目标：给定前缀，预测下一个 token；
+- 18.2 把 GPT block 组装成了 MiniGPT；
+- 18.3 解释了 tokenizer 如何把文本变成 token ids，以及 `vocab_size` 从哪里来。
+
+现在回头看 MiniGPT 的结构，中间其实有一个很重要的对称关系：
+
+> **输入和输出都和同一个词表有关。**
+
+输入时，模型需要把 token id 转成向量；输出时，模型又要把 hidden state 映射回词表大小的 logits。也就是说，语言模型在两端都需要和 vocabulary 打交道。
+
+这一节就专门放大看这两端：
+
+- Embedding：token id 怎么进入模型；
+- LM Head：hidden state 怎么回到词表；
+- Weight Tying：为什么输入 embedding 和输出 LM head 可以共享权重。
+
+```{python}
+import dnnlpy.nn as dnn
+import dnnlpy.nn.functional as dF
+import dnnlpy.models.gpt as gpt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 18.4.1 同一个词表，两个方向
+
+假设 tokenizer 的词表大小是 $V$，模型的 hidden size 是 $D$。
+
+输入端的 token embedding 是一个查表矩阵：
+
+$$
+E \in \mathbb{R}^{V \times D}
+$$
+
+它的作用是：
+
+$$
+\text{token id} \rightarrow \text{token vector}
+$$
+
+输出端的 LM head 是一个线性层：
+
+$$
+W_{\text{out}} \in \mathbb{R}^{V \times D}
+$$
+
+它的作用是：
+
+$$
+\text{hidden state} \rightarrow \text{logits over vocabulary}
+$$
+
+所以两端的形状非常相似：
+
+```text
+token embedding weight: (V, D)
+lm head weight:         (V, D)
+```
+
+区别在于使用方向不同。
+
+输入时，我们用 token id 去取 `E` 的某一行：
+
+$$
+x_t = E[\text{token\_id}_t]
+$$
+
+输出时，我们把 hidden state 和 `W_out` 的每一行做内积，得到每个 token 的 logit：
+
+$$
+\text{logits}_t = h_t W_{\text{out}}^\top
+$$
+
+也就是说，输入端是从 id 到向量，输出端是从向量到 id 的打分。
+
+先用一个小例子看形状。
+
+```{python}
+vocab_size = 10
+embed_dim = 4
+batch_size = 2
+block_size = 5
+
+input_ids = torch.tensor(
+    [
+        [1, 3, 5, 7, 9],
+        [2, 4, 6, 8, 0],
+    ]
+)
+
+embedding = nn.Embedding(vocab_size, embed_dim)
+lm_head = dnn.Linear(embed_dim, vocab_size, bias=False)
+
+x_emb = embedding(input_ids)
+logits = lm_head(x_emb)
+
+print('Embedding weight shape:', embedding.weight.shape)
+print('LM head weight shape:', lm_head.weight.shape)
+
+print('input_ids.shape:', input_ids.shape)
+print('x_emb.shape:', x_emb.shape)
+print('logits.shape:', logits.shape)
+```
+
+这里发生的形状变化是：
+
+$$
+(B, T) \rightarrow (B, T, D) \rightarrow (B, T, V)
+$$
+
+这正是语言模型从 token ids 到词表预测的基本路径。
+
+## 18.4.2 Token Embedding：不是把数字大小喂给模型
+
+一个很容易误解的地方是：token id 虽然是整数，但它本身没有数值含义。
+
+比如 tokenizer 里可能有：
+
+```text
+"deep"     ->  12
+"learning" -> 503
+"GPT"      ->  87
+```
+
+这并不表示 `learning` 比 `deep` 大，也不表示 token 503 和 token 12 的距离有什么语义意义。所以模型不会直接把这些整数当成连续数值输入。
+
+`nn.Embedding` 做的事情更像是查表：
+
+```text
+token id 12  -> embedding.weight[12]
+token id 503 -> embedding.weight[503]
+token id 87  -> embedding.weight[87]
+```
+
+也可以把 token id 想成 one-hot 向量。假设词表大小是 $V$，第 $i$ 个 token 的 one-hot 表示是 $e_i$，那么 embedding 可以写成：
+
+$$
+x_i = e_i^\top E
+$$
+
+但是实际实现时不会真的构造 one-hot，因为那太浪费。PyTorch 直接根据 id 取对应的行。
+
+```{python}
+vocab_size = 5
+embed_dim = 3
+
+embedding = nn.Embedding(vocab_size, embed_dim)
+token_id = torch.tensor([2])
+
+lookup_result = embedding(token_id)
+manual_result = embedding.weight[2]
+
+print('Embedding table:', embedding.weight, sep='\n')
+print('Lookup result:', lookup_result)
+print('Manual result:', manual_result)
+
+flag = torch.allclose(lookup_result.squeeze(0), manual_result)
+print('Is lookup result equal to manual result?', flag)
+```
+
+所以 embedding 的本质是：
+
+> **给词表里的每个 token 学一个向量表示。**
+
+训练开始时，这些向量通常是随机初始化的。训练过程中，反向传播会不断调整这些向量，让它们适合 next-token prediction。
+
+## 18.4.3 Positional Embedding：位置不是词表的一部分
+
+在 18.2 里，我们把 token embedding 和 positional embedding 加在一起：
+
+$$
+X = E_{\text{token}}[\text{input\_ids}] + E_{\text{pos}}[\text{positions}]
+$$
+
+这两个 embedding 很像，都是查表，但含义不同。
+
+Token embedding 的表大小由词表决定：
+
+$$
+E_{\text{token}} \in \mathbb{R}^{V \times D}
+$$
+
+Positional embedding 的表大小由最大上下文长度决定：
+
+$$
+E_{\text{pos}} \in \mathbb{R}^{T_{\max} \times D}
+$$
+
+它们最后相加，是因为模型需要同时知道两个信息：
+
+1. 当前 token 是什么；
+2. 当前 token 在序列的哪个位置。
+
+```{python}
+vocab_size = 100
+block_size = 8
+embed_dim = 16
+
+input_ids = torch.tensor([[10, 25, 31, 7]])
+B, T = input_ids.size()
+
+tok_embed = nn.Embedding(vocab_size, embed_dim)  # word/token embedding
+pos_embed = nn.Embedding(block_size, embed_dim)  # positional embedding
+
+positions = torch.arange(T)
+x_tok = tok_embed(input_ids)
+x_pos = pos_embed(positions)
+x = x_tok + x_pos
+
+print('input_ids.shape:', input_ids.shape)
+print('positions.shape:', positions.shape)
+print('x_tok.shape:', x_tok.shape)
+print('x_pos.shape:', x_pos.shape)
+print('x.shape:', x.shape)
+```
+
+注意，positional embedding 不参与 LM head 的输出词表预测。LM head 只关心下一个 token 是词表里的哪一个，而不是下一个位置是多少。因此，weight tying 通常只发生在 token embedding 和 LM head 之间，而不是 positional embedding 和 LM head 之间。
+
+## 18.4.4 LM Head：把 hidden state 变成词表打分
+
+经过 GPT blocks 之后，每个位置都有一个 hidden state：
+
+$$
+h_t \in \mathbb{R}^{D}
+$$
+
+LM head 要做的是给词表里每个 token 一个分数：
+
+$$
+\text{logits}_t \in \mathbb{R}^{V}
+$$
+
+如果 LM head 的权重是：
+
+$$
+W_{\text{out}} \in \mathbb{R}^{V \times D}
+$$
+
+那么第 $j$ 个 token 的 logit 可以写成：
+
+$$
+\text{logit}_{t,j} = h_t \cdot W_{\text{out},j}
+$$
+
+这里 $W_{\text{out},j}$ 是 LM head 权重矩阵的第 $j$ 行，也可以理解成“输出端给第 $j$ 个 token 学到的向量”。
+
+所以 LM head 可以被理解成：
+
+> **拿当前位置的 hidden state，去和词表中每个 token 的输出向量做相似度打分。**
+
+当然，严格来说这只是线性层的内积打分，不一定是归一化后的相似度。Softmax 之后才会变成概率分布：
+
+$$
+p(x_{t+1}=j \mid x_{\le t}) =
+\frac{\exp(\text{logit}_{t,j})}
+{\sum_{k=1}^{V} \exp(\text{logit}_{t,k})}
+$$
+
+训练时，我们通常直接把 logits 送进 cross entropy。
+
+```{python}
+B, T, D = 2, 4, 16
+V = 100
+
+h = torch.randn(B, T, D)
+lm_head = nn.Linear(D, V, bias=False)
+logits = lm_head(h)
+
+labels = torch.randint(0, V, (B, T))
+loss = F.cross_entropy(
+    logits.reshape(B * T, V),
+    labels.reshape(B * T),
+)
+
+print('h.shape:', h.shape)
+print('logits.shape:', logits.shape)
+print('labels.shape:', labels.shape)
+print('Loss:', loss.item())
+```
+
+这里 `labels[b, t]` 是第 `b` 个样本、第 `t` 个位置真正应该预测的下一个 token id。
+
+## 18.4.5 Weight Tying：输入和输出共享同一张词表向量表
+
+现在来看一个关键问题。
+
+输入端 token embedding 有一张表：
+
+$$
+E \in \mathbb{R}^{V \times D}
+$$
+
+输出端 LM head 也有一张形状相同的权重：
+
+$$
+W_{\text{out}} \in \mathbb{R}^{V \times D}
+$$
+
+既然它们都在为同一个词表里的 token 学向量，能不能直接共享同一组参数？这就是 **weight tying**。
+
+最简单的写法是：
+
+```python
+self.lm_head.weight = self.tok_embed.weight
+```
+
+这样 `tok_embed.weight` 和 `lm_head.weight` 不再是两份独立参数，而是同一个参数对象。
+
+直觉上，weight tying 相当于让模型满足：
+
+> **一个 token 作为输入时的表示，和它作为输出候选 token 时的表示，使用同一套向量空间。**
+
+于是输出 logit 可以写成：
+
+$$
+\text{logit}_{t,j} = h_t \cdot E_j
+$$
+
+其中 $E_j$ 既是第 $j$ 个 token 的输入 embedding，也是输出端用来打分的 token 向量。
+
+下面写一个最小例子。
+
+```{python}
+class TiedEmbeddingLM(nn.Module):
+    """A tiny model that only demonstrates embedding, LM head, and weight tying."""
+
+    def __init__(self, vocab_size: int, embed_dim: int = 128):
+        super().__init__()
+        self.token_embed = dnn.Embedding(vocab_size, embed_dim)
+        self.lm_head = dnn.Linear(embed_dim, vocab_size, bias=False)
+
+        # Weight tying: both modules share the same Parameter object.
+        self.lm_head.weight = self.token_embed.weight
+        assert self.lm_head.weight is self.token_embed.weight
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        x = self.token_embed(input_ids)
+        logits = self.lm_head(x)
+        return logits
+```
+
+检查一下它们是不是同一个参数对象：
+
+```{python}
+model = TiedEmbeddingLM(vocab_size=20, embed_dim=8)
+
+print('Embedding weight shape:', model.token_embed.weight.shape)
+print('LM head weight shape: ', model.lm_head.weight.shape)
+
+flag1 = model.token_embed.weight is model.lm_head.weight
+flag2 = model.token_embed.weight.data_ptr() == model.lm_head.weight.data_ptr()
+print('Is the same object?', flag1)
+print('Do they share the same data pointer?', flag2)
+```
+
+可以看到，两个模块的 `weight` 指向同一块参数。
+
+## 18.4.6 Weight Tying 节省了多少参数
+
+如果不做 weight tying，embedding 和 LM head 各自都有一份 $V \times D$ 的参数：
+
+$$
+\text{params}_{\text{untied}} = VD + VD = 2VD
+$$
+
+如果做 weight tying，这两部分共享同一份参数：
+
+$$
+\text{params}_{\text{tied}} = VD
+$$
+
+也就是说，光这一项就能省掉 $VD$ 个参数。
+
+当词表很大时，这个节省并不小。比如：
+
+```{python}
+V = 50000
+D = 768
+
+untied_params = 2 * V * D
+tied_params = V * D
+saved_params = untied_params - tied_params
+saved_params = saved_params * 4 / pow(1024, 2)  # Convert to MB
+
+print(f'Untied params: {untied_params:,}')
+print(f'Tied params: {tied_params:,}')
+print(f'Saved params: {saved_params:.4f} MB')
+```
+
+这里还只是 embedding 和 LM head 两端的参数。如果模型更大，词表更大，节省会更明显。
+
+不过 weight tying 不只是为了省参数。更重要的是，它给输入 token 表示和输出 token 表示加了一个约束：它们必须共享同一个向量空间。这通常是合理的。因为语言模型输入端和输出端面对的是同一批 token。
+
+## 18.4.7 反向传播时，共享权重怎么更新
+
+做 weight tying 之后，同一个参数会在 forward 里被用两次：
+
+1. 输入端：根据 token id 查 embedding；
+2. 输出端：作为 LM head 的权重计算 logits。
+
+因此反向传播时，它也会收到两部分梯度贡献。我们可以用一个小例子看一下。
+
+```{python}
+vocab_size = 10
+model = TiedEmbeddingLM(vocab_size=vocab_size, embed_dim=4)
+input_ids = torch.tensor([[1, 2, 3]])
+labels = torch.tensor([[2, 3, 4]])
+
+logits = model(input_ids)
+loss = F.cross_entropy(
+    logits.reshape(-1, vocab_size),
+    labels.reshape(-1),
+)
+loss.backward()
+
+print('Loss:', loss.item())
+print('Embedding grad shape:', model.token_embed.weight.grad.shape)
+
+flag = model.lm_head.weight.grad is model.token_embed.weight.grad
+print('Is the gradient the same object?', flag)
+```
+
+因为二者是同一个参数，所以梯度也会累积到同一个 `.grad` 上。
+
+具体来说，共享权重在计算图中有两条使用路径：一条来自输入端的 embedding，另一条来自输出端的 LM head。反向传播时，两条路径会分别产生梯度贡献，然后自动相加到同一个 `.grad` 中。优化器最后使用这个总梯度，对共享参数只更新一次：
+
+$$
+\left. \frac{\partial L}{\partial W} \right|{\text{Embedding}} +
+\left. \frac{\partial L}{\partial W} \right|{\text{LM Head}}
+$$
+
+因此，这不是两个参数分别更新，也不是简单地把梯度乘 2，而是两条路径共同决定同一个参数的更新。Weight tying 不是复制一份权重过去，而是让两个地方真的共享同一个可学习参数。
+
+## 18.4.8 把 Weight Tying 放进 MiniGPT
+
+回到 MiniGPT，weight tying 通常只需要改 LM head 的定义和初始化。
+
+在不共享权重时，我们可能会写：
+
+```python
+self.token_embed = nn.Embedding(vocab_size, embed_dim)
+self.lm_head = nn.Linear(embed_dim, vocab_size)
+```
+
+如果要共享权重，常见写法是：
+
+```python
+self.token_embed = nn.Embedding(vocab_size, embed_dim)
+self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)
+self.lm_head.weight = self.token_embed.weight
+```
+
+下面写一个 weight tying 版本的 MiniGPT。
+
+```{python}
+class MiniGPTWithWeightTying(nn.Module):
+    """A MiniGPT model with weight tying between token embedding and LM head."""
+
+    def __init__(
+        self,
+        vocab_size: int,
+        block_size: int,  # or context window
+        embed_dim: int = 128,
+        num_layers: int = 4,
+        num_heads: int = 4,
+        hidden_dim: int = 512,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.minigpt = gpt.MiniGPT(
+            vocab_size,
+            block_size,
+            embed_dim=embed_dim,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            hidden_dim=hidden_dim,
+            dropout=dropout,
+            weight_tying=True,  # Enable weight tying
+        )
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        return self.minigpt(input_ids)
+
+    def loss(self, input_ids: Tensor, targets: Tensor | None = None) -> Tensor:
+        return self.minigpt.loss(input_ids, targets)
+```
+
+测试一下：
+
+```{python}
+model = MiniGPTWithWeightTying(
+    vocab_size=100,
+    block_size=8,
+    embed_dim=32,
+)
+
+token_ids = torch.tensor([[10, 25, 31, 7, 42]])
+input_ids = token_ids[:, :-1]
+labels = token_ids[:, 1:]
+
+logits = model(input_ids)
+loss = model.loss(token_ids, labels)
+
+print('input_ids.shape:', input_ids.shape)
+print('labels.shape:', labels.shape)
+print('logits.shape:', logits.shape)
+print('Loss:', loss.item())
+
+flag = model.minigpt.token_embed.weight is model.minigpt.lm_head.weight
+print('Is embedding weight the same object as LM head weight?', flag)
+```
+
+可以看到，输入和输出端确实共享了同一份权重。
+
+## 18.4.9 几个容易混淆的点
+
+首先，`vocab_size` 会同时影响 embedding 和 LM head。
+
+假设 tokenizer 的词表大小是 $V$，那么：
+
+```text
+token_embed:     (V, D)
+lm_head:         (D -> V)
+logits:          (B, T, V)
+```
+
+所以，如果换 tokenizer，词表大小变了，模型的 token embedding 和 LM head 都要跟着变。这也是为什么不能随便拿一个 tokenizer 去配另一个不匹配的模型。Token id 的含义和模型参数是一一对应的。
+
+其次，`embed_dim` 必须和 hidden size 对齐。Token embedding 的维度必须等于 LM head 输入的 hidden size。
+
+也就是说：
+
+```text
+token_embed.weight:     (V, D)
+lm_head.weight:         (V, D)
+```
+
+如果 GPT blocks 输出的是 `(B, T, D)`，LM head 才能直接使用同一个 `(V, D)` 权重做输出投影。
+
+最后，LM head 输出的是 logits，不是 token id。
+
+LM head 的输出是：
+
+$$
+\text{logits} \in \mathbb{R}^{B \times T \times V}
+$$
+
+它还不是最终 token。
+
+训练时，logits 会进入 cross entropy。生成时，才会根据最后一个位置的 logits 做 argmax 或采样。
+
+```{python}
+prefix = torch.tensor([[10, 25, 31]])
+logits = model(prefix)
+
+last_logits = logits[:, -1, :]
+next_token = last_logits.argmax(dim=-1)
+
+print('Prefix:', prefix)
+print('Last_logits shape:', last_logits.shape)
+print('Next token:', next_token)
+```
+
+还有一个点要额外注意：weight tying 只发生在 token embedding 和 LM head 之间，**不包括 positional embedding**。因为 positional embedding 是给位置编号学向量，它的大小是 `(block_size, D)`；而 LM head 输出的是词表 logits，大小是 `(B, T, V)`。所以 positional embedding 和 LM head 没有共享权重的意义。
+
+## 18.4.10 本章小结
+
+这一节我们放大看了 MiniGPT 两端最容易被忽略的部分：embedding 和 LM head。
+
+输入端：
+
+$$
+\text{input\_ids} \in \mathbb{N}^{B \times T}
+\rightarrow
+X \in \mathbb{R}^{B \times T \times D}
+$$
+
+输出端：
+
+$$
+H \in \mathbb{R}^{B \times T \times D}
+\rightarrow
+\text{logits} \in \mathbb{R}^{B \times T \times V}
+$$
+
+其中：
+
+- Token embedding 把 token id 变成向量；
+- Positional embedding 给序列补上位置信息；
+- LM head 把 hidden state 映射回词表大小的 logits；
+- Weight tying 让 token embedding 和 LM head 共享同一份词表向量表；
+- 共享权重既能节省参数，也能让输入端和输出端使用同一个 token 表示空间。
+
+到这里，MiniGPT 的结构部分已经基本清楚了。
+
+接下来就该进入训练问题：给定一长串 token，怎么切 batch？怎么设 context length？怎么计算 loss？以及一次训练循环到底更新了哪些参数。

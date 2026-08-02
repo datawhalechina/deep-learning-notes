@@ -1,0 +1,642 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.3-softmax-cross-entropy
+  description: "3.3 Softmax 与 Cross Entropy：从 logits 到分类损失"
+title: "3.3 Softmax 与 Cross Entropy：从 logits 到分类损失"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch3-multi-layer-perceptron/ch3.3-softmax-cross-entropy.ipynb){fig-align="left"}
+
+前面两节我们已经得到了 MLP 的基本形式：
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \phi(H) \\
+Z &= AW_2 + b_2
+\end{aligned}
+$$
+
+其中，$Z$ 是模型最后一层的输出。对于 MNIST 分类任务，每张图片属于 10 个类别之一，所以最后一层通常输出 10 个数字：
+
+$$
+Z \in \mathbb{R}^{B \times 10}
+$$
+
+这里 $B$ 是 batch size。对于第 $i$ 个样本，$Z_i$ 中的 10 个数字分别表示模型对 10 个类别的打分。
+
+但是，这些分数本身还不是概率，也不能直接告诉我们模型错得有多严重。为了训练分类模型，我们还需要两个东西：
+
+1. 用 **softmax** 把类别分数转成概率分布；
+2. 用 **cross entropy** 衡量预测概率和真实类别之间的差异。
+
+这一节我们就来推导 softmax 和 cross entropy 的前向传播与反向传播。它们会在后面手写 MLP 时作为最后一层损失函数使用。
+
+```{python}
+import warnings
+from typing import override
+
+import numpy as np
+from dnnlpy.models.mlp import Module
+
+print('NumPy version:', np.__version__)
+```
+
+## 3.3.1 Logits：分类模型的原始输出
+
+分类模型最后一层通常不直接输出概率，而是输出一组实数分数。这组分数通常叫做 **logits**。
+
+假设一个 batch 中有 $B$ 个样本，每个样本有 $C$ 个类别，那么 logits 可以写成：
+
+$$
+Z =
+\begin{bmatrix}
+z_{1,1} & z_{1,2} & \cdots & z_{1,C} \\
+z_{2,1} & z_{2,2} & \cdots & z_{2,C} \\
+\vdots & \vdots & \ddots & \vdots \\
+z_{B,1} & z_{B,2} & \cdots & z_{B,C}
+\end{bmatrix}
+\in \mathbb{R}^{B \times C}
+$$
+
+对于 MNIST，$C=10$。例如，一个样本的 logits 可能是：
+
+```{python}
+logits = np.array([[1.2, -0.3, 2.1, 0.7]])
+```
+
+这些数字可以比较大小，但还不是概率。原因有两个：
+
+1. 它们可以是负数；
+2. 它们的和不一定等于 1。
+
+而分类任务中，我们通常希望得到一个概率分布：每个类别对应一个非负概率，并且所有类别概率之和为 1。这就是 softmax 要做的事。
+
+## 3.3.2 Softmax：把 logits 转成概率分布
+
+对于一个样本的 logits：
+
+$$
+z = [z_1, z_2, \dots, z_C]
+$$
+
+Softmax 定义为：
+
+$$
+\hat{y}_j = \frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)}
+$$
+
+其中，$\hat{y}_j$ 表示模型预测这个样本属于第 $j$ 类的概率。
+
+因为指数函数总是正数，所以：
+
+$$
+\hat{y}_j > 0
+$$
+
+同时，所有类别的概率之和为：
+
+$$
+\sum_{j=1}^{C}\hat{y}_j = \sum_{j=1}^{C} \frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)} = 1
+$$
+
+所以 softmax 会把一组任意实数变成一个合法的概率分布。
+
+用 NumPy 实现一下 softmax：
+
+```{python}
+def softmax_v1(logits: np.ndarray) -> np.ndarray:
+    exp_logits = np.exp(logits)
+    return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+
+
+probs = softmax_v1(logits)
+print('Predicted probabilities:', probs)
+print('Sum of probabilities:', probs.sum(axis=1))
+```
+
+这里 `axis=1` 表示在类别维度上求和。由于 `logits` 的形状是 `(B, C)`，所以 softmax 也是对每一行单独进行归一化。
+
+注意，上面是我们严格按照数学公式的 softmax 实现。实际实现 softmax 时我们通常不会直接对 logits 取指数。因为如果某些 logits 很大，`np.exp` 可能会溢出。
+
+例如：
+
+```{python}
+large_logits = np.array([[1000.0, 1001.0, 1002.0]])
+
+with warnings.catch_warnings(record=True) as warns:
+    probs = softmax_v1(large_logits)
+    print('Predicted probabilities:', probs)
+
+    for warn in warns:
+        print('RuntimeWarning:', warn.message)
+```
+
+一个常用技巧是：先减去每个样本中的最大值，再做 softmax。
+
+$$
+\operatorname{softmax}(z) = \operatorname{softmax}(z - \max(z))
+$$
+
+这是因为：
+
+$$
+\frac{\exp(z_j - m)}{\sum_{k=1}^{C}\exp(z_k - m)} =
+\frac{\exp(z_j)\exp(-m)}{\sum_{k=1}^{C}\exp(z_k)\exp(-m)} =
+\frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)}
+$$
+
+所以减去同一个常数不会改变 softmax 的结果。
+
+更稳定的实现为：
+
+```{python}
+def softmax_v2(logits: np.ndarray) -> np.ndarray:
+    shifted_logits = logits - np.max(logits, axis=1, keepdims=True)
+    exp_logits = np.exp(shifted_logits)
+    return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+
+
+probs = softmax_v2(large_logits)
+print('Predicted probabilities:', probs)
+print('Sum of probabilities:', probs.sum(axis=1))
+```
+
+这个版本之后会在我们的 MLP 实现中使用。
+
+## 3.3.3 Cross Entropy：让正确类别的概率尽可能大
+
+有了预测概率以后，我们还需要一个损失函数来衡量预测结果和真实标签之间的差异。
+
+对于单个样本，假设真实类别是 $y$，模型预测概率为：
+
+$$
+\hat{y} = [\hat{y}_1, \hat{y}_2, \dots, \hat{y}_C]
+$$
+
+分类任务中最常用的损失函数是 cross entropy。对于单标签分类任务（每个样本只有一个正确类别），cross entropy 定义为：
+
+$$
+L = -\log \hat{y}_{y}
+$$
+
+其中，$\hat{y}$ 是 softmax 之后的概率向量，$y$ 是真实类别的编号，$\hat{y}_{y}$ 表示模型分给真实类别的概率。如果正确类别的概率越大，损失越小；如果正确类别的概率越小，损失越大。因此，在这种情况下，cross entropy 本质上是在惩罚模型对正确类别不够自信的情况。
+
+例如，如果正确类别的概率是 0.9：
+
+$$
+-\log(0.9) \approx 0.105
+$$
+
+如果正确类别的概率是 0.01：
+
+$$
+-\log(0.01) \approx 4.605
+$$
+
+这说明模型越不相信正确答案，损失就越大。
+
+对于单标签二分类任务，cross entropy 也可以写成：
+
+$$
+L = -[y\log \hat{y} + (1-y)\log(1-\hat{y})]
+$$
+
+相信大家对这个式子一定不陌生，它是 logistic regression 中的损失函数。对于多分类任务，cross entropy 就是上面那个更简单的版本。它们两者是等价的，只不过多分类版本的写法更简洁。
+
+对于一个 batch，通常对所有样本的损失取平均：
+
+$$
+L = -\frac{1}{B}\sum_{i=1}^{B}\log \hat{y}_{i,y_i}
+$$
+
+其中，$y_i$ 是第 $i$ 个样本的真实类别。
+
+用 NumPy 实现为：
+
+```{python}
+def cross_entropy(
+    probs: np.ndarray, targets: np.ndarray, eps: float = 1e-12
+) -> np.floating:
+    batch_size = probs.shape[0]
+    correct_probs = probs[np.arange(batch_size), targets]
+    return -np.mean(np.log(correct_probs + eps))
+
+
+logits = np.array(
+    [
+        [1.2, -0.3, 2.1, 0.7],
+        [-0.5, 2.3, 0.1, 1.0],
+    ]
+)
+targets = np.array([2, 1])
+
+probs = softmax_v2(logits)
+loss = cross_entropy(probs, targets)
+
+print('Predicted probabilities:\n', probs)
+print('Cross entropy loss:', loss)
+```
+
+其中，`eps` 是一个小常数，用来避免 `log(0)` 的情况。
+
+这里 `targets` 不是 one-hot 向量，而是类别编号。例如 `targets = [2, 1]` 表示第一个样本属于第 2 类，第二个样本属于第 1 类。这种表示方式更加紧凑，后面实现 softmax cross entropy 时也会采用这种写法。
+
+## 3.3.4 用 One-Hot 形式理解 Cross Entropy
+
+虽然代码里通常用类别编号表示标签，但推导时用 one-hot 向量会更清楚。
+
+如果真实类别是第 $y$ 类，那么 one-hot 标签可以写成：
+
+$$
+Y_j =
+\begin{cases}
+1, & j = y \\
+0, & j \ne y
+\end{cases}
+$$
+
+例如，如果一共有 4 个类别，真实类别是第 2 类，那么 one-hot 标签为：
+
+$$
+Y = [0, 0, 1, 0]
+$$
+
+注意这里假设类别编号从 0 开始，所以第 2 类对应第三个位置。
+
+对于单个样本，完整的 cross entropy 可以写成：
+
+$$
+L = -\sum_{j=1}^{C}Y_j\log \hat{Y}_j
+$$
+
+由于 one-hot 向量中只有正确类别的位置为 1，其余位置都是 0，所以这个式子实际上就等价于：
+
+$$
+L = -\log \hat{Y}_{y}
+$$
+
+这就是前面我们用类别编号写的 cross entropy。
+
+对于一个 batch：
+
+$$
+L = -\frac{1}{B}\sum_{i=1}^{B}\sum_{j=1}^{C} Y_{i,j}\log \hat{Y}_{i,j}
+$$
+
+其中：
+
+$$
+Y \in \mathbb{R}^{B \times C}, \qquad \hat{Y} \in \mathbb{R}^{B \times C}
+$$
+
+这个写法虽然比类别编号更啰嗦，但它能让后面的反向传播推导更直观。
+
+## 3.3.5 Softmax 的反向传播
+
+接下来我们推导 softmax 和 cross entropy 的反向传播。
+
+先考虑单个样本。Softmax 的输出为：
+
+$$
+\hat{y}_j = \frac{\exp(z_j)}{\sum_{k=1}^{C}\exp(z_k)}
+$$
+
+由于 $\hat{y}_j$ 的分母包含所有 logits，所以 $z_i$ 不只影响 $\hat{y}_i$，也会影响其它类别的概率。因此 softmax 的导数不是简单的逐元素导数，而是一个 Jacobian 矩阵。
+
+Softmax 的导数可以分两种情况：
+
+$$
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\begin{cases}
+\hat{y}_j(1 - \hat{y}_j), & i=j \\
+-\hat{y}_j\hat{y}_i, & i \ne j
+\end{cases}
+$$
+
+也可以合并写成：
+
+$$
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\hat{y}_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+这个式子说明，softmax 会把不同类别之间的梯度耦合起来。一个类别的 logit 变大，不仅会提高这个类别的概率，也会压低其它类别的概率。因此，softmax 不是**逐元素作用的激活函数**，它的 Jacobian 矩阵有非对角项，需要在反向传播时考虑类别之间的相互影响。之前的逐元素相乘在这里不再适用。
+
+设上游梯度为：
+
+$$
+g = \frac{\partial L}{\partial \hat{y}}
+= [g_1, g_2, \dots, g_C]
+$$
+
+其中，$g_j = \frac{\partial L}{\partial \hat{y}_j}$。我们真正想得到的是：
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C}
+\frac{\partial L}{\partial \hat{y}_j}
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\sum_{j=1}^{C} g_j
+\frac{\partial \hat{y}_j}{\partial z_i}
+$$
+
+把 softmax 的导数代入：
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C} g_j
+\hat{y}_j(\mathbb{1}(i=j)-\hat{y}_i)
+$$
+
+把求和拆开：
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C} g_j\hat{y}_j\mathbb{1}(i=j) -
+\sum_{j=1}^{C} g_j\hat{y}_j\hat{y}_i
+$$
+
+第一项中，只有 $j=i$ 的时候 $\mathbb{1}(i=j)=1$，所以：
+
+$$
+\sum_{j=1}^{C} g_j\hat{y}_j\mathbb{1}(i=j) = g_i\hat{y}_i
+$$
+
+第二项中，$\hat{y}_i$ 和求和下标 $j$ 无关，可以提到求和外面：
+
+$$
+\sum_{j=1}^{C} g_j\hat{y}_j\hat{y}_i =
+\hat{y}_i \sum_{j=1}^{C}g_j\hat{y}_j
+$$
+
+因此：
+
+$$
+\frac{\partial L}{\partial z_i} =
+g_i\hat{y}_i - \hat{y}_i \sum_{j=1}^{C}g_j\hat{y}_j
+$$
+
+也就是：
+
+$$
+\frac{\partial L}{\partial z_i} =
+\hat{y}_i \left(g_i - \sum_{j=1}^{C}g_j\hat{y}_j \right)
+$$
+
+写成向量形式，就是：
+
+$$
+\frac{\partial L}{\partial z} =
+\hat{y} \odot \left(g - \sum_{j=1}^{C}g_j\hat{y}_j \right)
+$$
+
+这里的求和结果是一个标量，会广播到所有类别位置。对于 batch 版本，如果 softmax 沿着最后一维计算，那么对应的 NumPy 写法是：
+
+```{python}
+def softmax_backward(grad: np.ndarray, probs: np.ndarray) -> np.ndarray:
+    dot = np.sum(grad * probs, axis=1, keepdims=True)
+    return probs * (grad - dot)
+```
+
+这一步和 sigmoid、tanh、ReLU 的 backward 很不一样。对于逐元素激活函数，我们可以直接写：
+
+$$
+\frac{\partial L}{\partial x} =
+\frac{\partial L}{\partial y} \odot \phi'(x)
+$$
+
+这是因为逐元素函数的 Jacobian 是对角矩阵，乘上 Jacobian 等价于逐元素相乘。
+
+但是 softmax 不是逐元素函数。每个 $\hat{y}_i$ 都依赖整组 logits $z_1, z_2, \dots, z_C$，所以它的 Jacobian 有非对角项。也正因为如此，softmax 的 backward 不能写成简单的逐元素乘法：
+
+$$
+\frac{\partial L}{\partial z} \ne
+\frac{\partial L}{\partial \hat{y}}
+\odot \text{local gradient of softmax}
+$$
+
+它必须考虑同一个样本内部所有类别之间的相互影响。上面的 VJP 公式本质上就是在不显式构造 Jacobian 的情况下，高效完成 VJP 操作。
+
+不过，即使有了这个公式，如果单独实现 softmax 的 backward，也会比较麻烦。幸运的是，在分类模型中，softmax 通常和 cross entropy 连在一起使用。两者合在一起以后，梯度会变得非常简单。
+
+## 3.3.6 Softmax + Cross Entropy 的反向传播
+
+对于单个样本，cross entropy 为：
+
+$$
+L = -\sum_{j=1}^{C} y_j \log \hat{y}_j
+$$
+
+其中：
+
+$$
+\hat{y}_j = \operatorname{softmax}(z)_j
+$$
+
+我们想要求的是：
+
+$$
+\frac{\partial L}{\partial z_i}
+$$
+
+根据链式法则：
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C}
+\frac{\partial L}{\partial \hat{y}_j}
+\frac{\partial \hat{y}_j}{\partial z_i}
+$$
+
+先看第一项。由于 one-hot 标签中只有正确类别的位置为 1，其余位置为 0，所以：
+
+$$
+\frac{\partial L}{\partial \hat{y}_j} =
+-\frac{y_j}{\hat{y}_j}
+$$
+
+再代入 softmax 的导数：
+
+$$
+\frac{\partial \hat{y}_j}{\partial z_i} =
+\hat{y}_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+于是：
+
+$$
+\frac{\partial L}{\partial z_i} =
+\sum_{j=1}^{C}
+\left(-\frac{y_j}{\hat{y}_j}\right)
+\hat{y}_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+消去 $\hat{y}_j$：
+
+$$
+\frac{\partial L}{\partial z_i} =
+-\sum_{j=1}^{C}
+y_j(\mathbb{1}(i=j) - \hat{y}_i)
+$$
+
+展开：
+
+$$
+\frac{\partial L}{\partial z_i} =
+-\sum_{j=1}^{C}y_j\mathbb{1}(i=j) +
+\sum_{j=1}^{C}y_j\hat{y}_i
+$$
+
+第一项只有 $j=i$ 时不为 0，所以：
+
+$$
+\sum_{j=1}^{C}y_j\mathbb{1}(i=j) = y_i
+$$
+
+第二项中 $\hat{y}_i$ 与 $j$ 无关，可以提出来：
+
+$$
+\sum_{j=1}^{C}y_j\hat{y}_i =
+\hat{y}_i\sum_{j=1}^{C}y_j
+$$
+
+由于 $y$ 是 one-hot 向量：
+
+$$
+\sum_{j=1}^{C}y_j = 1
+$$
+
+所以：
+
+$$
+\frac{\partial L}{\partial z_i} =
+\hat{y}_i - y_i
+$$
+
+写成向量形式：
+
+$$
+\frac{\partial L}{\partial z} =
+\hat{y} - y
+$$
+
+如果对一个 batch 的损失取平均，那么还要除以 batch size：
+
+$$
+\frac{\partial L}{\partial Z} =
+\frac{1}{B}(\hat{Y} - Y)
+$$
+
+这就是 softmax + cross entropy 最重要的梯度公式。它的形式非常简单：
+
+> **预测概率减去真实标签。**
+
+如果某个类别是正确类别，那么对应位置的梯度是：
+
+$$
+\hat{y}_y - 1
+$$
+
+如果模型给正确类别的概率太低，这个值会是一个较大的负数，梯度更新会推动正确类别的 logit 变大。
+
+对于错误类别，对应位置的梯度是：
+
+$$
+\hat{y}_j - 0 = \hat{y}_j
+$$
+
+如果模型错误地给某个类别较高概率，那么这个类别的梯度就较大，参数更新会压低它的 logit。
+
+## 3.3.7 NumPy 实现 Softmax Cross Entropy
+
+在实际代码中，我们通常把 softmax、cross entropy 和 backward 合在一起实现。
+
+```{python}
+class CrossEntropyLoss(Module):
+    def __init__(self, eps: float = 1e-12):
+        super().__init__()
+        self.eps = eps
+
+    @override
+    def forward(self, logits: np.ndarray, targets: np.ndarray) -> np.floating:
+        probs = softmax_v2(logits)
+        self.ctx = (probs, targets)  # save input for backward
+        loss = cross_entropy(probs, targets, self.eps)
+        return loss
+
+    @override
+    def backward(self) -> np.ndarray:
+        assert self.ctx is not None, 'Must call forward before backward.'
+        probs, targets = self.ctx  # recover saved inputs
+
+        batch_size = probs.shape[0]
+        grad = probs.copy()
+        grad[np.arange(batch_size), targets] -= 1
+        return grad / batch_size
+```
+
+我们用一个小例子验证它的形状：
+
+```{python}
+loss_fn = CrossEntropyLoss()
+
+logits = np.array(
+    [
+        [1.2, -0.3, 2.1, 0.7],
+        [-0.5, 2.3, 0.1, 1.0],
+    ]
+)
+targets = np.array([2, 1])
+
+loss = loss_fn(logits, targets)
+dlogits = loss_fn.backward()
+
+print('Loss:', loss)
+print('Gradient shape:', dlogits.shape)
+print('Gradient:\n', dlogits)
+```
+
+输出的 `dlogits` 和输入的 `logits` 形状相同，都是 `(2, 4)`。这符合反向传播的要求：loss 对 logits 的梯度必须和 logits 本身具有相同形状。
+
+## 3.3.8 为什么 PyTorch 的 CrossEntropyLoss 接收 logits？
+
+在 PyTorch 中，分类任务通常写成：
+
+```python
+loss_fn = nn.CrossEntropyLoss()
+loss = loss_fn(logits, targets)
+```
+
+注意，这里的 `logits` 是模型的原始输出，而不是 softmax 之后的概率。
+
+这是因为 `CrossEntropyLoss` 内部已经包含了 softmax 和 cross entropy 的组合。更准确地说，它会以数值稳定的方式计算 log softmax 和 negative log likelihood loss。
+
+因此，在 PyTorch 中通常不要写成：
+
+```python
+probs = torch.softmax(logits, dim=1)
+loss = loss_fn(probs, targets)  # not recommended
+```
+
+这样不仅语义不对，还可能带来数值稳定性问题。
+
+这和我们这一节的 NumPy 实现是一致的。虽然为了讲解，我们先分别介绍 softmax 和 cross entropy，但在真正实现损失函数时，我们把它们合在一个模块里，让 forward 和 backward 直接围绕 logits 展开。
+
+## 3.3.9 本章小结
+
+这一节我们介绍了分类模型中最常用的输出层和损失函数。
+
+MLP 的最后一层通常输出 logits，它们是每个类别的原始分数。Softmax 会把 logits 转成概率分布，使每个类别的概率都为正，并且所有类别概率之和为 1。Cross entropy 则衡量模型分给正确类别的概率有多大：正确类别概率越大，损失越小；正确类别概率越小，损失越大。
+
+最重要的是，softmax 和 cross entropy 合在一起后，反向传播公式非常简单：
+
+$$
+\frac{\partial L}{\partial Z} = \frac{1}{B}(\hat{Y} - Y)
+$$
+
+这个梯度会作为 MLP 最后一层的上游梯度，继续传给前面的线性层和激活函数。下一节我们将进一步推导线性层的前向传播和反向传播，这样就可以把整个 MLP 的梯度链条完整连接起来。

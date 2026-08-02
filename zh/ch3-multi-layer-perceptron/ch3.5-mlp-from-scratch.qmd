@@ -1,0 +1,471 @@
+---
+author: jshn9515
+date: 2026-06-07
+date-modified: 2026-06-07
+open-graph:
+  title: ch3.5-mlp-from-scratch
+  description: "3.5 用 NumPy 搭建完整 MLP"
+title: "3.5 用 NumPy 搭建完整 MLP"
+order: 5
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch3-multi-layer-perceptron/ch3.5-mlp-from-scratch.ipynb){fig-align="left"}
+
+前面几节中，我们已经分别实现了 MLP 需要的几个基本组件：
+
+1. `Linear` 层负责做可学习的线性变换；
+2. 激活函数负责引入非线性；
+3. `CrossEntropyLoss` 负责把 logits 转成损失，并给出反向传播的起点。
+
+现在我们终于可以把这些组件拼起来，得到一个完整的多层感知机。
+
+不过，我们还有一个问题没有解决：
+
+> **一个 MLP 的前向传播和反向传播到底是怎样连接起来的？**
+
+我们会用 NumPy 实现一个两层 MLP：
+
+$$
+X
+\rightarrow
+\operatorname{Linear}_1
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}_2
+\rightarrow
+\operatorname{CrossEntropyLoss}
+\rightarrow
+L
+$$
+
+也就是：
+
+$$
+\begin{aligned}
+H &= XW_1 + b_1 \\
+A &= \operatorname{ReLU}(H) \\
+Z &= AW_2 + b_2 \\
+L &= \operatorname{CrossEntropyLoss}(Z, y)
+\end{aligned}
+$$
+
+其中，$X$ 是输入，$y$ 是标签，$H$ 是隐藏层输出，$A$ 是经过 ReLU 后的隐藏层表示，$Z$ 是最终 logits，$L$ 是分类损失。
+
+```{python}
+from typing import override
+
+import dnnlpy.models.mlp as mlp
+import numpy as np
+
+rng = np.random.default_rng(42)
+print('NumPy version:', np.__version__)
+```
+
+## 3.5.1 从模块到模型
+
+在前面的推导中，每一层都只关心自己的局部计算。
+
+例如，线性层只知道：
+
+$$
+Y = XW + b
+$$
+
+ReLU 只知道：
+
+$$
+A = \operatorname{ReLU}(H)
+$$
+
+Softmax cross entropy 只知道：
+
+$$
+L = \operatorname{CrossEntropy}(\operatorname{Softmax}(Z), y)
+$$
+
+但是一个神经网络不是孤立的一层，而是很多层串起来的复合函数：
+
+$$
+f(X) = \operatorname{Linear}_2(\operatorname{ReLU}(\operatorname{Linear}_1(X)))
+$$
+
+这也正是深度学习模型的基本结构：
+
+> **每一层只负责一个简单变换，整个网络通过层与层的组合得到更复杂的函数。**
+
+因此，实现一个 MLP 的关键不是让某一层变复杂，而是要让这些层能够顺利地：
+
+1. 按顺序完成前向传播；
+2. 按相反顺序完成反向传播；
+3. 保存和更新所有可学习参数。
+
+## 3.5.2 两层 MLP 的前向传播
+
+假设我们要处理 MNIST 分类问题。每张图片大小为 $28 \times 28$，展平后输入维度为：
+
+$$
+D_{\text{in}} = 28 \times 28 = 784
+$$
+
+如果隐藏层维度为 $D_{\text{hidden}}$，类别数为 $C=10$，那么一个 batch 的输入输出形状为：
+
+$$
+X \in \mathbb{R}^{B \times 784}
+$$
+
+第一层线性变换：
+
+$$
+H = XW_1 + b_1
+$$
+
+其中：
+
+$$
+W_1 \in \mathbb{R}^{784 \times D_{\text{hidden}}},
+\quad
+b_1 \in \mathbb{R}^{D_{\text{hidden}}}
+$$
+
+所以：
+
+$$
+H \in \mathbb{R}^{B \times D_{\text{hidden}}}
+$$
+
+接着经过 ReLU：
+
+$$
+A = \operatorname{ReLU}(H)
+$$
+
+ReLU 不改变张量形状，因此：
+
+$$
+A \in \mathbb{R}^{B \times D_{\text{hidden}}}
+$$
+
+第二层线性变换输出 logits：
+
+$$
+Z = AW_2 + b_2
+$$
+
+其中：
+
+$$
+W_2 \in \mathbb{R}^{D_{\text{hidden}} \times 10},
+\quad
+b_2 \in \mathbb{R}^{10}
+$$
+
+所以：
+
+$$
+Z \in \mathbb{R}^{B \times 10}
+$$
+
+最后，softmax cross entropy 根据 logits 和真实标签 $y$ 计算损失：
+
+$$
+L = \operatorname{CrossEntropyLoss}(Z, y)
+$$
+
+注意，这里的 $Z$ 是 logits，不是 softmax 之后的概率。我们在上一节已经看到，把 softmax 和 cross entropy 合在一起实现会更稳定，也更方便反向传播。
+
+## 3.5.3 两层 MLP 的反向传播
+
+前向传播是从输入走到损失：
+
+$$
+X \rightarrow H \rightarrow A \rightarrow Z \rightarrow L
+$$
+
+反向传播则沿着相反方向，把梯度一层一层传回来：
+
+$$
+L \rightarrow Z \rightarrow A \rightarrow H \rightarrow X
+$$
+
+上一节我们已经推导过 softmax cross entropy 的反向传播：
+
+$$
+\frac{\partial L}{\partial Z} =
+\frac{1}{B}(\hat{Y} - Y)
+$$
+
+记作：
+
+$$
+G_Z = \frac{\partial L}{\partial Z}
+$$
+
+那么第二个线性层：
+
+$$
+Z = AW_2 + b_2
+$$
+
+对应的梯度为：
+
+$$
+\begin{aligned}
+\frac{\partial L}{\partial W_2} &= A^\top G_Z \\
+\frac{\partial L}{\partial b_2} &= \sum_{i=1}^{B} (G_Z)_i \\
+\frac{\partial L}{\partial A} &= G_Z W_2^\top
+\end{aligned}
+$$
+
+接着经过 ReLU。因为：
+
+$$
+A = \operatorname{ReLU}(H)
+$$
+
+所以：
+
+$$
+\frac{\partial L}{\partial H} =
+\frac{\partial L}{\partial A}
+\odot \mathbb{1}(H > 0)
+$$
+
+记作：
+
+$$
+G_H = G_A \odot \mathbb{1}(H > 0)
+$$
+
+最后回到第一个线性层：
+
+$$
+H = XW_1 + b_1
+$$
+
+对应的梯度为：
+
+$$
+\begin{aligned}
+\frac{\partial L}{\partial W_1} &= X^\top G_H \\
+\frac{\partial L}{\partial b_1} &= \sum_{i=1}^{B} (G_H)_i \\
+\frac{\partial L}{\partial X} &= G_H W_1^\top
+\end{aligned}
+$$
+
+如果我们只是训练模型，通常不需要继续使用 $\frac{\partial L}{\partial X}$，因为输入图片不是需要学习的参数。但从反向传播的角度看，线性层仍然会把梯度传回给前一层。
+
+## 3.5.4 实现两层 MLP
+
+有了这些模块之后，MLP 本身就非常简单。
+
+前向传播时，我们按照层的顺序依次调用 `forward`：
+
+$$
+X \rightarrow \operatorname{Linear}_1 \rightarrow
+\operatorname{ReLU} \rightarrow \operatorname{Linear}_2
+$$
+
+反向传播时，我们按照相反顺序依次调用 `backward`：
+
+$$
+\operatorname{Linear}_2 \rightarrow \operatorname{ReLU}
+\rightarrow \operatorname{Linear}_1
+$$
+
+```{python}
+class MLP(mlp.Module):
+    def __init__(self, input_dim: int, hidden_dim: int, num_classes: int):
+        self.fc1 = mlp.Linear(input_dim, hidden_dim)
+        self.relu = mlp.ReLU()
+        self.fc2 = mlp.Linear(hidden_dim, num_classes)
+
+    @override
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        h = self.fc1(x)
+        a = self.relu(h)
+        logits = self.fc2(a)
+        return logits
+
+    @override
+    def backward(self, grad: np.ndarray) -> np.ndarray:
+        grad = self.fc2.backward(grad)
+        grad = self.relu.backward(grad)
+        grad = self.fc1.backward(grad)
+        return grad
+```
+
+这里我们省略了 `parameters()` 方法，具体实现在 `mlp.Module` 中已经写好了。
+
+## 3.5.5 一次完整的 forward 和 backward
+
+为了检查模型是否能够跑通，我们先构造一个很小的随机 batch。
+
+假设输入维度为 4，隐藏层维度为 8，类别数为 3：
+
+```{python}
+batch_size = 5
+input_dim = 4
+hidden_dim = 8
+num_classes = 3
+
+x = rng.random((batch_size, input_dim))
+y = np.array([0, 1, 2, 1, 0])
+
+model = MLP(input_dim, hidden_dim, num_classes)
+loss_fn = mlp.CrossEntropyLoss()
+```
+
+先做前向传播：
+
+```{python}
+logits = model(x)
+loss = loss_fn(logits, y)
+
+print('Logits shape:', logits.shape)
+print('Loss:', loss)
+```
+
+接着，从 loss 开始反向传播：
+
+```{python}
+dlogits = loss_fn.backward()
+dx = model.backward(dlogits)
+```
+
+此时模型中的每个参数都应该有对应的梯度：
+
+```{python}
+for p in model.parameters():
+    print(f'Parameter shape: {p.shape}\t| Gradient shape: {p.grad.shape}')
+```
+
+如果一切正确，参数和梯度的形状应该一一对应。这说明：
+
+1. 前向传播产生了正确形状的 logits；
+2. Loss 能够给出关于 logits 的梯度；
+3. 梯度能够依次穿过第二个线性层、ReLU、第一个线性层；
+4. 每个可学习参数都得到了和自身形状相同的梯度。
+
+## 3.5.6 参数更新
+
+反向传播只是算出了梯度，还没有真正改变参数。最简单的更新方式是 SGD：
+
+$$
+\theta \leftarrow \theta - \eta \frac{\partial L}{\partial \theta}
+$$
+
+其中，$\eta$ 是学习率。
+
+现在我们可以做一次完整的训练步骤：
+
+```{python}
+logits = model(x)
+optimizer = mlp.SGD(model.parameters(), lr=0.1)
+loss_before = loss_fn(logits, y)
+
+dlogits = loss_fn.backward()
+model.backward(dlogits)
+optimizer.step()
+
+logits = model(x)
+loss_after = loss_fn(logits, y)
+
+print('Loss before update:', loss_before)
+print('Loss after update:', loss_after)
+```
+
+由于这里只更新了一步，而且数据是随机生成的，所以 loss 不一定会大幅下降。但这个例子说明了一个完整训练步骤的基本流程：
+
+```text
+forward -> loss -> backward -> update
+```
+
+也就是：
+
+```python
+# forward
+logits = model(x)
+loss = loss_fn(logits, y)
+
+# backward
+dlogits = criterion.backward()
+model.backward(dlogits)
+
+# update
+optimizer.step()
+```
+
+这就是一个神经网络训练循环中最核心的部分。
+
+## 3.5.7 为什么 backward 要按相反顺序？
+
+前向传播中，数据依次经过每一层：
+
+$$
+X \rightarrow H \rightarrow A \rightarrow Z \rightarrow L
+$$
+
+也就是说，$Z$ 依赖 $A$，$A$ 依赖 $H$，$H$ 又依赖 $X$。
+
+反向传播计算的是损失对每个中间变量的梯度。根据链式法则，如果想算 $L$ 对 $H$ 的梯度，需要先知道 $L$ 对 $A$ 的梯度；如果想算 $L$ 对 $X$ 的梯度，需要先知道 $L$ 对 $H$ 的梯度。
+
+因此梯度必须从最后一层开始，一层一层往前传：
+
+$$
+\frac{\partial L}{\partial Z}
+\rightarrow
+\frac{\partial L}{\partial A}
+\rightarrow
+\frac{\partial L}{\partial H}
+\rightarrow
+\frac{\partial L}{\partial X}
+$$
+
+这就是为什么每个模块的 `backward` 都接收一个上游梯度 `grad`，然后返回一个下游梯度 `dx`。
+
+从这个角度看，反向传播其实一套局部规则：
+
+> **每一层只需要知道自己前向传播时做了什么，以及上游传回来的梯度是什么，就可以计算自己的参数梯度，并把梯度继续传给前一层。**
+
+## 3.5.8 本章小结
+
+这一节我们把前面几节讨论过的模块连接起来，用 NumPy 实现了一个完整的两层 MLP。
+
+这个模型的前向传播为：
+
+$$
+X
+\rightarrow
+\operatorname{Linear}_1
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}_2
+\rightarrow
+Z
+$$
+
+损失函数为：
+
+$$
+L = \operatorname{CrossEntropyLoss}(Z, y)
+$$
+
+反向传播则从 softmax cross entropy 开始，按照相反顺序依次穿过：
+
+$$
+\operatorname{Linear}_2
+\rightarrow
+\operatorname{ReLU}
+\rightarrow
+\operatorname{Linear}_1
+$$
+
+最后，我们用最简单的 SGD 完成了参数更新：
+
+$$
+\theta \leftarrow \theta - \eta \frac{\partial L}{\partial \theta}
+$$
+
+至此，我们已经有了一个可以完整执行 forward、backward 和 update 的 MLP。下一节会把它放到真实的 MNIST 数据集上，完成第一个从零实现的图像分类训练实验。

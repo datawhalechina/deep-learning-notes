@@ -1,0 +1,613 @@
+---
+author: jshn9515
+date: 2026-06-27
+date-modified: 2026-06-27
+open-graph:
+  title: ch7.4-layer-normalization
+  description: "7.4 LayerNorm: Normalizing Features Within Each Sample"
+title: "7.4 LayerNorm：在单个样本内部归一化特征"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.4-layer-normalization.ipynb){fig-align="left"}
+
+上一节我们介绍了 Batch Normalization。BatchNorm 会为每个特征或通道收集当前 mini-batch 的统计量，因此同一个样本的输出会受到 batch 中其他样本的影响。
+
+这种做法在 CNN 中非常有效，但并不适合所有网络。对于 Transformer 这样的序列模型，batch 中的句子长度、padding 数量和 token 内容都可能不同；在推理时，batch size 也可能从几十变成 1。如果归一化依赖当前 batch，模型的行为就会随着 batch 的组成发生变化。
+
+**Layer Normalization (LayerNorm)** [@ba2016LayerNorm] 采用了另一种思路：不在不同样本之间收集统计量，而是在每个样本自己的特征内部计算均值和方差。
+
+这一节，我们会回答以下问题：
+
+- LayerNorm 到底对哪些维度计算均值和方差？
+- `nn.LayerNorm(768)` 中的 768 表示什么？
+- 为什么输入形状可以是 `(batch_size, sequence_length, hidden_size)`？
+- 为什么 LayerNorm 不需要 `running_mean` 和 `running_var`？
+- 为什么 Transformer 更常使用 LayerNorm，而不是 BatchNorm？
+
+这一节会从 LayerNorm 的归一化维度出发，然后介绍它的可学习参数、PyTorch 实现和局限性。
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.4.1 LayerNorm 在对哪些维度归一化
+
+上一节介绍 BatchNorm 时，我们重点讨论了它在输入张量中沿哪些维度计算均值和方差。理解 LayerNorm 也可以采用同样的思路：先不急着记公式，而是先确定**哪些元素会被放在一起计算统计量**。
+
+LayerNorm 与 BatchNorm 使用的标准化公式其实是一样的：
+
+$$
+\hat{x} = \frac{x-\mu}{\sqrt{\sigma^2+\epsilon}}
+$$
+
+两者真正的区别不在公式，而在于均值 $\mu$ 和方差 $\sigma^2$ 是从哪些元素中计算出来的。BatchNorm 通常固定特征或通道，在不同样本之间统计；LayerNorm 则固定一个样本，在该样本内部指定的特征维度上统计。
+
+先考虑最简单的二维输入：
+
+$$
+X\in\mathbb{R}^{N\times D}
+$$
+
+其中，$N$ 表示 batch size，$D$ 表示每个样本的特征数。对于第 $n$ 个样本，LayerNorm 会将它的 $D$ 个特征放在一起，计算该样本自己的均值：
+
+$$
+\mu_n = \frac{1}{D}\sum_{d=1}^{D}x_{n,d}
+$$
+
+以及方差：
+
+$$
+\sigma_n^2 = \frac{1}{D}\sum_{d=1}^{D} \left(x_{n,d}-\mu_n\right)^2
+$$
+
+然后，第 $n$ 个样本中的所有特征都使用同一组 $\mu_n$ 和 $\sigma_n^2$ 完成标准化：
+
+$$
+\hat{x}_{n,d} = \frac{x_{n,d}-\mu_n} {\sqrt{\sigma_n^2+\epsilon}}
+$$
+
+因此，对于形状为 `(N, D)` 的输入，LayerNorm 沿特征维度 `D` 计算统计量，而不会跨越 batch 维度 `N`。每个样本都有自己独立的均值和方差。如果保留被归一化的维度，那么 $\mu$ 和 $\sigma^2$ 的形状都是 `(N, 1)`。
+
+在 PyTorch 中可以写成：
+
+```{python}
+x = torch.randn(3, 4)
+
+mean = x.mean(dim=-1, keepdim=True)
+var = x.var(dim=-1, correction=0, keepdim=True)
+x_hat = (x - mean) / (var + 1e-5).sqrt()
+
+print('Input shape:', x.shape)
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+这里的 `dim=-1` 表示沿最后一个维度，也就是 `D` 维计算统计量；`keepdim=True` 使均值和方差保持为 `(N, 1)`，从而可以通过 broadcasting 作用到原来的 `(N, D)` 输入上。
+
+对于更高维的张量，LayerNorm 会根据 `normalized_shape`，对输入末尾的若干个维度计算均值和方差。
+
+以卷积网络中常见的四维输入为例：
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+其中，$N$ 是 batch size，$C$ 是通道数，$H$ 和 $W$ 是空间尺寸。
+
+如果使用：
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+那么 LayerNorm 会对每个样本内部的全部 $C\times H\times W$ 个元素共同计算统计量。
+
+对于第 $n$ 个样本，其均值为：
+
+$$
+\mu_n =
+\frac{1}{CHW}
+\sum_{c=1}^{C}
+\sum_{h=1}^{H}
+\sum_{w=1}^{W}
+ x_{n,c,h,w}
+$$
+
+方差为：
+
+$$
+\sigma_n^2 =
+\frac{1}{CHW}
+\sum_{c=1}^{C}
+\sum_{h=1}^{H}
+\sum_{w=1}^{W}
+\left(x_{n,c,h,w}-\mu_n\right)^2
+$$
+
+随后，该样本中的每个位置都使用同一组 $\mu_n$ 和 $\sigma_n^2$ 进行标准化：
+
+$$
+\hat{x}_{n,c,h,w} = \frac{x_{n,c,h,w}-\mu_n} {\sqrt{\sigma_n^2+\epsilon}}
+$$
+
+此时，每个样本只有一组均值和方差。如果保留维度，则它们的形状为 `(N, 1, 1, 1)`。
+
+对应的 PyTorch 计算为：
+
+```{python}
+x = torch.randn(2, 3, 4, 5)
+
+mean = x.mean(dim=(1, 2, 3), keepdim=True)
+var = x.var(dim=(1, 2, 3), correction=0, keepdim=True)
+x_hat = (x - mean) * (var + 1e-5).sqrt()
+
+print('Input shape:', x.shape)
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+因此，对于 `(N, C, H, W)` 输入，当 `normalized_shape=(C, H, W)` 时，LayerNorm 会沿 `C`、`H` 和 `W` 三个维度共同计算统计量，而 batch 维度 `N` 不参与统计。
+
+这也说明，LayerNorm 的归一化方向并不是固定不变的，而是由 `normalized_shape` 决定。它总是从输入的最后一个维度开始，向前匹配 `normalized_shape` 所包含的维度。对于 `(N, D)` 输入，通常对 `D` 归一化；对于 `(N, C, H, W)` 输入，如果设置为 `(C, H, W)`，则对整个样本的通道和空间维度共同归一化。
+
+和 BatchNorm 相比，两者的标准化公式仍然相同，区别只在统计方向：BatchNorm 通常固定通道，在 batch 和空间维度上计算统计量；LayerNorm 则固定样本，在 `normalized_shape` 指定的特征维度上计算统计量。
+
+## 7.4.2 LayerNorm 也会进行可学习的仿射变换
+
+和 BatchNorm 一样，LayerNorm 在标准化之后也会进行可学习的仿射变换：
+
+$$
+y_i = \gamma_i\hat{x}_i + \beta_i
+$$
+
+其中，$\gamma$ 控制每个特征的缩放，$\beta$ 控制每个特征的平移。
+
+如果输入特征数为 `D`，那么 $\gamma$ 和 $\beta$ 的形状通常也是 `D`。它们会通过 broadcasting 作用到 batch 中的每个样本。
+
+```{python}
+x = torch.randn(3, 4)
+layer_norm = nn.LayerNorm(4)
+
+print('Weight shape:', layer_norm.weight.shape)
+print('Bias shape:', layer_norm.bias.shape)
+print('Initial weight:', layer_norm.weight, sep='\n')
+print('Initial bias:', layer_norm.bias, sep='\n')
+```
+
+PyTorch 默认将 `weight` 初始化为 1，将 `bias` 初始化为 0。因此 LayerNorm 刚创建时不会改变标准化结果：
+
+$$
+y = 1\cdot\hat{x}+0 = \hat{x}
+$$
+
+不过在训练过程中，模型可以学习适合任务的缩放和平移。LayerNorm 因此不是简单地强迫所有中间表示永远保持均值 0、方差 1，而是先建立稳定的标准化坐标，再让模型学习如何调整每个特征。
+
+## 7.4.3 normalized_shape：决定归一化维度和参数形状
+
+`nn.LayerNorm` 最重要的参数是 `normalized_shape`：
+
+```python
+nn.LayerNorm(normalized_shape)
+```
+
+它有两个同时成立的含义：
+
+1. LayerNorm 会对输入的最后若干个维度计算均值和方差；
+2. 可学习参数 `weight` 和 `bias` 的形状等于 `normalized_shape`。
+
+最常见的情况是：
+
+```{python}
+layer_norm = nn.LayerNorm(4)
+x = torch.randn(2, 3, 4)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', y.shape)
+print('Normalized shape:', layer_norm.normalized_shape)
+```
+
+这里输入形状是 `(2, 3, 4)`，而 `normalized_shape=4`。LayerNorm 会对最后一个维度进行归一化，也就是分别处理每个长度为 4 的向量。
+
+对于每个位置 `(n, l)`，LayerNorm 独立计算：
+
+$$
+\mu_{n,l} = \frac{1}{D}\sum_{d=1}^{D}x_{n,l,d}
+$$
+
+因此，前面的 batch 维度和序列维度都不会被混在一起。
+
+```{python}
+print('Mean over the last dimension:')
+print(y.mean(dim=-1))
+
+print('Variance over the last dimension:')
+print(y.var(dim=-1, correction=0))
+```
+
+输出均值接近 0、方差接近 1。由于默认的 `eps=1e-5`，结果可能不会在浮点意义下严格等于 0 和 1。
+
+可以把规则概括成一句话：
+
+> **如果 `normalized_shape` 包含 $k$ 个维度，LayerNorm 就会归一化输入最后 $k$ 个维度。**
+
+当然，`normalized_shape` 不一定只是一个整数，也可以是一个 tuple。
+
+假设输入是一批图像：
+
+$$
+X \in \mathbb{R}^{N\times C\times H\times W}
+$$
+
+如果创建：
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+LayerNorm 就会对每个样本的全部通道和空间位置一起计算统计量。
+
+```{python}
+layer_norm = nn.LayerNorm((3, 4, 5))
+x = torch.randn(2, 3, 4, 5)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Weight shape:', layer_norm.weight.shape)
+print('Output means:', y.mean(dim=(1, 2, 3)))
+print('Output variances:', y.var(dim=(1, 2, 3), correction=0))
+```
+
+这里 `normalized_shape=(3, 4, 5)`，包含 3 个维度，因此 LayerNorm 会对输入最后 3 个维度，也就是 `(C, H, W)` 一起归一化。
+
+需要特别注意，`nn.LayerNorm(C)` 并不表示对通道维度归一化，而是表示输入的最后一个维度必须是 `C`，并对最后一个维度归一化。对于 PyTorch 默认的图像布局 `(N, C, H, W)`，由于最后一个维度是 `W`，所以 `nn.LayerNorm(C)` 通常不能直接用于通道维度。如果希望只对通道做 LayerNorm，可以先把张量转换为 channels-last 布局：
+
+```{python}
+x = torch.randn(2, 3, 4, 5)
+
+# (N, C, H, W) -> (N, H, W, C)
+x_channels_last = x.permute(0, 2, 3, 1)
+layer_norm = nn.LayerNorm(3)
+y_channels_last = layer_norm(x_channels_last)
+
+# (N, H, W, C) -> (N, C, H, W)
+y = y_channels_last.permute(0, 3, 1, 2)
+
+print('Original shape:', x.shape)
+print('Channels-last shape:', x_channels_last.shape)
+print('Output shape:', y.shape)
+```
+
+这类 channels-last 布局的 LayerNorm 会出现在一些现代视觉模型中。不过对于普通 CNN，BatchNorm 或 GroupNorm 通常更符合默认的 `(N, C, H, W)` 布局。
+
+## 7.4.4 Transformer 中的 LayerNorm
+
+Transformer 的隐藏状态通常写成：
+
+$$
+X\in\mathbb{R}^{N\times L\times D}
+$$
+
+其中，$N$ 是 batch size，$L$ 是 sequence length，$D$ 是 hidden size，也常写作 $d_{\mathrm{model}}$。
+
+Transformer 中最常见的 LayerNorm 是：
+
+```python
+nn.LayerNorm(D)
+```
+
+它会独立地归一化每个 token 的 $D$ 维表示：
+
+$$
+x_{n,l,:} \longrightarrow \operatorname{LayerNorm}(x_{n,l,:})
+$$
+
+```{python}
+batch_size = 2
+sequence_length = 5
+hidden_size = 8
+
+layer_norm = nn.LayerNorm(hidden_size)
+x = torch.randn(batch_size, sequence_length, hidden_size)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Mean of each token representation:', y.mean(dim=-1), sep='\n')
+```
+
+每个 token 都使用自己的均值和方差，因此：
+
+- 不同样本之间不会互相影响；
+- 不同 token 位置之间不会互相影响；
+- Sequence length 改变时，LayerNorm 的参数形状不需要改变；
+- Batch size 改变时，LayerNorm 的行为也不需要改变。
+
+这正是 LayerNorm 非常适合 Transformer 的原因。
+
+第 8 章介绍 Transformer Encoder 时，我们已经看到 LayerNorm 会和残差连接一起出现。
+
+常见的 Pre-LN 结构可以写成：
+
+$$
+Y = X + \operatorname{Sublayer}(\operatorname{LayerNorm}(X))
+$$
+
+LayerNorm 在这里负责稳定每个 token 表示的特征尺度，而残差连接负责提供直接的信息和梯度通路。Pre-LN 与 Post-LN 的结构差异已经在 Transformer 章节讨论过，这里不再重复展开。
+
+## 7.4.5 LayerNorm 不依赖 batch statistics
+
+我们知道，BatchNorm 在训练阶段使用当前 batch 的均值和方差，在推理阶段使用累积得到的 running statistics。因此，同一个样本在不同 batch 中可能得到不同结果。而 LayerNorm 的统计量完全来自当前样本自身，所以同一个样本和其他样本放在一起时，输出不会改变。
+
+```{python}
+sample = torch.randn(1, 8, 4, 4)
+other_sample = torch.randn(1, 8, 4, 4) * 100.0 + 500.0
+
+batch1 = sample
+batch2 = torch.concat([sample, other_sample], dim=0)
+
+layer_norm = nn.LayerNorm(4)
+
+output1 = layer_norm(batch1)
+output2 = layer_norm(batch2)[0:1]
+
+max_diff = (output1 - output2).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+最大差异应当为 0。因为 `sample` 的归一化只依赖它自己的 4 个特征，不依赖后面拼接的其他样本。
+
+这也意味着 LayerNorm：
+
+- 不维护 `running_mean`；
+- 不维护 `running_var`；
+- 不需要根据 batch size 调整统计方式；
+- 不会因为 batch size 为 1 而失去统计意义。
+
+## 7.4.6 训练模式和推理模式行为相同
+
+前面我们讲过，dropout 在 `train()` 和 `eval()` 模式下行为不同，BatchNorm 也会在两种模式下切换 batch statistics 和 running statistics。而这一节的 LayerNorm 则在训练和推理阶段使用完全相同的公式。
+
+```{python}
+x = torch.randn(2, 3, 4)
+layer_norm = nn.LayerNorm(4)
+
+layer_norm.train()
+y_train = layer_norm(x)
+
+layer_norm.eval()
+y_eval = layer_norm(x)
+
+max_diff = (y_train - y_eval).abs().max()
+print('Maximum difference:', max_diff.item())
+print('State dict keys:', dict(layer_norm.state_dict()))
+```
+
+可以看到，`state_dict` 中只有可学习的 `weight` 和 `bias`，没有 BatchNorm 中的 `running_mean`、`running_var` 和 `num_batches_tracked`。`eval()` 仍然会递归设置 LayerNorm 模块的 `training` 属性，但 LayerNorm 的前向公式本身不会根据这个属性切换行为。
+
+## 7.4.7 LayerNorm 的 PyTorch 实现
+
+根据前面的讨论，一个简化版 LayerNorm 可以分成四步：
+
+1. 确定需要归一化的最后若干维；
+2. 在这些维度上计算均值；
+3. 在这些维度上计算方差并标准化；
+4. 使用 `weight` 和 `bias` 做仿射变换。
+
+```{python}
+def layer_norm(
+    x: Tensor,
+    normalized_shape: int | tuple[int, ...],
+    weight: Tensor | None = None,
+    bias: Tensor | None = None,
+    eps: float = 1e-5,
+) -> Tensor:
+    """A minimal functional implementation of layer normalization."""
+    if isinstance(normalized_shape, int):
+        normalized_shape = (normalized_shape,)
+
+    if x.shape[-len(normalized_shape) :] != normalized_shape:
+        raise AssertionError(
+            f'Expected the trailing input dimensions to match '
+            f'`normalized_shape={normalized_shape}`, '
+            f'but got input shape {tuple(x.shape)}.'
+        )
+
+    dims = tuple(range(x.ndim - len(normalized_shape), x.ndim))
+    layer_mean = x.mean(dim=dims, keepdim=True)
+    layer_var = x.var(dim=dims, correction=0, keepdim=True)
+
+    y = (x - layer_mean) / (layer_var + eps).sqrt()
+
+    if weight is not None:
+        y = y * weight
+    if bias is not None:
+        y = y + bias
+
+    return y
+```
+
+这里 `dims` 表示输入最后 `len(normalized_shape)` 个维度。例如：
+
+- `normalized_shape=(4,)` 时，归一化最后一个维度；
+- `normalized_shape=(3, 4, 5)` 时，归一化最后三个维度。
+
+接下来和 `F.layer_norm` 对照：
+
+```{python}
+x = torch.randn(2, 3, 4)
+weight = torch.randn(4)
+bias = torch.randn(4)
+
+actual = layer_norm(x, (4,), weight=weight, bias=bias, eps=1e-5)
+expected = F.layer_norm(x, (4,), weight=weight, bias=bias, eps=1e-5)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+两者的误差应该只来自浮点计算顺序。
+
+接下来，我们可以用这个函数实现一个简化版的 `nn.LayerNorm`：
+
+```{python}
+class LayerNorm(nn.Module):
+    """Apply layer normalization over the trailing input dimensions."""
+
+    weight: Tensor | None
+    bias: Tensor | None
+
+    def __init__(
+        self,
+        normalized_shape: int | tuple[int, ...],
+        eps: float = 1e-5,
+        elementwise_affine: bool = True,
+        bias: bool = True,
+    ):
+        super().__init__()
+        if isinstance(normalized_shape, int):
+            normalized_shape = (normalized_shape,)
+
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+        if self.elementwise_affine:
+            self.weight = nn.Parameter(torch.empty(self.normalized_shape))
+            if bias:
+                self.bias = nn.Parameter(torch.empty(self.normalized_shape))
+            else:
+                self.register_parameter('bias', None)
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.weight is not None:
+            nn.init.ones_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return layer_norm(
+            x,
+            self.normalized_shape,
+            weight=self.weight,
+            bias=self.bias,
+            eps=self.eps,
+        )
+
+    def extra_repr(self) -> str:
+        return (
+            f'normalized_shape={self.normalized_shape}, eps={self.eps}, '
+            f'elementwise_affine={self.elementwise_affine}, bias={self.bias is not None}'
+        )
+```
+
+测试一下自定义的 LayerNorm 是否和 PyTorch 的实现一致：
+
+```{python}
+x = torch.randn(2, 5, 8)
+
+layer_norm1 = LayerNorm(8)
+layer_norm2 = nn.LayerNorm(8)
+
+with torch.no_grad():
+    layer_norm2.weight.copy_(layer_norm1.weight)
+    layer_norm2.bias.copy_(layer_norm1.bias)
+
+actual = layer_norm1(x)
+expected = layer_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+print('Custom output shape:', actual.shape)
+print('Maximum difference:', max_diff.item())
+```
+
+可以看到，两者的差距在浮点计算误差范围内。
+
+需要注意的是，BatchNorm 的可学习参数是每个通道一组，而 LayerNorm 的可学习参数是归一化范围内每个位置一组。同时，PyTorch 提供了 `elementwise_affine` 和 `bias` 两个参数，可以选择是否使用可学习的仿射变换，以及是否使用偏置。
+
+## 7.4.8 LayerNorm 的方差为什么使用总体方差
+
+PyTorch 的 LayerNorm 使用总体方差，也就是：
+
+```python
+x.var(..., correction=0)
+```
+
+对应公式：
+
+$$
+\sigma^2 = \frac{1}{D}\sum_{i=1}^{D}(x_i-\mu)^2
+$$
+
+而不是使用分母为 $D-1$ 的无偏样本方差。
+
+这与 BatchNorm 训练时用于标准化当前 batch 的方差一致。归一化的目标不是从有限样本中估计某个未知总体方差，而是直接描述当前这组激活的数值尺度，因此使用总体方差更自然。
+
+```{python}
+x = torch.tensor([[1.0, 2.0, 3.0, 4.0]])
+
+biased_var = x.var(dim=-1, correction=0, keepdim=True)
+unbiased_var = x.var(dim=-1, correction=1, keepdim=True)
+
+actual = (x - x.mean(dim=-1, keepdim=True)) / (biased_var + 1e-5).sqrt()
+expected = F.layer_norm(x, (4,))
+
+max_diff = (actual - expected).abs().max()
+print('Biased variance:', biased_var.item())
+print('Unbiased variance:', unbiased_var.item())
+print('Maximum difference:', max_diff.item())
+```
+
+## 7.4.9 LayerNorm 的局限
+
+LayerNorm 不依赖 batch size，训练和推理行为一致，因此非常适合序列模型和小 batch 场景。但这并不意味着它在所有任务中都优于 BatchNorm。
+
+首先，LayerNorm 会移除单个样本内部的整体均值和尺度信息。如果这些统计量本身对任务有用，网络需要通过其他方式重新表达它们。
+
+其次，LayerNorm 的归一化维度必须与 `normalized_shape` 匹配。对于 Transformer，hidden size 通常固定，因此 `nn.LayerNorm(hidden_size)` 很自然；但对于空间尺寸变化频繁的 CNN，`nn.LayerNorm((C, H, W))` 会绑定固定的 `H` 和 `W`，使用起来不够方便。
+
+最后，BatchNorm 利用 batch statistics 带来的噪声有时会产生一定的正则化效果，而 LayerNorm 不具备完全相同的行为。在大 batch 图像分类任务中，BatchNorm 仍然是非常常见且有效的选择。
+
+因此，归一化方法的选择通常和数据布局及模型结构有关：
+
+- CNN、大 batch：通常优先考虑 BatchNorm；
+- Transformer 和其他序列模型：通常使用 LayerNorm 或其变体；
+- CNN、小 batch：通常考虑 GroupNorm；
+- 风格迁移等图像生成任务：可能使用 InstanceNorm。
+
+## 7.4.10 本章小结
+
+这一节介绍了 Layer Normalization。
+
+LayerNorm 与 BatchNorm 使用相似的标准化公式：
+
+$$
+y = \gamma\frac{x-\mu}{\sqrt{\sigma^2+\epsilon}}+\beta
+$$
+
+但两者统计均值和方差的维度不同。BatchNorm 通常跨样本统计同一特征或通道，LayerNorm 则在单个样本自己的特征内部统计。
+
+PyTorch 中的 `normalized_shape` 同时决定两件事：
+
+1. 输入最后多少个维度参与归一化；
+2. `weight` 和 `bias` 的形状。
+
+对于 Transformer 输入 `(N, L, D)`，最常见的写法是：
+
+```python
+nn.LayerNorm(D)
+```
+
+它会独立归一化每个 token 的 `D` 维表示。由于 LayerNorm 不依赖 batch statistics，所以不需要 running statistics，训练和推理阶段也使用相同的计算方式。
+
+下一节我们会介绍 **Instance Normalization** [@ulyanov2017InstanceNorm]。它同样不跨样本收集统计量，但会对每个样本的每个通道分别在空间维度上进行归一化。

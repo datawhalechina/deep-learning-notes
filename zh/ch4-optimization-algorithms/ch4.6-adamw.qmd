@@ -1,0 +1,451 @@
+---
+author: jshn9515
+date: 2026-05-29
+date-modified: 2026-06-03
+open-graph:
+  title: ch4.6-adamw
+  description: "4.6 AdamW: Decoupled Weight Decay"
+title: "4.6 AdamW：解耦权重衰减"
+order: 6
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.6-adamw.ipynb){fig-align="left"}
+
+上一节我们看到，Adam 把 momentum 和 RMSprop 的思想结合在了一起。它一方面维护梯度的一阶矩估计 $m_t$，用来平滑更新方向；另一方面维护平方梯度的二阶矩估计 $v_t$，用来为不同参数自适应地缩放步长。
+
+Adam 的更新步骤可以写成：
+
+$$
+\begin{aligned}
+m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
+v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2 \\
+\hat{m}_t &= \frac{m_t}{1 - \beta_1^t} \\
+\hat{v}_t &= \frac{v_t}{1 - \beta_2^t} \\
+\theta_t &= \theta_{t-1} - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+\end{aligned}
+$$
+
+在 4.1 里我们曾经提到过 L2 正则化和 weight decay 这两个概念。当时我们说，在 SGD 里，这两者是等价的。在 loss 中加入 L2 正则项，和在参数更新时直接做 weight decay，最终都会导致参数被统一地衰减。但是，到了 Adam 这种自适应优化器里，这两者就产生了一些区别。
+
+我们知道，L2 正则化是通过在 loss 里加一个正则项来实现的：
+
+$$
+L_{\mathrm{reg}}(\theta) = L(\theta) + \frac{\lambda}{2}\|\theta\|_2^2
+$$
+
+其中，$\lambda$ 控制正则化的强度。
+
+也就是说，我们直接修改优化目标，让大参数在目标函数中付出额外代价。因为：
+
+$$
+\nabla_\theta \left(\frac{\lambda}{2}\|\theta\|_2^2\right) = \lambda\theta
+$$
+
+所以加入 L2 正则之后，优化器看到的梯度会从原来的 $g_t$ 变成：
+
+$$
+g_t + \lambda\theta_{t-1}
+$$
+
+原来的 $g_t$ 负责降低数据损失，额外的 $\lambda\theta_{t-1}$ 负责把参数往 0 拉。
+
+而 weight decay 是另一个视角。它不是想在 loss 里加什么，而是直接规定每次更新参数时，都让参数本身衰减一点。最典型的形式是：
+
+$$
+\theta_t = (1 - \eta\lambda)\theta_{t-1} - \eta g_t
+$$
+
+也就是说，weight decay 是一种 **optimizer-level regularization**。它直接在优化器更新规则里把参数乘上一个小于 1 的系数。
+
+所以，L2 正则和 weight decay 的关系可以先这样理解：
+
+- L2 正则化：在 loss 里加正则项，通过改变梯度来惩罚大参数；
+- Weight decay：在 optimizer 更新时直接让参数按比例变小。
+
+在普通 SGD 中，这两者的更新公式刚好等价。而在 Adam 中，二者不再等价，因为 Adam 会对梯度做一阶矩、二阶矩和自适应缩放。这就导致，如果把 L2 正则项混进 Adam 的梯度里，正则项也会进入 Adam 的一阶矩和二阶矩估计，并被 Adam 的自适应缩放机制重新加权。这样一来，weight decay 不再是一个独立、统一的参数衰减操作，而是会被 Adam 的自适应学习率重新加权。
+
+这就导致了一个问题：
+
+> **当我们使用 Adam 这种自适应优化器时，把 L2 正则混进梯度，是否还能得到我们想要的那种稳定、统一的参数衰减效果？**
+
+AdamW [@loshchilov2019AdamW] 的回答就是：不要把 L2 正则混进 Adam 的梯度统计里，而是把它从梯度更新中解耦出来。
+
+```{python}
+from collections.abc import Iterable
+from typing import override
+
+import dnnlpy
+import dnnlpy.optim as dopt
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch import Tensor
+
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.6.1 L2 Loss 和 Weight Decay：在 SGD 中为什么等价？
+
+先看最简单的 SGD。没有 L2 正则时，更新规则是：
+
+$$
+\theta_t = \theta_{t-1} - \eta g_t
+$$
+
+如果在 loss 中加入 L2 正则，梯度变成 $g_t + \lambda\theta_{t-1}$，于是更新规则变成：
+
+$$
+\theta_t = \theta_{t-1} - \eta (g_t + \lambda\theta_{t-1})
+$$
+
+展开一下：
+
+$$
+\theta_t = (1 - \eta\lambda)\theta_{t-1} - \eta g_t
+$$
+
+这说明，加入 L2 正则之后，SGD 的更新可以分成两步理解。
+
+第一步，先把参数乘上一个小于 1 的系数：
+
+$$
+\theta_{t-1} \rightarrow (1 - \eta\lambda)\theta_{t-1}
+$$
+
+第二步，沿着原始梯度 $g_t$ 做正常的 SGD 更新。
+
+所以，在普通 SGD 中，下面两种写法是等价的：
+
+1. 在 loss 中加入 L2 正则项；
+2. 在参数更新时直接做 weight decay。
+
+也正因为这个等价关系，在很多语境里，L2 正则化和 weight decay 经常被混为一谈。但是这个等价关系依赖一个前提：优化器必须像 SGD 一样，直接使用梯度 $g_t$ 来更新参数。一旦优化器会对梯度做额外变换，比如 Adam 会维护一阶矩和二阶矩，并用 $\sqrt{\hat{v}_t}$ 缩放更新量，这个等价关系就会被打破。
+
+## 4.6.2 为什么 Adam 里会出问题？
+
+Adam 的更新不是简单的：
+
+$$
+\theta_t = \theta_{t-1} - \eta g_t
+$$
+
+它会先把梯度放进一阶矩和二阶矩里，再用二阶矩对更新量进行缩放。如果我们把 L2 正则直接加进梯度，那么 Adam 实际看到的梯度会变成：
+
+$$
+g_t^{\text{reg}} = g_t + \lambda \theta_{t-1}
+$$
+
+然后 Adam 会用这个正则化后的梯度更新一阶矩和二阶矩：
+
+$$
+\begin{aligned}
+m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t^{\mathrm{reg}} \\
+v_t &= \beta_2 v_{t-1} + (1 - \beta_2) (g_t^{\mathrm{reg}})^2
+\end{aligned}
+$$
+
+问题就在这里。
+
+在 SGD 里，$\lambda\theta$ 只是一个单纯把参数往 0 拉的项。但在 Adam 里，$\lambda\theta$ 不只是让参数衰减，它还会进入 Adam 的一阶矩和二阶矩估计。也就是说，weight decay 的效果会被 Adam 的自适应缩放机制改变。
+
+对于某些参数，如果二阶矩 $v_t$ 很大，那么这个参数的更新会被除以较大的 $\sqrt{v_t}$，weight decay 的效果会被缩小。对于另一些参数，如果二阶矩 $v_t$ 很小，那么 weight decay 的效果会相对更强。
+
+这样一来，weight decay 不再是一个统一的把参数往 0 拉的操作，而是会被 Adam 的自适应学习率重新加权。这就带来一个问题：
+
+> **我们本来想让 weight decay 单独控制参数大小，但它却被 Adam 的梯度缩放机制混在了一起。**
+
+AdamW 的核心思想，就是把这两件事拆开。
+
+## 4.6.3 AdamW：把参数衰减和梯度更新解耦
+
+AdamW 中的 W 来自 weight decay。它的关键想法非常直接：
+
+> **Weight decay 不要混进梯度里，而是直接作用在参数上。**
+
+也就是说，AdamW 不把 $\lambda\theta$ 加到梯度 $g_t$ 上。Adam 的一阶矩和二阶矩仍然只根据原始梯度 $g_t$ 来更新：
+
+$$
+\begin{aligned}
+m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
+v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
+\end{aligned}
+$$
+
+经过 bias correction 之后，Adam 的梯度更新方向仍然是：
+
+$$
+\frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+$$
+
+但是在真正更新参数时，AdamW 会额外加入一个独立的 weight decay 项：
+
+$$
+\theta_t = \theta_{t-1} -
+\eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon} -
+\eta\lambda\theta_{t-1}
+$$
+
+也可以写成：
+
+$$
+\theta_t = (1 - \eta\lambda)\theta_{t-1} -
+\eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+$$
+
+你会发现，这和 SGD 中的 weight decay 形式非常像。参数先被乘上一个衰减系数，再执行 Adam 的自适应梯度更新。因此，AdamW 的核心不是改 Adam 的一阶矩或二阶矩，而是改变 weight decay 进入优化器的方式。
+
+所以，AdamW 就是 Adam 的参数更新方式，加上一个 decoupled weight decay。这里的 decoupled 表示 weight decay 和梯度更新被解耦了。
+
+## 4.6.4 Adam 和 AdamW 的区别
+
+现在，我们可以把 Adam 加 L2 正则和 AdamW 放在一起比较。
+
+普通 Adam 如果使用 L2 正则，相当于先修改梯度：
+
+$$
+g_t^{\mathrm{reg}} = g_t + \lambda\theta_{t-1}
+$$
+
+然后用这个修改后的梯度更新 Adam 的状态：
+
+$$
+m_t \leftarrow \operatorname{EMA}(g_t^{\mathrm{reg}}),
+\quad v_t \leftarrow \operatorname{EMA}((g_t^{\mathrm{reg}})^2)
+$$
+
+因此，正则项会进入 Adam 的一阶矩和二阶矩。
+
+AdamW 不修改梯度：
+
+$$
+g_t^{\text{adam}} = g_t
+$$
+
+它的状态只由原始梯度决定：
+
+$$
+m_t \leftarrow \operatorname{EMA}(g_t),
+\quad v_t \leftarrow \operatorname{EMA}(g_t^2)
+$$
+
+然后 weight decay 直接作用在参数上：
+
+$$
+\theta_t \leftarrow (1 - \eta\lambda)\theta_{t-1} -
+\eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+$$
+
+所以，它们两者的区别就是：
+
+> **这个惩罚是先混进梯度，再被 Adam 自适应缩放，还是直接对参数做统一衰减。**
+
+这也是为什么 AdamW 的名字里要单独加一个 W。它强调的是 weight decay 的处理方式。
+
+## 4.6.5 AdamW 的 PyTorch 实现
+
+接下来我们实现一个简化版 AdamW。
+
+```{python}
+class AdamW(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1e-3,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.beta1 = betas[0]
+        self.beta2 = betas[1]
+        self.eps = eps
+        self.weight_decay = weight_decay
+
+        self.step_count = 0
+        self.first_moments = [torch.zeros_like(p) for p in self.params]
+        self.second_moments = [torch.zeros_like(p) for p in self.params]
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        self.step_count += 1
+
+        for p, m, v in zip(
+            self.params,
+            self.first_moments,
+            self.second_moments,
+            strict=True,
+        ):
+            if p.grad is None:
+                continue
+
+            # Decoupled weight decay: directly shrink parameters.
+            grad = p.grad
+            if self.weight_decay > 0:
+                p.mul_(1 - self.lr * self.weight_decay)
+
+            m.mul_(self.beta1).add_(grad, alpha=1 - self.beta1)
+            v.mul_(self.beta2).addcmul_(grad, grad, value=1 - self.beta2)
+
+            bias_correction1 = 1 - pow(self.beta1, self.step_count)
+            bias_correction2 = 1 - pow(self.beta2, self.step_count)
+
+            m_hat = m / bias_correction1
+            v_hat = v / bias_correction2
+
+            # Adam update: use the original gradient statistics.
+            p.addcdiv_(m_hat, v_hat.sqrt() + self.eps, value=-self.lr)
+```
+
+这段代码里，AdamW 和 Adam 最关键的区别就是：
+
+```python
+p.mul_(1 - self.lr * self.weight_decay)
+```
+
+这一步直接对参数做衰减，而不是把 `weight_decay * p` 加到 `grad` 上。换句话说，AdamW 的 `weight_decay` 不参与一阶矩和二阶矩的计算，`m` 和 `v` 仍然只来自当前 mini-batch 的梯度。
+
+同样，我们用一个简单线性回归任务，检查我们实现的 AdamW 是否能正常训练。
+
+```{python}
+def loss_fn(theta: Tensor) -> Tensor:
+    x, y = theta[0], theta[1]
+    return 0.1 * (x - 2) ** 2 + 2.0 * (y + 1) ** 2
+
+
+theta = torch.tensor([-5.0, 2.0], requires_grad=True)
+optimizer = AdamW([theta], lr=0.25, weight_decay=0.0)
+history = dopt.run_optimizer(optimizer, loss_fn, steps=40)
+
+print('Final theta:', history[-1])
+print('Final loss:', loss_fn(history[-1]).item())
+```
+
+画出 AdamW 在参数平面上的轨迹：
+
+```{python}
+x = torch.linspace(-6.5, 5.5, 200)
+y = torch.linspace(-3.5, 2.5, 200)
+X, Y = torch.meshgrid(x, y, indexing='ij')
+Z = 0.1 * (X - 2) ** 2 + 2.0 * (Y + 1) ** 2
+
+fig = plt.figure(1)
+ax = fig.add_subplot(1, 1, 1)
+ax.contourf(X, Y, Z, levels=25, cmap='YlGnBu')
+ax.plot(
+    history[:, 0],
+    history[:, 1],
+    color='#EC705B',
+    marker='o',
+    markersize=3,
+    markerfacecolor='#C0392B',
+    markeredgecolor='white',
+    markeredgewidth=0.5,
+)
+ax.set_xlabel(r'$\theta_1$')
+ax.set_ylabel(r'$\theta_2$')
+ax.set_title('AdamW Optimization Trajectory')
+plt.show()
+```
+
+可以看到，我们的 AdamW 成功地把参数从初始位置 $(-5.0, 2.0)$ 优化到了接近最优解 $(2.0, -1.0)$ 的位置。
+
+在 PyTorch 中，AdamW 的用法和 Adam 很像：
+
+```{python}
+model = nn.Linear(1, 1)
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=1e-3,
+    weight_decay=1e-2,
+)
+```
+
+训练循环仍然是熟悉的三步：
+
+```{python}
+x = torch.randn(32, 1)
+y = 2 * x + 1
+
+pred = model(x)
+loss = F.mse_loss(pred, y)
+
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
+
+print('Loss:', loss.item())
+```
+
+## 4.6.6 哪些参数应该 Weight Decay？
+
+在实际训练中，有件事儿我们要注意：不是所有参数都适合做 weight decay。
+
+通常，我们会对权重矩阵做 weight decay，但不一定对偏置、LayerNorm 的参数或者 BatchNorm 的参数做 weight decay。这是因为，weight decay 的主要作用是限制模型中大规模权重矩阵的复杂度。至于 bias 和 normalization 层中的 scale、shift 等参数，它们的作用和普通权重矩阵不完全一样，直接衰减它们有时反而会影响训练效果。
+
+因此，在训练 Transformer、ViT 或 LLM 时，经常会把参数分成两组：
+
+1. 需要 weight decay 的参数；
+2. 不需要 weight decay 的参数。
+
+在 PyTorch 里可以用 parameter groups 实现：
+
+```{python}
+weight_decay_params = []
+no_weight_decay_params = []
+
+for name, param in model.named_parameters():
+    if not param.requires_grad:
+        continue
+
+    if name.endswith('bias') or 'norm' in name.lower():
+        no_weight_decay_params.append(param)
+    else:
+        weight_decay_params.append(param)
+
+optimizer = optim.AdamW(
+    [
+        {'params': weight_decay_params, 'weight_decay': 1e-2},
+        {'params': no_weight_decay_params, 'weight_decay': 0.0},
+    ],
+    lr=1e-3,
+)
+```
+
+通过 parameter groups，我们就可以为不同参数设置不同的 weight decay。这样，模型中那些不适合被衰减的参数就不会受到 weight decay 的影响。
+
+## 4.6.7 AdamW 为什么在现代深度学习中常用？
+
+AdamW 在 Transformer、ViT 和很多现代深度学习模型中非常常见。
+
+一个重要原因是，AdamW 保留了 Adam 的优点：
+
+1. 使用一阶矩平滑 noisy gradient；
+2. 使用二阶矩为不同参数自适应缩放步长；
+3. 对学习率不那么敏感，训练通常比较稳定。
+
+同时，AdamW 又把 weight decay 从 Adam 的自适应梯度缩放中拿了出来。这样一来，weight decay 更像一个独立的正则化旋钮。调学习率时，主要影响梯度更新；调 weight decay 时，主要影响参数衰减。两者的作用更容易理解，也更容易调参。
+
+这也是 AdamW 相比 Adam 更适合现代大模型训练的一个重要原因。
+
+当然，AdamW 也不是万能的。它仍然需要仔细设置学习率、betas、warmup 和 scheduler。特别是在 Transformer 这类模型里，AdamW 往往会和学习率 warmup、cosine decay 或 linear decay 一起使用。
+
+这些内容更偏训练实践，我们会在后面的优化器实践小节中进一步讨论。
+
+## 4.6.8 本章小结
+
+这一节我们从 Adam 的更新规则出发，重点讨论了 L2 loss 和 weight decay 的关系。
+
+在普通 SGD 中，把 L2 正则加到 loss 里，和在参数更新时做 weight decay 是等价的。因为 SGD 只是简单地沿着梯度方向更新参数，$\lambda\theta$ 会直接表现为对参数的统一衰减。
+
+但是在 Adam 中，如果把 L2 正则项混进梯度，正则项也会进入一阶矩和二阶矩估计，并被 Adam 的自适应缩放机制重新加权。这会让 weight decay 不再是一个独立、统一的参数衰减操作。
+
+AdamW 的核心思想是解耦 weight decay。Adam 的一阶矩和二阶矩只由原始梯度更新，而 weight decay 直接作用在参数上。这样，学习率主要控制梯度更新，weight decay 主要控制参数衰减，两者的含义更加清晰。
+
+到目前为止，我们已经看到了一条很清楚的优化器演化线：SGD 只看当前梯度，momentum 记住历史方向，Adagrad 和 RMSprop 调整不同参数的有效学习率，Adam 同时结合方向平滑和自适应缩放，而 AdamW 进一步把正则化中的 weight decay 从 Adam 的梯度更新中解耦出来。
+
+下一节，我们会看一个更现代的方向：Muon。它不再只是调整每个参数的学习率，而是进一步关注矩阵参数的更新方向本身。

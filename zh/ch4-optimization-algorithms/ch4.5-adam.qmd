@@ -1,0 +1,501 @@
+---
+author: jshn9515
+date: 2026-05-29
+date-modified: 2026-06-05
+open-graph:
+  title: ch4.5-adam
+  description: "4.5 Adam: Combining Momentum and RMSprop"
+title: "4.5 Adam：Momentum 与 RMSprop 的结合"
+order: 5
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.5-adam.ipynb){fig-align="left"}
+
+前面几节我们已经看到，基础 SGD 有两个重要问题。
+
+第一个问题是：mini-batch SGD 带有噪声。如果每一步都只看当前 batch 的梯度，参数更新方向可能会比较抖动，尤其是在训练初期，模型还没有学到什么有用的特征的时候。
+
+对此，momentum 的改进就是，不要只看当前梯度，而是维护一个历史梯度方向的滑动平均：
+
+$$
+m_t = \beta m_{t-1} + (1 - \beta) g_t
+$$
+
+这样更新方向就不再完全由当前 batch 决定，而是带有一定的惯性。
+
+第二个问题是：不同参数的梯度尺度可能差别很大。如果所有参数共享同一个学习率，有些参数可能更新太快，有些参数可能更新太慢。
+
+对此，RMSprop 的改进就是，为每个参数维护平方梯度的滑动平均：
+
+$$
+v_t = \rho v_{t-1} + (1 - \rho) g_t^2
+$$
+
+然后用 $\sqrt{v_t}$ 缩放当前梯度：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{g_t}{\sqrt{v_t} + \epsilon}
+$$
+
+这样梯度长期较大的参数会被缩小步长，梯度长期较小的参数则保留相对较大的步长。
+
+看到这里，一个很自然的问题是：
+
+> **能不能把 Momentum 和 RMSprop 结合起来？**
+
+也就是说，我们既希望更新方向不要被当前 batch 的噪声完全控制，又希望每个参数拥有自适应的学习率。
+
+这就是 **Adam (Adaptive Moment Estimation)** [@kingma2017Adam] 的核心思想。
+
+```{python}
+from collections.abc import Iterable
+from typing import override
+
+import dnnlpy
+import dnnlpy.optim as dopt
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+dnnlpy.set_matplotlib_format('svg')
+print('PyTorch version:', torch.__version__)
+```
+
+## 4.5.1 Adam 想同时解决两个问题
+
+为了看清 Adam 的位置，我们先把前面的几个优化器放在一起。
+
+SGD 的更新规则是：
+
+$$
+\theta_{t+1} = \theta_t - \eta g_t
+$$
+
+它只使用当前梯度 $g_t$。
+
+Momentum 会先维护一阶动量：
+
+$$
+m_t = \beta m_{t-1} + (1 - \beta) g_t
+$$
+
+然后用 $m_t$ 更新参数：
+
+$$
+\theta_{t+1} = \theta_t - \eta m_t
+$$
+
+这里的 $m_t$ 可以理解为梯度方向的滑动平均。它解决的是**方向抖动**的问题。
+
+RMSprop 会维护平方梯度的滑动平均：
+
+$$
+v_t = \rho v_{t-1} + (1 - \rho) g_t^2
+$$
+
+然后用它缩放当前梯度：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{g_t}{\sqrt{v_t} + \epsilon}
+$$
+
+这里的 $v_t$ 可以理解为最近一段时间的梯度尺度。它解决的是**不同参数梯度尺度不同**的问题。
+
+Adam 把这两个想法放在一起。它同时维护两个状态：
+
+$$
+\begin{aligned}
+m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
+v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
+\end{aligned}
+$$
+
+其中：
+
+- $m_t$ 是梯度的一阶矩估计，可以理解为 momentum；
+- $v_t$ 是梯度平方的二阶矩估计，可以理解为 RMSProp；
+- $\beta_1$ 控制一阶动量的记忆长度；
+- $\beta_2$ 控制二阶矩估计的记忆长度。
+
+如果暂时忽略后面要讲的 bias correction，Adam 的更新可以粗略写成：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{m_t}{\sqrt{v_t} + \epsilon}
+$$
+
+这就是 Adam 最核心的更新规则：
+
+$$
+\text{Adam} \approx \frac{\text{Momentum}}{\text{RMSProp scaling}}
+$$
+
+也就是说，分子决定更新方向，分母决定每个参数的缩放。
+
+## 4.5.2 一阶矩：平滑梯度方向
+
+Adam 的第一个状态是 $m_t$：
+
+$$
+m_t = \beta_1 m_{t-1} + (1 - \beta_1) g_t
+$$
+
+这个式子和 momentum 很像。它不是直接使用当前梯度 $g_t$，而是把当前梯度和过去的动量混合起来。如果 $\beta_1$ 很大，说明过去的方向占比更大，更新方向更平滑；如果 $\beta_1$ 较小，说明当前梯度影响更大，更新方向更灵敏。
+
+Adam 里常用的默认值是：
+
+$$
+\beta_1 = 0.9
+$$
+
+这意味着当前梯度只占 0.1，过去动量占 0.9。换句话说，Adam 不会因为某一个 mini-batch 的梯度突然变化，就立刻大幅改变更新方向。
+
+从直觉上看，$m_t$ 在回答这个问题：
+
+> **最近一段时间，梯度大致指向哪里？**
+
+SGD 每一步只关注当前 batch 的梯度是什么，Adam 的一阶矩则关注过去一段时间的平均方向是什么。这就是 Adam 从 momentum 继承来的部分。
+
+## 4.5.3 二阶矩：估计每个参数的梯度尺度
+
+Adam 的第二个状态是 $v_t$：
+
+$$
+v_t = \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
+$$
+
+这里的平方是逐元素平方。也就是说，每个参数都有自己的 $v_t$。
+
+如果某个参数的梯度长期较大，那么它对应的 $v_t$ 会变大。更新时分母变大，这个参数的有效步长就会变小；如果某个参数的梯度长期较小，那么它对应的 $v_t$ 会较小。更新时分母较小，这个参数仍然可以有相对较大的有效步长。
+
+Adam 里常用的默认值是：
+
+$$
+\beta_2 = 0.999
+$$
+
+这个值通常比 $\beta_1$ 更接近 1，说明二阶矩估计的记忆更长。原因也比较直观：梯度方向可能需要更快适应当前 batch，但梯度尺度通常希望估计得更稳定。
+
+从直觉上看，$v_t$ 在回答这个问题：
+
+> **最近一段时间，每个参数的梯度大概有多大？**
+
+所以，Adam 的两个状态分别对应两个问题：
+
+- $m_t$：方向是什么？
+- $v_t$：尺度有多大？
+
+最终更新时，Adam 用 $m_t$ 作为方向，用 $\sqrt{v_t}$ 做缩放。
+
+## 4.5.4 为什么需要 Bias Correction？
+
+如果 Adam 只是把 momentum 和 RMSProp 合起来，这两个公式似乎已经结束了：
+
+$$
+\begin{aligned}
+m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
+v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
+\end{aligned}
+$$
+
+但是 Adam 还有一个容易被忽略、但很重要的细节：**偏差修正（bias correction）**。
+
+为什么需要偏差修正？
+
+因为 $m_t$ 和 $v_t$ 一开始通常初始化为 0：
+
+$$
+m_0 = 0, \quad v_0 = 0
+$$
+
+这会导致训练初期的滑动平均偏向 0。
+
+以 $m_t$ 为例。第一步时：
+
+$$
+m_1 = \beta_1 m_0 + (1 - \beta_1) g_1 = (1 - \beta_1) g_1
+$$
+
+如果 $\beta_1 = 0.9$，那么：
+
+$$
+m_1 = 0.1 g_1
+$$
+
+也就是说，虽然我们只有一个梯度 $g_1$，但由于初始值 $m_0 = 0$，滑动平均被拉小了。
+
+第二步时：
+
+$$
+m_2 = \beta_1 m_1 + (1 - \beta_1) g_2
+$$
+
+把 $m_1$ 展开：
+
+$$
+m_2 = \beta_1(1 - \beta_1)g_1 + (1 - \beta_1)g_2
+$$
+
+如果前两步梯度都差不多，也就是说 $g_1 \approx g_2 \approx g$，那么：
+
+$$
+m_2 \approx (1 - \beta_1)(\beta_1 + 1)g = (1 - \beta_1^2)g
+$$
+
+所以 $m_2$ 仍然比真实平均方向小了一个系数 $1 - \beta_1^2$。
+
+更一般地，在训练初期，$m_t$ 会大约小一个系数：
+
+$$
+1 - \beta_1^t
+$$
+
+因此 Adam 会使用修正后的一阶矩：
+
+$$
+\hat{m}_t = \frac{m_t}{1 - \beta_1^t}
+$$
+
+同理，$v_t$ 也会因为 $v_0 = 0$ 在训练初期偏小，所以 Adam 也会修正二阶矩：
+
+$$
+\hat{v}_t = \frac{v_t}{1 - \beta_2^t}
+$$
+
+这就是 bias correction。
+
+最终 Adam 的更新规则是：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+$$
+
+所以完整的 Adam 可以写成：
+
+$$
+\begin{aligned}
+g_t &= \nabla_\theta L_{\mathcal{B}_t}(\theta_t) \\
+m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
+v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2 \\
+\hat{m}_t &= \frac{m_t}{1 - \beta_1^t} \\
+\hat{v}_t &= \frac{v_t}{1 - \beta_2^t} \\
+\theta_{t+1} &= \theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+\end{aligned}
+$$
+
+不过，Adam 并不是绝对更好的优化器。它引入了更多状态，也引入了更多超参数。更重要的是，Adam 和 weight decay 的结合方式还会带来一个问题，这会引出下一节的 AdamW。
+
+## 4.5.5 Adam 的 PyTorch 实现
+
+接下来，我们用 PyTorch 实现一个简化版 Adam。
+
+```{python}
+class Adam(dopt.Optimizer):
+    def __init__(
+        self,
+        params: Iterable[Tensor],
+        lr: float = 1e-3,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 0.0,
+    ):
+        super().__init__(params)
+        self.lr = lr
+        self.beta1 = betas[0]
+        self.beta2 = betas[1]
+        self.eps = eps
+        self.weight_decay = weight_decay
+
+        self.step_count = 0
+        self.exp_avg = [torch.zeros_like(p) for p in self.params]
+        self.exp_avg_sq = [torch.zeros_like(p) for p in self.params]
+
+    @override
+    @torch.no_grad()
+    def step(self):
+        self.step_count += 1
+
+        for p, m, v in zip(
+            self.params,
+            self.exp_avg,
+            self.exp_avg_sq,
+            strict=True,
+        ):
+            if p.grad is None:
+                continue
+
+            grad = p.grad
+            if self.weight_decay > 0:
+                grad = grad.add(p, alpha=self.weight_decay)
+
+            m.mul_(self.beta1).add_(grad, alpha=1 - self.beta1)
+            v.mul_(self.beta2).addcmul_(grad, grad, value=1 - self.beta2)
+
+            bias_correction1 = 1 - pow(self.beta1, self.step_count)
+            bias_correction2 = 1 - pow(self.beta2, self.step_count)
+
+            m_hat = m / bias_correction1
+            v_hat = v / bias_correction2
+
+            p.addcdiv_(m_hat, v_hat.sqrt() + self.eps, value=-self.lr)
+```
+
+这里有几个状态需要注意。
+
+`exp_avg` 对应公式里的 $m_t$，也就是一阶动量；`exp_avg_sq` 对应公式里的 $v_t$，也就是平方梯度的滑动平均；`step_count` 用来计算 bias correction 里的 $1 - \beta_1^t$ 和 $1 - \beta_2^t$。
+
+和前面一样，`zero_grad()` 清空的是参数的 `.grad` 属性，不是 Adam 的内部状态。Adam 的 `exp_avg` 和 `exp_avg_sq` 必须跨 step 保留下来，否则就没有“动量”和“滑动平均”了。
+
+我们可以用一个简单线性回归任务，检查我们实现的 Adam 是否能正常训练。
+
+```{python}
+def loss_fn(theta: Tensor) -> Tensor:
+    x, y = theta[0], theta[1]
+    return 0.1 * (x - 2) ** 2 + 2.0 * (y + 1) ** 2
+
+
+theta = torch.tensor([-5.0, 2.0], requires_grad=True)
+optimizer = Adam([theta], lr=0.25)
+history = dopt.run_optimizer(optimizer, loss_fn, steps=40)
+
+print('Final theta:', history[-1])
+print('Final loss:', loss_fn(history[-1]).item())
+```
+
+画出 Adam 在参数平面上的轨迹：
+
+```{python}
+x = torch.linspace(-6.5, 5.5, 200)
+y = torch.linspace(-3.5, 2.5, 200)
+X, Y = torch.meshgrid(x, y, indexing='ij')
+Z = 0.1 * (X - 2) ** 2 + 2.0 * (Y + 1) ** 2
+
+fig = plt.figure(1)
+ax = fig.add_subplot(1, 1, 1)
+ax.contourf(X, Y, Z, levels=25, cmap='YlGnBu')
+ax.plot(
+    history[:, 0],
+    history[:, 1],
+    color='#EC705B',
+    marker='o',
+    markersize=3,
+    markerfacecolor='#C0392B',
+    markeredgecolor='white',
+    markeredgewidth=0.5,
+)
+ax.set_xlabel(r'$\theta_1$')
+ax.set_ylabel(r'$\theta_2$')
+ax.set_title('Adam Optimization Trajectory')
+plt.show()
+```
+
+可以看到，我们实现的 Adam 能够成功地优化这个简单的二次函数，参数逐渐收敛到最优点 $(2, -1)$。
+
+## 4.5.6 Adam 为什么常用？
+
+Adam 在深度学习中非常常见，原因不是它在所有情况下都理论上最优，而是它有几个实践上的优点。
+
+第一，Adam 对学习率相对没那么敏感。SGD 往往需要比较细致地调学习率和学习率调度；Adam 由于有自适应缩放，很多任务里用默认参数就能开始训练。
+
+第二，Adam 能处理不同参数梯度尺度差异较大的情况。神经网络不同层、不同参数的梯度分布可能差别很大，Adam 的二阶矩缩放可以自动调节每个参数的有效步长。
+
+第三，Adam 的一阶动量可以缓解 mini-batch 梯度噪声，使更新方向比普通 SGD 更平滑。
+
+这些特点让 Adam 成为很多任务里的强基线模型。尤其是在 Transformer、生成模型、强化学习等训练比较复杂的场景中，Adam 或 AdamW 经常是默认选择。
+
+但是，Adam 也不是没有代价。
+
+它需要为每个参数额外维护两个状态：$m_t$ 和 $v_t$。如果模型有 $P$ 个参数，那么 Adam 还需要大约额外存储 $2P$ 个状态。这会增加显存或内存开销。此外，Adam 的自适应学习率有时也会影响泛化表现。在部分视觉微调任务中，SGD with momentum 可能会得到更好的效果。
+
+所以，如果我们的目标是把模型快速的训练起来，Adam 是一个不错的选择；如果我们追求更好的泛化性能，或者模型比较小，SGD with momentum 可能会更合适。
+
+## 4.5.7 Adam 还缺什么？
+
+到这里，Adam 看起来已经很完整了：
+
+- 它用一阶动量平滑梯度方向；
+- 它用二阶矩估计缩放每个参数的更新；
+- 它用 bias correction 修正训练初期的偏差。
+
+那么为什么下一节还要讲 AdamW？
+
+原因不是算法不完整，而是 Adam 和 weight decay 的结合方式存在一个问题。
+
+先看 SGD。假设我们在 loss 里加入 L2 正则项：
+
+$$
+L_{\text{reg}}(\theta) = L(\theta) + \frac{\lambda}{2}\|\theta\|_2^2
+$$
+
+那么梯度会变成：
+
+$$
+g_t + \lambda \theta_t
+$$
+
+代入 SGD：
+
+$$
+\theta_{t+1} = \theta_t - \eta(g_t + \lambda \theta_t) = (1 - \eta\lambda)\theta_t - \eta g_t
+$$
+
+这个式子很好理解：除了正常沿着梯度下降以外，每一步还会把参数乘上一个小于 1 的系数 $(1 - \eta\lambda)$。所以参数会被轻轻往 0 拉。这就是 weight decay。
+
+在 SGD 里，把 L2 正则项加进梯度，和直接做 weight decay，基本是一回事。但 Adam 里不一样。Adam 不会直接用 $g_t$ 更新参数，而是会先把梯度放进一阶矩和二阶矩：
+
+$$
+\begin{aligned}
+m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
+v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
+\end{aligned}
+$$
+
+如果我们像 SGD 那样，把 L2 正则项直接加到梯度里：
+
+$$
+g_t \leftarrow g_t + \lambda \theta_t
+$$
+
+那么 $\lambda \theta_t$ 也会进入 Adam 的 $m_t$ 和 $v_t$，最后还会被 $\sqrt{\hat{v}_t} + \epsilon$ 缩放。于是 weight decay 不再是简单地把参数往 0 拉，而是参数要往 0 拉多少，还要看这个参数过去的梯度尺度。
+
+这就有点奇怪了。weight decay 本来关心的是参数大小，不应该被 Adam 的自适应学习率重新解释。
+
+所以 AdamW [@loshchilov2019AdamW] 的做法是：
+
+> **不要把 weight decay 混进梯度里。**
+
+先正常用 Adam 做梯度更新，再单独让参数衰减：
+
+$$
+\theta_{t+1} = (1 - \eta\lambda)\theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+$$
+
+这叫 **decoupled weight decay**，也就是解耦的 weight decay。
+
+也就是说，AdamW 不是换掉 Adam，而是把两件事分开了：
+
+- Adam 负责根据梯度下降；
+- Weight decay 负责单独压小参数。
+
+所以在现代深度学习里，尤其是 Transformer、ViT、LLM 这类模型，通常更常用 AdamW，而不是带 weight decay 的普通 Adam。核心原因就是 AdamW 里的 weight decay 含义更干净，也更容易调。
+
+## 4.5.8 本章小结
+
+这一节我们介绍了 Adam。
+
+Adam 可以理解为 momentum 和 RMSProp 的结合。它维护一阶矩 $m_t$ 来平滑梯度方向，也维护二阶矩 $v_t$ 来估计每个参数的梯度尺度。最终更新时，Adam 用一阶矩作为方向，用二阶矩的平方根来缩放每个参数的有效学习率。
+
+由于 $m_t$ 和 $v_t$ 都从 0 初始化，训练初期会偏向 0，所以 Adam 还使用 bias correction：
+
+$$
+\hat{m}_t = \frac{m_t}{1 - \beta_1^t}, \quad \hat{v}_t = \frac{v_t}{1 - \beta_2^t}
+$$
+
+完整更新可以写成：
+
+$$
+\theta_{t+1} = \theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+$$
+
+Adam 的优点是训练通常比较稳定，对学习率相对不那么敏感，也能适应不同参数梯度尺度差异较大的情况。但它需要额外维护一阶和二阶状态，也不一定在所有任务上都比 SGD 有更好的泛化表现。当然更重要的是，Adam 和 weight decay 的结合方式存在问题。下一节我们会看到，AdamW 通过解耦 weight decay 和梯度更新，让 Adam 更适合现代深度学习模型的训练。
