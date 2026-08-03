@@ -55,7 +55,7 @@ uv pip install dnnlpy
 To install the latest version directly from this repository, use:
 
 ```bash
-uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirectory=dnnlpy"
+uv pip install "git+https://github.com/datawhalechina/deep-learning-notes.git#subdirectory=dnnlpy"
 ```
 
 > [!NOTE]
@@ -86,7 +86,3 @@ This project website is built with [Quarto](https://quarto.org/).
 
 - The notes in this repository are licensed under **CC BY-NC 4.0**.
 - The `dnnlpy` library is licensed under **MIT**.
-
-## ⭐ Star History
-
-[![Star History Chart](https://api.star-history.com/chart?repos=jshn9515/deep-learning-notes&type=date&legend=top-left&sealed_token=wiG1WR3EkVkgK2GohSBOvNvqY0gWGUZxg-e2f0eeKRrh1Nv1riNxNHhPIHHRyCzCx9L-13BAluh9NmVcowkA3maFoVv-nirk7JzUIuIjddQB63WZoA3J_1xHGaV1eoi_T3md3Ugu5K2piRsSRBJhMgpjd1ajEduJdsnN6UpSs6DdGj9bwo3-sBBjt8aN)](https://www.star-history.com/?repos=jshn9515%2Fdeep-learning-notes&type=date&legend=top-left)
