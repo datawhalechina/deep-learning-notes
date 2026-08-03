@@ -1,0 +1,37 @@
+{
+    "name": "Deep Learning Notes",
+    "image": "mcr.microsoft.com/devcontainers/python:3-3.14-bookworm",
+    "features": {
+        "ghcr.io/devcontainer-community/devcontainer-features/astral.sh-uv:1": {
+            "version": "latest"
+        },
+        "ghcr.io/rocker-org/devcontainer-features/quarto-cli:1": {
+            "installChromium": true,
+            "version": "latest"
+        }
+    },
+    "containerEnv": {
+        "DNNL_DATA_ROOT": "${containerWorkspaceFolder}/datasets",
+        "QUARTO_PYTHON": "${containerWorkspaceFolder}/.venv/bin/python",
+        "UV_LINK_MODE": "copy"
+    },
+    "updateContentCommand": "uv sync --python 3.14 --all-packages",
+    "waitFor": "updateContentCommand",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "charliermarsh.ruff",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-toolsai.jupyter",
+                "quarto.quarto",
+                "DavidAnson.vscode-markdownlint"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+                "python.terminal.activateEnvironment": true
+            }
+        }
+    },
+    "remoteUser": "vscode"
+}
