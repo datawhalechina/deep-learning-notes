@@ -4,7 +4,7 @@ project:
   render:
     - "*.qmd"
   post-render:
-    - "utils/rename_pdf.py"
+    - "utils/rename_pdfs.py"
 
 execute:
   enabled: false
@@ -65,6 +65,14 @@ book:
         - "zh/ch4-optimization-algorithms/ch4.7-muon.qmd"
         - "zh/ch4-optimization-algorithms/ch4.8-optimizer-practice.qmd"
         - "zh/ch4-optimization-algorithms/ch4.9-learning-rate-schedulers.qmd"
+    - part: "Chapter 5: 卷积神经网络：从局部感知到全局建模"
+      chapters:
+        - "zh/ch5-convolutional-neural-network/ch5.1-from-mlp-to-cnn.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.2-convolution.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.3-conv2d-from-scratch.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.4-pooling-and-downsampling.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.5-build-a-simple-cnn.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.6-lenet.qmd"
     - part: "Chapter 7: 正则化与归一化：让深层网络更稳定"
       chapters:
         - "zh/ch7-regularization-and-normalization/ch7.1-why-regularization-and-normalization.qmd"
@@ -75,19 +83,19 @@ book:
         - "zh/ch7-regularization-and-normalization/ch7.6-group-normalization.qmd"
         - "zh/ch7-regularization-and-normalization/ch7.7-rms-normalization.qmd"
         - "zh/ch7-regularization-and-normalization/ch7.8-normalization-unified-view.qmd"
-    - part: "Chapter 8: Attention 与 Transformer：从动态检索到序列建模"
+    - part: "Chapter 9: Attention 与 Transformer：从动态检索到序列建模"
       chapters:
-        - "zh/ch8-attention-and-transformer/ch8.1-bahdanau-attention.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.2-cross-attention.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.3-self-attention.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.4-multi-head-attention.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.5-positional-encoding.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.6-transformer-encoder.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.7-transformer-decoder.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.8-encoder-decoder-transformer.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.9-kv-cache.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.10-transformer-architectures.qmd"
-        - "zh/ch8-attention-and-transformer/ch8.11-hugging-face-transformers-api.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.1-bahdanau-attention.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.2-cross-attention.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.3-self-attention.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.4-multi-head-attention.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.5-positional-encoding.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.6-transformer-encoder.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.7-transformer-decoder.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.8-encoder-decoder-transformer.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.9-kv-cache.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.10-transformer-architectures.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.11-hugging-face-transformers-api.qmd"
     - part: "Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention"
       chapters:
         - "zh/ch10-efficient-attention/ch10.1-attention-is-io-bound.qmd"
@@ -99,9 +107,6 @@ book:
         - "zh/ch11-vision-transformers/ch11.3-positional-embedding.qmd"
         - "zh/ch11-vision-transformers/ch11.4-vit-encoder.qmd"
         - "zh/ch11-vision-transformers/ch11.5-vit-as-backbone.qmd"
-    - part: "Chapter 12: GAN：在对抗中学习生成"
-      chapters:
-        - "zh/ch12-generative-adversarial-networks/ch12.1-gan-basics.qmd"
     - part: "Chapter 13: VAE：从压缩重建到概率生成"
       chapters:
         - "zh/ch13-autoencoders-and-vaes/ch13.1-autoencoder.qmd"
@@ -116,9 +121,6 @@ book:
         - "zh/ch14-diffusion-models/ch14.3-ddpm-reverse.qmd"
         - "zh/ch14-diffusion-models/ch14.4-ddpm-design-and-sampling.qmd"
         - "zh/ch14-diffusion-models/ch14.5-elbo-for-ddpm.qmd"
-    - part: "Chapter 15: 视觉语言模型：从图文对齐到多模态对话"
-      chapters:
-        - "zh/ch15-vision-language-models/ch15.1-clip.qmd"
     - part: "Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构"
       chapters:
         - "zh/ch18-gpt2-from-scratch/ch18.1-next-token-prediction.qmd"

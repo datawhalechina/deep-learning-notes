@@ -1,0 +1,555 @@
+---
+author: jshn9515
+date: 2026-06-30
+date-modified: 2026-06-30
+open-graph:
+  title: ch5.4-pooling-and-downsampling
+  description: "5.4 Pooling and Downsampling: Max Pooling, Average Pooling, and Adaptive Pooling"
+title: "5.4 池化与下采样：Max Pooling，Avg Pooling 和 Adaptive Pooling"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch5-convolutional-neural-network/ch5.4-pooling-and-downsampling.ipynb){fig-align="left"}
+
+前面几节中，卷积层始终在局部窗口内提取特征。只要合理设置 `padding`，卷积后的特征图甚至可以保持原来的高度和宽度不变。这样做有利于保留空间细节，但如果网络中的每一层都维持相同分辨率，计算量和显存占用也会一直保持在较高水平。
+
+实际的 CNN 通常会在网络逐渐加深时降低特征图的空间分辨率。例如：
+
+$$
+224 \times 224 \rightarrow 112 \times 112 \rightarrow 56 \times 56 \rightarrow 28\times 28
+$$
+
+这种操作称为**下采样（downsampling）**。下采样可以减少后续层需要处理的空间位置，使网络能够用更多通道表示更抽象的特征；与此同时，每个深层特征所对应的输入区域也会逐渐增大。
+
+**池化（pooling）**是早期 CNN 中最常见的下采样方式。它与卷积一样使用滑动窗口，但窗口中没有需要训练的权重。最大池化保留窗口中的最大值，平均池化则保留窗口中的平均值。现代 CNN 也经常直接使用带 stride 的卷积完成下采样，因此理解池化的同时，还需要看清它与 stride convolution 之间的联系。
+
+这一节我们会从最简单的二维池化开始，逐步讨论 `MaxPool2d`、`AvgPool2d`、`AdaptiveAvgPool2d`，最后比较池化和 stride convolution 在 CNN 中承担的不同角色。
+
+```{python}
+import math
+from typing import Literal
+
+import dnnlpy
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 5.4.1 为什么要降低特征图分辨率
+
+假设一个卷积层的输入形状为：
+
+$$
+(N,C_{\text{in}},H,W)
+$$
+
+输出通道数为 $C_{\text{out}}$，卷积核大小为 $K_h\times K_w$。忽略 bias 后，卷积大约需要：
+
+$$
+N\,H_{\text{out}}W_{\text{out}} C_{\text{in}}C_{\text{out}}K_hK_w
+$$
+
+次乘加操作。
+
+其中，高度和宽度以乘积形式出现。因此，如果将特征图的高度和宽度都缩小一半，空间位置数量会变为原来的四分之一，后续卷积的计算量也会显著下降。
+
+```{python}
+def conv_macs(**kwargs: dict[str, int]) -> int:
+    return math.prod(kwargs.values())
+
+
+full_resolution = conv_macs(
+    batch_size=1,
+    in_channels=64,
+    out_channels=128,
+    image_height=56,
+    image_width=56,
+    kernel_size=3,
+)
+half_resolution = conv_macs(
+    batch_size=1,
+    in_channels=64,
+    out_channels=128,
+    image_height=28,
+    image_width=28,
+    kernel_size=3,
+)
+
+print(f'56x56 feature map: {full_resolution:,} MACs')
+print(f'28x28 feature map: {half_resolution:,} MACs')
+print(f'Ratio: {half_resolution / full_resolution:.4f}')
+```
+
+降低分辨率并不只是为了节省计算。随着网络加深，我们通常希望特征从精确的像素位置逐渐转向更抽象的语义。例如，浅层可能关心一条边缘具体位于哪个像素，而深层可能只需要知道某个区域是否包含眼睛、车轮或纹理。
+
+因此，典型 CNN 往往同时执行两种变化：
+
+- 空间尺寸逐渐减小；
+- 通道数逐渐增加。
+
+可以把它理解为：网络用更少的空间位置，表示更多种类的高层特征。
+
+## 5.4.2 最大池化：保留局部区域中的强响应
+
+**最大池化（Max Pooling）**在每个局部窗口中取最大值。
+
+对于输入 $X$，一个大小为 $K_h\times K_w$ 的池化窗口可以写为：
+
+$$
+Y_{i,j} = \max_{0\le u<K_h,\,0\le v<K_w} X_{iS_h+u,\,jS_w+v}
+$$
+
+其中，$S_h$ 和 $S_w$ 是 stride。
+
+![图 5.4.2 最大池化示意图 [@zhang2023d2l fig. 6.5.1]](figures/ch5.4-max-pooling.svg)
+
+例如，对下面的 $4\times 4$ 输入使用 $2\times 2$ 最大池化，并设置 `stride=2`：
+
+$$
+X = \begin{bmatrix}
+1 & 2 & 3 & 4\\
+5 & 6 & 7 & 8\\
+9 & 10 & 11 & 12\\
+13 & 14 & 15 & 16
+\end{bmatrix}
+$$
+
+四个互不重叠的窗口分别取最大值后，输出为：
+
+$$
+Y = \begin{bmatrix}
+6 & 8\\
+14 & 16
+\end{bmatrix}
+$$
+
+代码实现如下：
+
+```{python}
+x = torch.arange(1, 17, dtype=torch.float32).view(1, 1, 4, 4)
+y = F.max_pool2d(x, kernel_size=2, stride=2)
+
+print('Input:', x[0, 0], sep='\n')
+print('Max pooled output:', y[0, 0], sep='\n')
+```
+
+最大池化通常可以理解为保留局部区域中最强的激活。如果某个卷积通道正在检测竖直边缘，那么一个窗口内只要有某个位置产生了较强响应，最大池化就会把这个响应保留下来。
+
+这也使特征对小范围的位置变化不那么敏感。假设同一个高响应从窗口左侧移动到右侧，只要它仍然位于同一个池化窗口中，最大池化的输出就不会发生变化。
+
+```{python}
+left = torch.tensor([[[[0.0, 5.0], [0.0, 0.0]]]])
+right = torch.tensor([[[[0.0, 0.0], [5.0, 0.0]]]])
+
+left = F.max_pool2d(left, kernel_size=2)
+right = F.max_pool2d(right, kernel_size=2)
+
+print('First max:', left.item())
+print('Second max:', right.item())
+```
+
+不过，这并不意味着 CNN 天然具有完全的平移不变性。特征跨过池化窗口边界时，输出仍然可能发生明显变化；stride、padding 和网络其他层也都会影响平移后的结果。更准确地说，池化只是降低了网络对局部微小位移的敏感程度。
+
+## 5.4.3 平均池化：汇总局部区域的整体响应
+
+**平均池化（Average Pooling）**使用局部窗口中的平均值：
+
+$$
+Y_{i,j} =
+\frac{1}{K_hK_w}
+\sum_{u=0}^{K_h-1}
+\sum_{v=0}^{K_w-1}
+X_{iS_h+u,\,jS_w+v}
+$$
+
+对同一个 $4\times 4$ 输入使用 $2\times 2$ 平均池化，输出为：
+
+$$
+Y = \begin{bmatrix}
+3.5 & 5.5\\
+11.5 & 13.5
+\end{bmatrix}
+$$
+
+代码实现如下：
+
+```{python}
+y = F.avg_pool2d(x, kernel_size=2, stride=2)
+
+print('Average pooled output:', y[0, 0], sep='\n')
+```
+
+最大池化和平均池化关注的信息不同：
+
+- 最大池化回答：这个区域中是否出现了很强的响应；
+- 平均池化回答：这个区域的整体响应大约有多强。
+
+在早期图像分类网络中，中间层更常使用最大池化，因为它能够突出局部检测器的强响应。平均池化则经常出现在网络末尾，用于把整张特征图汇总成一个通道向量。后面介绍的 global average pooling 就是这种做法。
+
+我们可以直观比较两种池化对局部异常值的反应。
+
+```{python}
+feature = torch.tensor([[[[1.0, 1.0], [1.0, 9.0]]]])
+
+max_value = F.max_pool2d(feature, kernel_size=2)
+avg_value = F.avg_pool2d(feature, kernel_size=2)
+
+print('Max pooling:', max_value.item())
+print('Average pooling:', avg_value.item())
+```
+
+最大池化完全保留了峰值 9，而平均池化把四个位置一起汇总为 3。两者没有绝对的优劣，只是编码了不同的局部汇总方式。
+
+## 5.4.4 池化层的输出尺寸
+
+池化层的输出尺寸和卷积层使用相同的基本公式。在不考虑 dilation 时：
+
+$$
+\begin{aligned}
+H_{\text{out}} &= \left\lfloor \frac{H+2P_h-K_h}{S_h} \right\rfloor+1 \\
+W_{\text{out}} &= \left\lfloor \frac{W+2P_w-K_w}{S_w} \right\rfloor+1
+\end{aligned}
+$$
+
+最常见的下采样设置是：
+
+```python
+kernel_size = 2
+stride = 2
+```
+
+它通常会让高度和宽度都缩小一半。
+
+```{python}
+x = torch.randn(4, 16, 32, 32)
+y = F.max_pool2d(x, kernel_size=2, stride=2)
+
+print('Input shape:', x.shape)
+print('Output shape:', y.shape)
+```
+
+如果 `stride < kernel_size`，相邻池化窗口会发生重叠。例如：
+
+```python
+kernel_size = 3
+stride = 2
+```
+
+这种做法称为 overlapping pooling。AlexNet 曾经使用过这种设置，不过现代网络更常见的仍是规则的二倍下采样。
+
+在 PyTorch 中，如果省略 `stride`，pooling 默认令：
+
+```python
+stride = kernel_size
+```
+
+因此：
+
+```python
+nn.MaxPool2d(2)
+```
+
+等价于：
+
+```python
+nn.MaxPool2d(kernel_size=2, stride=2)
+```
+
+## 5.4.5 从零实现二维池化
+
+池化和卷积使用相同的滑动窗口框架，区别在于窗口内部不再与可学习权重相乘，而是直接执行 `max` 或 `mean`。
+
+下面实现一个教学版本的 `pool2d`。为了突出核心计算，它支持 NCHW 输入、整数 `kernel_size` 和 `stride`，暂时不处理 padding 和 dilation。
+
+```{python}
+def pool2d(
+    x: Tensor,
+    kernel_size: int,
+    stride: int | None = None,
+    mode: Literal['max', 'avg'] = 'max',
+) -> Tensor:
+    """Apply 2D max or average pooling using explicit windows."""
+    if x.ndim != 4:
+        raise AssertionError('Input must have shape (N, C, H, W).')
+    if kernel_size <= 0:
+        raise AssertionError('`kernel_size` must be positive.')
+
+    if stride is None:
+        stride = kernel_size
+    if stride <= 0:
+        raise AssertionError('`stride` must be positive.')
+
+    batch_size, in_channels, input_h, input_w = x.size()
+    output_h = (input_h - kernel_size) // stride + 1
+    output_w = (input_w - kernel_size) // stride + 1
+
+    if output_h <= 0 or output_w <= 0:
+        raise AssertionError('`kernel_size` must not be larger than the input.')
+
+    output = x.new_empty(batch_size, in_channels, output_h, output_w)
+
+    for i in range(output_h):
+        h_start = i * stride
+        h_end = h_start + kernel_size
+
+        for j in range(output_w):
+            w_start = j * stride
+            w_end = w_start + kernel_size
+            window = x[:, :, h_start:h_end, w_start:w_end]
+
+            if mode == 'max':
+                output[:, :, i, j] = window.amax(dim=(-2, -1))
+            elif mode == 'avg':
+                output[:, :, i, j] = window.mean(dim=(-2, -1))
+            else:
+                raise NotImplementedError(f'Pooling mode `{mode}` is not implemented.')
+
+    return output
+```
+
+将它与 PyTorch 的函数式接口对照：
+
+```{python}
+x = torch.randn(2, 3, 7, 8)
+
+max_actual = pool2d(x, kernel_size=3, stride=2, mode='max')
+max_expected = F.max_pool2d(x, kernel_size=3, stride=2)
+
+avg_actual = pool2d(x, kernel_size=3, stride=2, mode='avg')
+avg_expected = F.avg_pool2d(x, kernel_size=3, stride=2)
+
+max_flag = torch.allclose(max_actual, max_expected)
+avg_flag = torch.allclose(avg_actual, avg_expected)
+
+print('Is max pooling matches?', max_flag)
+print('Is avg pooling matches?', avg_flag)
+```
+
+这个实现也说明了一个容易忽略的事实：池化操作会分别处理每个样本和每个通道，不会在通道之间混合信息。如果输入形状为 $(N,C,H,W)$，池化只会改变 $H$ 和 $W$，输出通道数仍然是 $C$。这与卷积不同：普通卷积不仅可以改变空间尺寸，还可以通过不同卷积核改变通道数。
+
+## 5.4.6 Padding 在 MaxPool 和 AvgPool 中并不完全相同
+
+池化也可以使用 padding，但它的边界语义值得单独说明。
+
+对于最大池化，概念上 padding 区域不会用普通的 0 参与最大值比较，而是使用负无穷。这样即使输入中包含负数，补出来的边界也不会错误地成为最大值。
+
+```{python}
+negative = torch.tensor([[[[-5.0, -4.0], [-3.0, -2.0]]]])
+pooled = F.max_pool2d(negative, kernel_size=2, stride=1, padding=1)
+
+print(pooled[0, 0])
+```
+
+对于平均池化，padding 区域是否参与除数由 `count_include_pad` 控制。默认情况下，它为 `True`，也就是 padding 中补出的 0 会计入平均值的分母。
+
+```{python}
+x = torch.ones(1, 1, 2, 2)
+
+include_pad = F.avg_pool2d(
+    x,
+    kernel_size=2,
+    stride=1,
+    padding=1,
+    count_include_pad=True,
+)
+exclude_pad = F.avg_pool2d(
+    x,
+    kernel_size=2,
+    stride=1,
+    padding=1,
+    count_include_pad=False,
+)
+
+print('Include padding in divisor:', include_pad[0, 0], sep='\n')
+print('Exclude padding from divisor:', exclude_pad[0, 0], sep='\n')
+```
+
+在大多数基础 CNN 中，池化常直接使用 `kernel_size=2, stride=2, padding=0`，因此不需要频繁处理这些边界细节。不过理解它们有助于解释为什么看起来相同的 padding，在 max pooling 和 average pooling 中可能产生不同结果。
+
+## 5.4.7 池化层如何反向传播
+
+池化层没有可学习参数，但它仍然位于计算图中，因此梯度需要穿过池化操作继续向前传播。
+
+对于最大池化，输出只来自窗口中的最大元素，所以反向传播时，梯度也只传给最大值所在的位置。其他位置的梯度为 0。
+
+```{python}
+x = torch.tensor([[[[1.0, 3.0], [2.0, 4.0]]]], requires_grad=True)
+
+y = F.max_pool2d(x, kernel_size=2)
+y.backward()
+
+print('Max pooled value:', y.item())
+print('Gradient with respect to input:', x.grad[0, 0], sep='\n')
+```
+
+对于平均池化，输出是窗口内所有元素的平均值，因此梯度会平均分配给窗口中的每个位置。
+
+```{python}
+x = torch.tensor([[[[1.0, 3.0], [2.0, 4.0]]]], requires_grad=True)
+
+y = F.avg_pool2d(x, kernel_size=2)
+y.backward()
+
+print('Average pooled value:', y.item())
+print('Gradient with respect to input:', x.grad[0, 0], sep='\n')
+```
+
+最大池化的梯度较为稀疏，而平均池化会让每个局部位置都接收到梯度。这也是两种操作在训练行为上的一个重要区别。
+
+## 5.4.8 Adaptive Pooling：直接指定输出大小
+
+普通池化需要指定 `kernel_size` 和 `stride`，输出尺寸由输入尺寸和这些超参数共同决定。但有时我们更关心最终输出应该多大，而不想手动为不同输入尺寸计算窗口参数。
+
+Adaptive pooling 的接口正好相反：它直接接收目标输出尺寸，再自动决定如何划分输入区域。
+
+例如：
+
+```python
+nn.AdaptiveAvgPool2d(1)
+```
+
+会把每个通道的整张特征图汇总成一个值。无论输入空间尺寸是 $7\times 7$、$14\times 14$ 还是 $32\times 20$，输出空间尺寸始终是 $1\times 1$。
+
+```{python}
+adaptive_pool = nn.AdaptiveAvgPool2d(1)
+
+for shape in [(2, 64, 7, 7), (2, 64, 14, 14), (2, 64, 10, 16)]:
+    x = torch.randn(shape)
+    y = adaptive_pool(x)
+    print(f'{shape} -> {y.shape}')
+```
+
+当输出目标是 $(1, 1)$ 时，这个操作就是**全局平均池化（Global Average Pooling, GAP）**：
+
+$$
+Y_{n,c,0,0} = \frac{1}{HW} \sum_{i=0}^{H-1} \sum_{j=0}^{W-1} X_{n,c,i,j}
+$$
+
+它不会混合不同通道，只把每个通道的所有空间位置求平均。
+
+```{python}
+x = torch.randn(2, 3, 5, 7)
+
+actual = x.mean(dim=(-2, -1), keepdim=True)
+expected = F.adaptive_avg_pool2d(x, output_size=(1, 1))
+
+flag = torch.allclose(actual, expected)
+print('Is global average pooling matches manual mean?', flag)
+```
+
+Global average pooling 在现代分类网络中非常常见。假设最后一个卷积阶段输出：
+
+$$
+(N,C,H,W)
+$$
+
+经过全局平均池化后变为：
+
+$$
+(N,C,1,1)
+$$
+
+再展平为：
+
+$$
+(N,C)
+$$
+
+这样分类头只需要接收 $C$ 个通道特征，而不依赖固定的 $H$ 和 $W$。与直接把整张特征图 flatten 后接大型全连接层相比，它通常能显著减少参数数量。
+
+```{python}
+channels = 512
+height = width = 7
+num_classes = 1000
+
+flatten_head = nn.Linear(channels * height * width, num_classes)
+gap_head = nn.Linear(channels, num_classes)
+
+flatten_params = dnnlpy.count_params(flatten_head)
+gap_params = dnnlpy.count_params(gap_head)
+
+print(f'Flatten + Linear: {flatten_params:,} parameters.')
+print(f'Global AvgPool + Linear: {gap_params:,} parameters.')
+```
+
+NiN 将 global average pooling 明确引入 CNN 架构设计，GoogLeNet 和后来的大量分类网络也延续了这种思路。我们会在下一章讨论这些经典架构时再次看到它。
+
+## 5.4.9 Pooling 与 Strided Convolution
+
+池化并不是唯一的下采样方法。卷积层只要设置 `stride > 1`，也可以在提取特征的同时降低空间尺寸。例如，下面两个模块都会把 $32\times 32$ 输入变为 $16\times 16$：
+
+```{python}
+x = torch.randn(2, 16, 32, 32)
+
+conv = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1)
+pool = nn.MaxPool2d(kernel_size=2)
+
+conv_output = conv(x)
+pool_output = pool(x)
+
+print('MaxPool output:', pool_output.shape)
+print('Strided Conv output:', conv_output.shape)
+```
+
+但两者承担的工作并不相同。
+
+最大池化：
+
+- 没有可学习参数；
+- 每个通道独立处理；
+- 通常不改变通道数；
+- 使用固定的最大值规则汇总局部信息。
+
+Strided convolution：
+
+- 包含可学习权重；
+- 可以混合输入通道；
+- 可以同时改变空间尺寸和通道数；
+- 下采样规则由数据学习得到。
+
+因此，很多现代架构会减少显式 pooling，转而使用 stride convolution 完成阶段之间的下采样。不过 pooling 并没有消失：global average pooling 仍然广泛用于分类头，max pooling 也仍然出现在一些 stem 或特定网络设计中。
+
+不能简单地说 stride convolution 一定优于 pooling。更准确的理解是：它们提供了两种不同的归纳偏置。Pooling 使用固定、无参数的局部汇总规则，而 stride convolution 使用可学习的特征变换完成下采样。
+
+需要注意的是，由于下采样会减少空间位置，因此必然丢失一部分细节。对于图像分类，这通常是可以接受的，因为任务更关心图像中出现了什么，而不是每个像素的精确输出。但对于语义分割、目标检测、图像生成等需要空间精度的任务，过早或过度下采样可能导致边界和小目标信息丢失。因此这些模型经常需要：
+
+- 保留更高分辨率的特征图；
+- 使用不同尺度的特征；
+- 通过上采样恢复空间尺寸；
+- 使用 skip connection 传递浅层细节。
+
+这也是为什么反卷积或其他上采样操作不适合在本章的分类 CNN 主线中展开。它们主要用于将低分辨率特征恢复到高分辨率空间，后面介绍 AutoEncoder、U-Net 或生成模型时再系统讨论会更自然。
+
+## 5.4.10 本章小结
+
+这一节我们讨论了 CNN 中最常见的空间下采样方法。
+
+最大池化在每个局部窗口中保留最大响应：
+
+$$
+Y_{i,j} = \max X_{\text{window}}
+$$
+
+平均池化则保留局部平均响应：
+
+$$
+Y_{i,j} = \operatorname{mean}(X_{\text{window}})
+$$
+
+它们都不会混合通道，也不包含可学习参数。`kernel_size` 决定局部汇总范围，`stride` 决定输出位置之间的间隔，而输出尺寸使用与卷积相同的基本公式。
+
+Adaptive pooling 不再直接指定窗口大小，而是指定目标输出尺寸。特别地：
+
+```python
+nn.AdaptiveAvgPool2d((1, 1))
+```
+
+会对每个通道执行 global average pooling，将任意空间尺寸汇总为 $1\times 1$，从而使分类头不再依赖固定输入分辨率。
+
+最后，pooling 和 stride convolution 都可以完成下采样，但前者使用固定规则，后者使用可学习权重。现代 CNN 会根据架构需求选择其中一种，或者在不同位置同时使用两者。
+
+到目前为止，我们已经掌握了构成基础 CNN 的主要模块：卷积负责提取局部特征，激活函数提供非线性，池化或 stride convolution 负责降低空间分辨率。下一节将把这些模块真正连接起来，搭建并训练一个完整的图像分类 CNN。

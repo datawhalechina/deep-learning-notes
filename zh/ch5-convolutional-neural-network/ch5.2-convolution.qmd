@@ -1,0 +1,559 @@
+---
+author: jshn9515
+date: 2026-06-30
+date-modified: 2026-06-30
+open-graph:
+  title: ch5.2-convolution
+  description: "5.2 Convolution Computation: Kernel, Padding, Stride, and Channels"
+title: "5.2 卷积层的计算：Kernel、Padding、Stride 与通道"
+order: 2
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch5-convolutional-neural-network/ch5.2-convolution.ipynb){fig-align="left"}
+
+上一节我们从 MLP 的局限出发，理解了 CNN 为什么要采用局部连接和权重共享。局部连接让每个输出位置只观察输入中的一个小窗口，权重共享则让同一个局部检测器能够在整张图像上重复使用。
+
+但这些描述还只是直觉。真正实现卷积层时，我们还需要回答一系列非常具体的问题：卷积核如何在输入上滑动？每个输出位置究竟是怎样计算出来的？为什么卷积有时会让图像变小？`padding` 和 `stride` 分别会怎样改变输出尺寸？当输入包含多个通道时，一个卷积核又是什么形状？
+
+这一节我们将把这些问题统一起来。我们会先从最简单的二维单通道卷积开始，然后逐步加入 padding、stride、batch 和 channel 维度，最后讨论看起来特殊、但在现代 CNN 中非常重要的 $1 \times 1$ 卷积。
+
+需要提前说明的是，深度学习框架中通常把卷积核直接放在输入窗口上做逐元素乘法，并不会先把卷积核翻转。因此严格来说，`nn.Conv2d` 实现的是**互相关（cross-correlation）**，而不是数学定义中的离散卷积。不过在深度学习中，卷积核本身是通过训练学习出来的，是否翻转不会改变模型的表达能力，因此通常仍然把这个操作简称为卷积。
+
+```{python}
+import dnnlpy
+import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
+from torch import Tensor
+
+dnnlpy.set_matplotlib_format('highdpi')
+print('PyTorch version:', torch.__version__)
+```
+
+## 5.2.1 从一个局部窗口开始
+
+先考虑一个最简单的情况：输入是一张单通道二维图像，卷积核也是一个二维矩阵。
+
+![图 5.2.1 二维互相关运算 [@zhang2023d2l, fig. 6.2.1]](figures/ch5.2-correlation.svg)
+
+假设输入为：
+
+$$
+X =
+\begin{bmatrix}
+0 & 1 & 2 \\
+3 & 4 & 5 \\
+6 & 7 & 8
+\end{bmatrix}
+$$
+
+卷积核为：
+
+$$
+K =
+\begin{bmatrix}
+0 & 1 \\
+2 & 3
+\end{bmatrix}
+$$
+
+卷积核首先覆盖输入左上角的 $2 \times 2$ 区域：
+
+$$
+\begin{bmatrix}
+0 & 1 \\
+3 & 4
+\end{bmatrix}
+$$
+
+对应位置逐元素相乘后求和：
+
+$$
+0 \times 0 + 1 \times 1 + 3 \times 2 + 4 \times 3 = 19
+$$
+
+这个结果就是输出左上角的第一个元素。随后卷积核向右移动一个位置，再对新的局部窗口执行相同计算：
+
+$$
+1 \times 0 + 2 \times 1 + 4 \times 2 + 5 \times 3 = 25
+$$
+
+当一行计算完成后，卷积核再向下移动，直到所有合法窗口都被处理。最终输出为：
+
+$$
+Y =
+\begin{bmatrix}
+19 & 25 \\
+37 & 43
+\end{bmatrix}
+$$
+
+对于一个形状为 $H \times W$ 的输入和一个形状为 $K_h \times K_w$ 的卷积核，在暂时不考虑 padding 和 stride 的情况下，输出位置 $(i,j)$ 可以写为：
+
+$$
+Y_{i,j} = \sum_{u=0}^{K_h-1} \sum_{v=0}^{K_w-1} X_{i+u,j+v}K_{u,v}
+$$
+
+这个公式看起来有很多下标，但含义很简单：取出输入中从 $(i,j)$ 开始的局部窗口，与卷积核逐元素相乘，然后把所有结果加起来。
+
+下面实现一个只支持二维张量的最小版本。它暂时不处理 batch、channel、padding 和 stride，只用来展示卷积最核心的滑动窗口计算。
+
+```{python}
+def corr2d(x: Tensor, kernel: Tensor) -> Tensor:
+    """Compute 2D cross-correlation for a single-channel input."""
+    if x.ndim != 2 or kernel.ndim != 2:
+        raise AssertionError('`input` and `kernel` must both be 2D tensors.')
+
+    K_h, K_w = kernel.size()
+    h = x.size(0) - K_h + 1
+    w = x.size(1) - K_w + 1
+
+    if h <= 0 or w <= 0:
+        raise RuntimeError('`kernel` must not be larger than the input.')
+
+    output = x.new_empty(h, w)
+
+    for i in range(h):
+        for j in range(w):
+            window = x[i : i + K_h, j : j + K_w]
+            output[i, j] = torch.sum(window * kernel)
+
+    return output
+```
+
+测试一下：
+
+```{python}
+x = torch.arange(9, dtype=torch.float32).view(3, 3)
+kernel = torch.tensor([[0.0, 1.0], [2.0, 3.0]])
+
+y = corr2d(x, kernel)
+
+print('Input:', x, sep='\n')
+print('Kernel:', kernel, sep='\n')
+print('Output:', y, sep='\n')
+```
+
+这段实现已经体现了卷积最关键的两个思想：
+
+- 每个输出元素只依赖输入中的一个局部窗口；
+- 所有位置使用完全相同的卷积核参数。
+
+后面的 padding、stride 和多通道卷积并没有改变这个核心，只是在决定窗口怎样移动，以及每个窗口中包含哪些维度。
+
+## 5.2.2 卷积核在检测什么
+
+卷积核并不是一个固定含义的算子。它只是一组可学习参数，不同参数会对不同局部模式产生响应。
+
+例如，下面这个卷积核会比较局部区域左右两侧的像素：
+
+$$
+K_{\text{vertical}} =
+\begin{bmatrix}
+-1 & 0 & 1 \\
+-1 & 0 & 1 \\
+-1 & 0 & 1
+\end{bmatrix}
+$$
+
+如果一个窗口左侧像素较暗、右侧像素较亮，那么卷积结果会较大，因此它可以用来检测竖直方向的亮度变化。类似地，交换卷积核的方向，就可以检测水平方向的边缘。
+
+```{python}
+image = torch.zeros(10, 10)
+image[:, 5:] = 1.0
+
+kernel = torch.tensor(
+    [
+        [-1.0, 0.0, 1.0],
+        [-1.0, 0.0, 1.0],
+        [-1.0, 0.0, 1.0],
+    ]
+)
+response = corr2d(image, kernel)
+
+fig = plt.figure(1, figsize=(6, 3))
+ax1 = fig.add_subplot(1, 2, 1)
+ax1.imshow(image, cmap='gray', vmin=0, vmax=1)
+ax1.set_xticks([])
+ax1.set_yticks([])
+ax1.set_title('Input')
+ax2 = fig.add_subplot(1, 2, 2)
+ax2.imshow(response, cmap='gray')
+ax2.set_xticks([])
+ax2.set_yticks([])
+ax2.set_title('Vertical Edge Response')
+plt.show()
+```
+
+这里的卷积核是我们手动指定的。在真正的 CNN 中，卷积核通常会像线性层的权重一样通过反向传播自动学习。浅层卷积核可能逐渐学会响应边缘、颜色变化和简单纹理，更深层卷积核则会组合前面提取出的特征，形成更复杂的视觉表示。
+
+所以，卷积层并不是预先规定网络应该检测哪些模式，而是限制了检测模式的方式：每次只看局部窗口，并在所有位置共享同一组参数。
+
+## 5.2.3 Padding：控制边界与输出尺寸
+
+如果卷积核只能放在完全位于输入内部的位置，那么卷积之后的空间尺寸通常会变小。
+
+例如，一个 $5 \times 5$ 输入使用 $3 \times 3$ 卷积核，卷积核在高度和宽度方向都只能移动 3 个合法位置，因此输出大小是 $3 \times 3$。如果继续重复卷积，空间尺寸会不断缩小：
+
+$$
+5 \times 5 \xrightarrow{3 \times 3} 3 \times 3 \xrightarrow{3 \times 3} 1 \times 1
+$$
+
+这还会带来另一个问题：边缘像素参与计算的次数比中心像素更少。中心像素会出现在多个局部窗口里，而角落像素可能只被使用一次。
+
+Padding 的做法是在输入边界周围补充额外像素。最常见的是补 0，也就是 zero padding。对于二维输入，如果高度方向上下各补 $P_h$ 行，宽度方向左右各补 $P_w$ 列，那么原始输入尺寸会从 $H\times W$ 变为：
+
+$$
+(H + 2 P_h) \times (W + 2 P_w)
+$$
+
+![图 5.2.3 带填充的互相关运算 [@zhang2023d2l, fig. 6.3.1]](figures/ch5.2-padding.svg)
+
+下面观察一个 $3 \times 3$ 输入经过一圈 zero padding 后的结果。
+
+```{python}
+x = torch.arange(1, 10, dtype=torch.float32)
+x = x.view(1, 1, 3, 3)
+padded = F.pad(x, pad=(1, 1, 1, 1))
+
+print('Original input:', x[0, 0], sep='\n')
+print('After padding=1:', padded[0, 0], sep='\n')
+```
+
+在 PyTorch 中，二维 padding 的顺序是：
+
+```text
+(left, right, top, bottom)
+```
+
+对奇数大小的卷积核，如果 stride 为 1，并且每侧 padding 为：
+
+$$
+P_h=\frac{K_h-1}{2}, \qquad P_w=\frac{K_w-1}{2}
+$$
+
+那么卷积计算前后图像的高度和宽度保持不变。例如，$3\times 3$ 卷积核使用 `padding=1`，$5\times 5$ 卷积核使用 `padding=2`。
+
+这种保持空间尺寸不变的做法经常被称为 **same padding**。与之相对的是 **valid padding**，它不补充任何像素，卷积之后空间尺寸会减小。不过需要注意，严格的 same padding 还与 stride 和偶数卷积核有关。当 stride 大于 1 时，输出尺寸通常仍然会减小。
+
+## 5.2.4 Stride：控制卷积核移动的步长
+
+前面的卷积核每次只移动一个像素，这对应 `stride=1`。但卷积核也可以一次移动多个位置。例如，如果 stride 为 2，卷积核在水平方向和垂直方向每次都跨过两个像素。这样输出位置更少，空间尺寸也会更快下降。
+
+Stride 并不会改变每个局部窗口内部的计算方式，它只改变窗口起点的位置。当 stride 不为 1 时，输出位置 $(i,j)$ 对应的输入窗口起点不再是 $(i,j)$，而是：
+
+$$
+(i S_h, j S_w)
+$$
+
+其中，$S_h$ 和 $S_w$ 分别是高度和宽度方向的 stride。
+
+因此，带 stride 的单通道卷积可以写为：
+
+$$
+Y_{i,j} = \sum_{u=0}^{K_h-1} \sum_{v=0}^{K_w-1} X_{iS_h+u,jS_w+v}K_{u,v}
+$$
+
+![图 5.2.4 带步幅的互相关运算 [@zhang2023d2l, fig. 6.3.2]](figures/ch5.2-stride.svg)
+
+下面使用同一个输入和卷积核，对比 stride 为 1 和 2 时的输出。
+
+```{python}
+x = torch.arange(1, 26, dtype=torch.float32).view(1, 1, 5, 5)
+kernel = torch.ones(1, 1, 3, 3)
+
+stride1 = F.conv2d(x, kernel, stride=1)
+stride2 = F.conv2d(x, kernel, stride=2)
+
+print('Input shape:', x.shape)
+print('Output shape with stride=1:', stride1.shape)
+print('Output shape with stride=2:', stride2.shape)
+print('Output with stride=1:', stride1[0, 0], sep='\n')
+print('Output with stride=2:', stride2[0, 0], sep='\n')
+```
+
+Stride 大于 1 的卷积同时完成了两件事：
+
+- 提取局部特征；
+- 对特征图进行下采样。
+
+因此，现代 CNN 中经常使用 stride convolution 代替部分池化层。不过更大的 stride 也意味着输出保留的空间位置更少，过早下采样可能会丢失细节。
+
+## 5.2.5 输出尺寸如何计算
+
+现在可以把 kernel、padding 和 stride 放在一起，推导卷积输出尺寸。
+
+先看高度方向。原始输入高度为 $H$，上下 padding 后有效高度变为：
+
+$$
+H + 2 P_h
+$$
+
+卷积核高度为 $K_h$。第一个窗口从位置 0 开始，最后一个合法窗口的起点最多是：
+
+$$
+H + 2 P_h - K_h
+$$
+
+由于相邻窗口起点之间相隔 $S_h$，因此输出高度为：
+
+$$
+H_{\text{out}} = \left\lfloor \frac{H+2P_h-K_h}{S_h} \right\rfloor+1
+$$
+
+宽度方向同理：
+
+$$
+W_{\text{out}} = \left\lfloor \frac{W+2P_w-K_w}{S_w} \right\rfloor+1
+$$
+
+例如，输入大小为 $32\times 32$，卷积核为 $3\times 3$，padding 为 1，stride 为 1，则：
+
+$$
+H_{\text{out}} = \left\lfloor \frac{32+2-3}{1} \right\rfloor + 1 = 32
+$$
+
+如果把 stride 改成 2：
+
+$$
+H_{\text{out}} = \left\lfloor \frac{32+2-3}{2} \right\rfloor + 1 = 16
+$$
+
+下面写一个小函数，并与 `F.conv2d` 的实际输出进行比较。
+
+```{python}
+def conv2d_output_size(
+    input_size: int, kernel_size: int, stride: int = 1, padding: int = 0
+) -> int:
+    return (input_size + 2 * padding - kernel_size) // stride + 1
+
+
+x = torch.randn(1, 1, 32, 32)
+weight = torch.randn(1, 1, 3, 3)
+
+for stride, padding in [(1, 0), (1, 1), (2, 1)]:
+    actual = conv2d_output_size(
+        input_size=32,
+        kernel_size=3,
+        stride=stride,
+        padding=padding,
+    )
+    expected = F.conv2d(x, weight, stride=stride, padding=padding)
+
+    print(f'stride={stride}, padding={padding}: actual={actual}, expected={y.size(-1)}')
+```
+
+输出尺寸公式是理解 CNN 结构时最常用的公式之一。读网络结构图时，只要知道输入大小、kernel、padding 和 stride，就可以逐层计算特征图尺寸。
+
+需要注意的是，我们这里暂时没有加入 dilation。空洞卷积（Dilated Convolution）会拉开卷积核内部采样点之间的距离，等价于增大卷积核的有效尺寸。它会在后面真正需要空洞卷积时再讨论。
+
+::: {.callout-note}
+推荐一个经典的 CNN 卷积运算可视化项目：[Convolution Arithmetic](https://github.com/vdumoulin/conv_arithmetic)。它通过一系列动图直观展示卷积核在输入特征图上的滑动过程，涵盖普通卷积、不同步长与填充方式、空洞卷积以及转置卷积等操作。
+:::
+
+## 5.2.6 从单通道到多输入通道
+
+到目前为止，输入和卷积核都是二维的。但实际图像通常包含 channel 维度。
+
+例如，一张 RGB 图像可以写成：
+
+$$
+X\in\mathbb{R}^{3\times H\times W}
+$$
+
+三个通道分别包含红、绿、蓝的像素值。此时，一个卷积核不能只处理其中一个通道，否则它无法同时利用不同颜色的信息。
+
+因此，对于包含 $C_{\text{in}}$ 个输入通道的特征图，一个完整卷积核也必须包含 $C_{\text{in}}$ 个通道：
+
+$$
+K\in\mathbb{R}^{C_{\text{in}}\times K_h\times K_w}
+$$
+
+计算某个输出位置时，每个输入通道分别与对应的卷积核切片做局部乘加，然后再沿 channel 维度求和。对于单个输出通道：
+
+$$
+Y_{i,j} =
+\sum_{c=0}^{C_{\text{in}}-1}
+\sum_{u=0}^{K_h-1}
+\sum_{v=0}^{K_w-1}
+X_{c,i+u,j+v}K_{c,u,v}
+$$
+
+也就是说，多输入通道不会分别产生多个最终输出，而是先把所有输入通道的信息合并成一个输出特征图。
+
+![图 5.2.6 多通道的互相关运算 [@zhang2023d2l, fig. 6.4.1]](figures/ch5.2-multi-channel.svg)
+
+下面构造一个两通道输入，手动验证一次多通道卷积。
+
+```{python}
+x = torch.tensor(
+    [
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+        [[9.0, 8.0, 7.0], [6.0, 5.0, 4.0], [3.0, 2.0, 1.0]],
+    ]
+)
+kernel = torch.tensor(
+    [
+        [[1.0, 0.0], [0.0, 1.0]],
+        [[0.0, 1.0], [1.0, 0.0]],
+    ]
+)
+
+actual = sum(corr2d(x[c], kernel[c]) for c in range(x.size(0)))
+expected = F.conv2d(x.unsqueeze(0), kernel.unsqueeze(0))
+flag = torch.allclose(actual, expected[0, 0])
+
+print('Manual output:', actual, sep='\n')
+print('PyTorch output:', expected[0, 0], sep='\n')
+print('Is manual output equal to PyTorch output?', flag)
+```
+
+这里 `x` 的形状是 `(2, 3, 3)`，表示 2 个输入通道；`kernel` 的形状是 `(2, 2, 2)`，表示这个卷积核也包含 2 个输入通道。两个通道分别计算后相加，最终只得到 1 个输出通道。
+
+## 5.2.7 多输出通道与 Conv2d 权重形状
+
+一个卷积核只能产生一个输出特征图。如果希望网络同时检测多种局部模式，就需要使用多个不同的卷积核。
+
+例如，一个卷积核可能更容易响应竖直边缘，另一个卷积核可能响应水平边缘，还有一些卷积核可能学习颜色变化或纹理。每个卷积核都会产生一个输出 channel，把这些结果堆叠起来，就得到多通道输出。
+
+如果输入通道数为 $C_{\text{in}}$，输出通道数为 $C_{\text{out}}$，那么卷积层的权重形状为：
+
+$$
+W \in \mathbb{R}^{C_{\text{out}}\times C_{\text{in}}\times K_h\times K_w}
+$$
+
+这也是 PyTorch `Conv2d` 权重采用的维度顺序：
+
+```text
+(out_channels, in_channels, kernel_height, kernel_width)
+```
+
+如果启用 bias，每个输出通道还有一个独立 bias，因此：
+
+$$
+b \in \mathbb{R}^{C_{\text{out}}}
+$$
+
+对于带 batch 维度的输入，完整形状为：
+
+$$
+X \in \mathbb{R}^{N\times C_{\text{in}}\times H\times W}
+$$
+
+输出形状为：
+
+$$
+Y \in \mathbb{R}^{N\times C_{\text{out}}\times H_{\text{out}}\times W_{\text{out}}}
+$$
+
+其中，$N$ 是 batch size。卷积层会对 batch 中每个样本使用同一组权重，但不同样本之间不会相互混合。
+
+```{python}
+x = torch.randn(4, 3, 32, 32)
+weight = torch.randn(16, 3, 3, 3)
+bias = torch.randn(16)
+
+y = F.conv2d(x, weight, bias=bias, stride=1, padding=1)
+
+print('Input shape:', x.shape)
+print('Weight shape:', weight.shape)
+print('Bias shape:', bias.shape)
+print('Output shape:', y.shape)
+```
+
+这个例子中：
+
+- Batch size 为 4；
+- 输入有 3 个 channel；
+- 卷积层包含 16 个卷积核；
+- 每个卷积核都覆盖全部 3 个输入 channel；
+- 每个卷积核产生一个输出 channel。
+
+因此输出形状是 `(4, 16, 32, 32)`。
+
+卷积层的参数数量也可以直接从权重形状得到：
+
+$$
+C_{\text{out}}C_{\text{in}}K_hK_w + C_{\text{out}}
+$$
+
+与全连接层不同，这个参数量不依赖输入图像的高度和宽度。只要输入 channel 数不变，同一个卷积层既可以处理 $32\times 32$ 图像，也可以处理更大的空间尺寸。
+
+## 5.2.8 $1\times 1$ 卷积在做什么
+
+第一次看到 $1\times 1$ 卷积时可能很奇怪。它的空间窗口只有一个位置，既不能观察相邻像素，也不能直接检测边缘，那么它为什么仍然有用？
+
+关键在于：
+
+> **卷积核的空间大小虽然是 $1\times 1$，但它仍然覆盖全部输入 channel。**
+
+假设输入某个位置的 channel 向量为：
+
+$$
+x_{i,j}\in\mathbb{R}^{C_{\text{in}}}
+$$
+
+一个拥有 $C_{\text{out}}$ 个输出通道的 $1\times 1$ 卷积，会在每个空间位置执行相同的线性变换：
+
+$$
+y_{i,j} = Wx_{i,j} + b
+$$
+
+其中：
+
+$$
+W\in\mathbb{R}^{C_{\text{out}}\times C_{\text{in}}}
+$$
+
+因此，$1\times 1$ 卷积的主要作用不是混合空间邻域，而是**混合 channel 信息**。它可以：
+
+- 改变 channel 数量；
+- 让不同 channel 之间交换信息；
+- 在较昂贵的空间卷积之前先压缩 channel，从而降低计算量。
+
+![图 5.2.8 $1\times 1$ 卷积的互相关运算 [@zhang2023d2l, fig. 6.4.2]](figures/ch5.2-conv-1x1.svg)
+
+而且，$1\times 1$ 卷积与逐位置线性层是等价的。只要把输入张量的 channel 维度看作特征维度，$1\times 1$ 卷积就是在每个空间位置上应用相同的线性变换。
+
+下面验证 $1\times 1$ 卷积与逐位置线性层的等价关系。
+
+```{python}
+x = torch.randn(2, 3, 4, 5)
+weight = torch.randn(6, 3, 1, 1)
+bias = torch.randn(6)
+
+conv_output = F.conv2d(x, weight, bias=bias)
+
+x = x.permute(0, 2, 3, 1)
+linear_weight = weight[:, :, 0, 0]
+linear_output = F.linear(x, linear_weight, bias)
+linear_output = linear_output.permute(0, 3, 1, 2)
+
+print('Conv output shape:', conv_output.shape)
+print('Linear output shape:', linear_output.shape)
+
+flag = torch.allclose(conv_output, linear_output, atol=1e-6)
+print('Is Conv2d output equal to Linear output?', flag)
+```
+
+两种计算完全相同。区别只是 `Conv2d` 把这组线性变换自然地应用到了所有空间位置，并保持了 `(N, C, H, W)` 的图像布局。
+
+$1\times 1$ 卷积会在后面的 GoogLeNet、SqueezeNet、MobileNet 和 ResNet 中反复出现。这里先记住它最核心的含义：
+
+> **普通空间卷积同时混合空间信息和通道信息，而 $1\times 1$ 卷积只在每个位置混合通道。**
+
+## 5.2.9 本章小结
+
+这一节从最简单的单通道二维卷积出发，逐步补全了实际 `Conv2d` 中最重要的计算规则。
+
+卷积层的核心仍然是局部窗口与权重共享。卷积核在输入上滑动，每个输出位置由一个局部窗口和同一组权重计算得到。Padding 在输入边界周围补充元素，用来控制边界信息和输出尺寸；stride 决定卷积核移动的步长，也决定特征图的下采样速度。
+
+对于多通道输入，一个卷积核必须覆盖全部输入 channel，并沿 channel 维度求和。多个不同卷积核会产生多个输出 channel，因此 `Conv2d` 的权重形状是：
+
+$$
+(C_{\text{out}}, C_{\text{in}}, K_h, K_w)
+$$
+
+$1\times 1$ 卷积虽然不聚合相邻空间位置，却可以在每个位置混合 channel，并灵活地升高或降低通道数。
+
+到这里，我们已经知道卷积层应该怎样计算，但这一节主要借助 `F.conv2d` 完成了带 batch、channel、padding 和 stride 的实际运算。下一节我们会把这些规则组合起来，从零实现一个更完整的 `Conv2d`，并进一步对照 `nn.Conv2d` 的参数、初始化和输出结果。

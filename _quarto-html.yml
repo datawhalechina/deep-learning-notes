@@ -40,9 +40,9 @@ website:
   comments:
     giscus:
       repo: jshn9515/deep-learning-notes
-      repo-id: R_kgDOSIPXtQ
+      repo-id: R_kgDOTr0m8A
       category: Announcements
-      category-id: DIC_kwDOSIPXtc4C7Uuj
+      category-id: DIC_kwDOTr0m8M4DCjA8
       mapping: og:title
       loading: lazy
       input-position: top
@@ -79,12 +79,14 @@ website:
               contents: "zh/ch4-optimization-algorithms/*.qmd"
         - section: "Part 2: 卷积神经网络"
           contents:
+            - section: "Chapter 5: 卷积神经网络：从局部感知到全局建模"
+              contents: "zh/ch5-convolutional-neural-network/*.qmd"
             - section: "Chapter 7: 正则化与归一化：让深层网络更稳定"
               contents: "zh/ch7-regularization-and-normalization/*.qmd"
         - section: "Part 4: Attention 机制与 Transformer"
           contents:
-            - section: "Chapter 8: Attention 与 Transformer：从动态检索到序列建模"
-              contents: "zh/ch8-attention-and-transformer/*.qmd"
+            - section: "Chapter 9: Attention 与 Transformer：从动态检索到序列建模"
+              contents: "zh/ch9-attention-and-transformer/*.qmd"
             - section: "Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention"
               contents: "zh/ch10-efficient-attention/*.qmd"
         - section: "Part 5: 现代计算机视觉"
@@ -122,8 +124,8 @@ website:
               contents: "en/ch4-optimization-algorithms/*.qmd"
         - section: "Part 4: Attention Mechanism and Transformer"
           contents:
-            - section: "Chapter 8: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
-              contents: "en/ch8-attention-and-transformer/*.qmd"
+            - section: "Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
+              contents: "en/ch9-attention-and-transformer/*.qmd"
             - section: "Chapter 10: Efficient Attention Implementations: From Memory-Efficient Attention to FlashAttention"
               contents: "en/ch10-efficient-attention/*.qmd"
         - section: "Part 5: Modern Computer Vision"

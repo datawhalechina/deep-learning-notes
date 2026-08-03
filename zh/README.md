@@ -38,6 +38,15 @@
 - 4.8 优化器地图：不同优化算法该在什么时候使用
 - 4.9 学习率调度器：让学习率随训练过程变化
 
+## Chapter 5: 卷积神经网络：从局部感知到全局建模
+
+- 5.1 从 MLP 到 CNN：为什么图像需要卷积
+- 5.2 卷积层的计算：Kernel、Padding、Stride 与通道
+- 5.3 从零实现 Conv2d：从滑动窗口到 PyTorch 模块
+- 5.4 池化与下采样：Max Pooling，Avg Pooling 和 Adaptive Pooling
+- 5.5 搭建一个简单 CNN：从特征提取到图像分类
+- 5.6 LeNet：卷积、池化与全连接的早期模板
+
 ## Chapter 7: 正则化与归一化：让深层网络更稳定
 
 - 7.1 为什么深层网络需要正则化与归一化
@@ -49,19 +58,19 @@
 - 7.7 RMSNorm：不做均值中心化的特征尺度归一化
 - 7.8 归一化方法的统一视角：统计量到底在哪些维度上计算
 
-## Chapter 8: Attention 与 Transformer：从动态检索到序列建模
+## Chapter 9: Attention 与 Transformer：从动态检索到序列建模
 
-- 8.1 Bahdanau Attention：从信息压缩到动态检索
-- 8.2 Cross-Attention：一个序列查询另一个序列
-- 8.3 Self-Attention：序列内部的信息交互
-- 8.4 Multi-Head Attention：从单一视角到多重视角
-- 8.5 Positional Encoding：给 Attention 补上位置信息
-- 8.6 Transformer Encoder：把 Self-Attention 堆起来
-- 8.7 Transformer Decoder：Masked Self-Attention 与 Cross-Attention
-- 8.8 Encoder-Decoder Transformer：把 Encoder 和 Decoder 连接起来
-- 8.9 KV Cache：为什么推理时不用重复算过去
-- 8.10 Transformer 的三种不同架构：理解、生成与输入输出转换
-- 8.11 Hugging Face Transformers API：从结构到调用
+- 9.1 Bahdanau Attention：从信息压缩到动态检索
+- 9.2 Cross-Attention：一个序列查询另一个序列
+- 9.3 Self-Attention：序列内部的信息交互
+- 9.4 Multi-Head Attention：从单一视角到多重视角
+- 9.5 Positional Encoding：给 Attention 补上位置信息
+- 9.6 Transformer Encoder：把 Self-Attention 堆起来
+- 9.7 Transformer Decoder：Masked Self-Attention 与 Cross-Attention
+- 9.8 Encoder-Decoder Transformer：把 Encoder 和 Decoder 连接起来
+- 9.9 KV Cache：为什么推理时不用重复算过去
+- 9.10 Transformer 的三种不同架构：理解、生成与输入输出转换
+- 9.11 Hugging Face Transformers API：从结构到调用
 
 ## Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention
 
@@ -78,7 +87,6 @@
 
 ## Chapter 12: GAN：在对抗中学习生成
 
-- 12.1 GAN 基础：生成对抗网络的核心思想与训练流程
 
 ## Chapter 13: VAE：从压缩重建到概率生成
 
@@ -98,7 +106,6 @@
 
 ## Chapter 15: 视觉语言模型：从图文对齐到多模态对话
 
-- 15.1 CLIP：把图像和文本映射到同一个语义空间
 
 ## Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构
 

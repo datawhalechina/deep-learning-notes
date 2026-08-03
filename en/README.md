@@ -38,19 +38,19 @@
 - 4.8 Optimizer Map: When to Use Which Optimization Algorithm
 - 4.9 Learning Rate Schedulers: Letting the Learning Rate Change During Training
 
-## Chapter 8: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling
+## Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling
 
-- 8.1 Bahdanau Attention: From Information Compression to Dynamic Retrieval
-- 8.2 Cross-Attention: One Sequence Querying Another Sequence
-- 8.3 Self-Attention: Internal Information Interaction Within a Sequence
-- 8.4 Multi-Head Attention: From Single Perspective to Multiple Perspectives
-- 8.5 Positional Encoding: Adding Positional Information to Attention
-- 8.6 Transformer Encoder: Stacking Self-Attention Layers
-- 8.7 Transformer Decoder: Masked Self-Attention and Cross-Attention
-- 8.8 Encoder-Decoder Transformer: Connecting Encoder and Decoder
-- 8.9 KV Cache: Why We Don't Recompute the Past During Inference
-- 8.10 Three Different Transformer Architectures: Understanding, Generation, and Input-Output Conversion
-- 8.11 Hugging Face Transformers API: From Structure to Calls
+- 9.1 Bahdanau Attention: From Information Compression to Dynamic Retrieval
+- 9.2 Cross-Attention: One Sequence Querying Another Sequence
+- 9.3 Self-Attention: Internal Information Interaction Within a Sequence
+- 9.4 Multi-Head Attention: From Single Perspective to Multiple Perspectives
+- 9.5 Positional Encoding: Adding Positional Information to Attention
+- 9.6 Transformer Encoder: Stacking Self-Attention Layers
+- 9.7 Transformer Decoder: Masked Self-Attention and Cross-Attention
+- 9.8 Encoder-Decoder Transformer: Connecting Encoder and Decoder
+- 9.9 KV Cache: Why We Don't Recompute the Past During Inference
+- 9.10 Three Different Transformer Architectures: Understanding, Generation, and Input-Output Conversion
+- 9.11 Hugging Face Transformers API: From Structure to Calls
 
 ## Chapter 10: Efficient Attention Implementations: From Memory-Efficient Attention to FlashAttention
 
@@ -67,7 +67,6 @@
 
 ## Chapter 12: GAN: Learning to Generate through Adversarial Training
 
-- 12.1 GAN Basics: Core Ideas and Training Flow of Generative Adversarial Networks
 
 ## Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation
 
@@ -86,5 +85,3 @@
 - 14.5 DDPM from a Variational Derivation: Where Does the ELBO Come From?
 
 ## Chapter 15: Vision-Language Models: From Image-Text Alignment to Multimodal Dialogue
-
-- 15.1 CLIP: Mapping Images and Text into the Same Semantic Space

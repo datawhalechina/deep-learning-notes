@@ -8,6 +8,7 @@ comments: false
 
 listing:
   contents:
+    - "../ch5-convolutional-neural-network/*.qmd"
     - "../ch7-regularization-and-normalization/*.qmd"
   sort: title asc
   type: table
@@ -15,6 +16,6 @@ listing:
   date-format: iso
 
 open-graph:
-  title: part2-convolutional-neural-networks
-  description: "Part 2: Convolutional Neural Networks"
+  title: part2-convolutional-neural-network
+  description: "Part 2: Convolutional Neural Network"
 ---

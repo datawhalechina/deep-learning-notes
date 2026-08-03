@@ -1,0 +1,206 @@
+---
+author: jshn9515
+date: 2026-04-09
+date-modified: 2026-04-11
+open-graph:
+  title: ch9.1-bahdanau-attention
+  description: "9.1 Bahdanau Attention: From Information Compression to Dynamic Retrieval"
+title: "9.1 Bahdanau Attention: From Information Compression to Dynamic Retrieval"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch9-attention-and-transformer/ch9.1-bahdanau-attention.ipynb){fig-align="left"}
+
+In the previous sequence models, we have already seen a very natural idea: first use an encoder to read the whole input sequence, summarize it into one vector, and then let the decoder generate the output step by step according to this vector. Taking machine translation as an example, the encoder reads the source-language sentence and finally gets a context vector; the decoder then generates the target-language sentence according to this context vector.
+
+This method looks very reasonable. Since the input is a sentence, compressing the whole sentence into one representation and then using this representation to generate another sentence seems to be a standard "encoder-decoder" process.
+
+But the problem is exactly here:
+
+> **The information of the whole input sequence must be compressed into a fixed-length vector.**
+
+For short sentences, this problem may not be obvious. But when the sentence becomes longer, the fixed-length vector can easily become an information bottleneck. The final hidden state of the encoder has to remember the overall semantics of the sentence, while also preserving local words, grammatical structures, and long-distance dependencies. We force the encoder to squeeze all information into one vector, causing the decoder, when generating each target word, to only rely on the same compressed representation.
+
+This is like asking a person to first read a whole article, then only use one sentence to summarize it, and then let someone else recover the original text word by word according to this sentence. For very short sentences, this may still work; but for long sentences, many details will inevitably be lost.
+
+The starting point of Bahdanau attention is to solve the bottleneck brought by this fixed-length context vector.
+
+## 9.1.1 The Bottleneck of the Fixed-Length Context Vector
+
+First look at the structure of traditional seq2seq.
+
+Assume the sentence to be translated has $T_x$ tokens. The encoder reads these tokens one by one and obtains a sequence of hidden states:
+
+$$
+h_1, h_2, \dots, h_{T_x}
+$$
+
+In the simplest seq2seq model, the encoder usually only uses the last hidden state as the representation of the whole input sentence:
+
+$$
+c = h_{T_x}
+$$
+
+Here, $c$ is the **context vector**. When the decoder later generates each target token, it depends on this same $c$. In other words, no matter whether the current token to generate is the first word of the target sentence or the tenth word, what the decoder sees is the same fixed vector.
+
+This brings two problems.
+
+The first problem is information compression. The longer the source sentence is, the harder it is to compress all information into a fixed-length vector. Even though models such as LSTM and GRU are better at preserving long-term information than ordinary RNNs, this bottleneck still exists.
+
+The second problem is the lack of dynamics. When translating a sentence, generating different target words usually requires paying attention to different parts of the source sentence. For example, when generating a verb, the model may need to look at the predicate in the source sentence; when generating a noun, the model may need to look at some person, place, or thing in the source sentence. But the context vector given to the decoder by traditional seq2seq is fixed. It has no way to flexibly choose where it should look more at different generation moments.
+
+Then, if we were asked to do translation, how would we do it?
+
+We definitely would not first read the whole sentence, then only remember one summary of this sentence, and then write the translation only according to this summary. During the process of reading the sentence, we would remember the meaning and position information of each word. When we start translating, we would **dynamically** look back at different positions in the source sentence and choose the most relevant information to help decide what the next word should be.
+
+So, a more natural idea is: imitate human behavior. Do not compress the whole sentence into one vector at once, but instead keep the hidden states of the encoder at every position. Every time the decoder generates a word, it dynamically takes information from these hidden states according to the current need.
+
+This is the core idea of Bahdanau attention.
+
+## 9.1.2 Bahdanau Attention: Decide Where to Look During Generation
+
+The key change of Bahdanau attention is: the encoder no longer only gives the decoder one fixed context vector, but keeps all hidden states from all time steps.
+
+$$
+h_1, h_2, \dots, h_{T_x}
+$$
+
+These hidden states can be understood as the contextual representation of each position in the source sentence. Note that they are not simple word vectors, but hidden states obtained after the encoder has read the corresponding position, so they already contain some contextual information.
+
+Then, when the decoder generates the $t$-th target word, the model does not directly use the same fixed $c$. Instead, it recalculates a context vector $c_t$ for the current moment. This $c_t$ does not come out of nowhere. It is the weighted sum of all encoder hidden states:
+
+$$
+c_t = \sum_{i=1}^{T_x} \alpha_{t,i} h_i
+$$
+
+Here, $\alpha_{t,i}$ represents how much attention the decoder should assign to the $i$-th position of the source sentence when generating the $t$-th target word. For example, if $\alpha_{t,3}$ is large, it means the model pays more attention to the 3rd position of the source sentence at the current generation moment; if $\alpha_{t,7}$ is small, it means the 7th position of the source sentence is not very important for the current generation.
+
+In this way, every time the decoder generates a word, it gets a context vector specifically computed for the current moment:
+
+$$
+c_1, c_2, \dots, c_{T_y}
+$$
+
+This is very different from traditional seq2seq, which only has one fixed $c$. Attention makes the context vector dynamic:
+
+> **What needs to be generated now determines where to look now.**
+
+This is also the most important intuition of attention. It does not require the model to remember all information at once in the encoding stage. Instead, it allows the model to repeatedly look back at the source sentence during decoding and select different information according to the current generation need.
+
+## 9.1.3 Where Do Attention Weights Come From?
+
+After having the intuition of attention, the question now becomes: how are these weights $\alpha_{t,i}$ obtained?
+
+When generating the $t$-th target word, the decoder will have a current state. This state can be understood as the model's current generation need: it has already generated the previous words, and now it needs to decide what the next word should be.
+
+Assume the current hidden state of the decoder is $s_{t-1}$, and the hidden state of the encoder at the $i$-th position is $h_i$. One idea is to use a scoring function to measure the relevance between them:
+
+$$
+e_{t,i} = a(s_{t-1}, h_i)
+$$
+
+Here, $e_{t,i}$ is an unnormalized attention score. It represents how relevant the $i$-th position of the source sentence is to the current decoding state when generating the $t$-th target word.
+
+Bahdanau attention uses a small feed-forward neural network to compute this score:
+
+$$
+e_{t,i} = v_a^\top \tanh(W_a s_{t-1} + U_a h_i)
+$$
+
+There is no need to worry too much about where this formula comes from. Intuitively, what it does is: put the current decoding state $s_{t-1}$ and some encoder hidden state $h_i$ together, pass them through a learnable function, and output a relevance score.
+
+Then, apply softmax to the scores of all source-sentence positions to obtain attention weights:
+
+$$
+\alpha_{t,i} = \frac{\exp(e_{t,i})}{\sum_{j=1}^{T_x} \exp(e_{t,j})}
+$$
+
+Finally, the model uses these weights to take the weighted sum of all encoder hidden states and obtains the context vector at the current moment:
+
+$$
+c_t = \sum_{i=1}^{T_x} \alpha_{t,i} h_i
+$$
+
+So, the computation process of Bahdanau attention can be summarized into three steps:
+
+1. Use the current decoding state and each encoder hidden state to compute relevance scores.
+2. Apply softmax to these scores to obtain attention weights.
+3. Use the attention weights to take the weighted sum of encoder hidden states and obtain the context vector at the current moment.
+
+This process is essentially a dynamic information retrieval. The current decoding state raises a need, all hidden states of the encoder serve as candidate information, attention assigns weights according to relevance, and then aggregates the most relevant information back.
+
+## 9.1.4 Why Is It Called Soft Alignment?
+
+Bahdanau attention was first proposed in machine translation. In machine translation, there is a very natural problem: a certain word in the target language usually corresponds to a certain word or several words in the source language. For example, when translating an English sentence into Chinese, when generating a certain Chinese word, the model may mainly refer to several words in the English sentence. In traditional machine translation, this kind of correspondence is usually called alignment.
+
+The attention weight $\alpha_{t,i}$ can exactly be regarded as a kind of alignment relation.
+
+For the $t$-th position of the target sentence, $\alpha_{t,i}$ represents the degree of association between it and the $i$-th position of the source sentence. If we draw all $\alpha_{t,i}$ as a matrix, we will get something similar to an alignment map: each row corresponds to a target word, each column corresponds to a source word, and the darker the color, the larger the attention weight.
+
+But this alignment is not hard. Hard alignment would say that the current target word only corresponds to one position in the source sentence. For example, the 3rd target word only aligns with the 5th source word. What Bahdanau attention does is soft alignment. It does not force the model to choose only one position, but allows the model to assign continuous weights to multiple source positions:
+
+$$
+\alpha_{t,1}, \alpha_{t,2}, \dots, \alpha_{t,T_x}
+$$
+
+These weights sum to 1, but every position can have some contribution. In other words, the current target word can mainly refer to one source word, while also slightly referring to other related positions. This is the meaning of "soft".
+
+The benefit of soft alignment is that it is continuous and differentiable. The model does not need extra annotations telling it which word should align with which word, and it does not need to first train an independent alignment model. It can automatically learn this alignment relation through backpropagation during training on the translation task.
+
+In other words, the model does not first learn alignment and then learn translation; instead, while learning translation, it also learns where it should look when generating the current word. This is also the meaning of "jointly learning to align and translate" in the title of the Bahdanau paper: alignment and translation are learned together.
+
+## 9.1.5 What Did Bahdanau Attention Change?
+
+Bahdanau attention is not simply adding a small module to seq2seq. What it changes is the way information is passed between the encoder and decoder.
+
+In traditional seq2seq, there is only one fixed-length channel between the encoder and decoder. The encoder must compress all input information into one vector, and the decoder can only rely on this vector afterward to generate the complete output.
+
+After adding attention, the communication between the encoder and decoder becomes more flexible. The encoder keeps the hidden state of each position, and the decoder can re-check these hidden states at each generation moment and dynamically aggregate information according to the current need.
+
+Therefore, attention brings at least three important changes.
+
+First, it alleviates the information bottleneck of the fixed-length vector. The information of the source sentence is no longer only passed to the decoder through the last hidden state, but is jointly provided through all encoder hidden states. Second, it makes the context vector something that can be dynamically retrieved. Different target words can correspond to different $c_t$, and the model can attend to different parts of the source sentence when generating different words. Finally, it provides an interpretable intermediate structure. Although attention weights should not simply be equated with a complete explanation, in the machine translation scenario, they can indeed show which positions in the source sentence the model pays more attention to when generating a certain target word.
+
+From this perspective, the core of attention is not a certain specific formula, but an idea:
+
+> **Do not compress all information into a fixed representation in advance, but retrieve information dynamically according to the current task when it is needed.**
+
+This idea was later continuously generalized. At first, it was mainly used in the encoder-decoder architecture of RNN seq2seq; later, it developed into a more general query, key, value form; later still, Self-Attention further applied this dynamic information retrieval mechanism inside the same sequence, and finally became the core component of Transformer.
+
+## 9.1.6 The Relationship Between Bahdanau Attention and Modern Attention
+
+From today's perspective, Bahdanau attention can be understood as an early version of modern attention.
+
+In modern attention, we often use the three concepts query, key, and value: query represents what is currently being searched for, key represents what each candidate uses for matching, and value represents the information that is actually retrieved.
+
+If we look back at Bahdanau attention from this perspective, then the decoder hidden state $s_{t-1}$ is similar to the query, and the encoder hidden state $h_i$ plays the roles of both key and value at the same time.
+
+It is like a key because the model uses $h_i$ and $s_{t-1}$ to compute the relevance score:
+
+$$
+e_{t,i} = a(s_{t-1}, h_i)
+$$
+
+It is also like a value because what is finally weighted and summed, and what is actually passed to the decoder, is also these $h_i$:
+
+$$
+c_t = \sum_{i=1}^{T_x} \alpha_{t,i} h_i
+$$
+
+That is to say, in Bahdanau attention, the information used for matching and the information retrieved have not yet been clearly separated. In later modern attention, the model usually explicitly obtains $Q$, $K$, and $V$ through different linear transformations, so that "what is used for matching" and "what content is retrieved" become two representation spaces that can be learned separately. However, the core idea has not changed: the model first computes relevance according to the current need and candidate information, and then uses relevance weights to perform weighted aggregation of information.
+
+This is also why Bahdanau attention is very suitable as the starting point for understanding Transformer. It lets us first see clearly, in a concrete seq2seq translation scenario, what problem attention is trying to solve: fixed-length representation is too rigid, and the generation process needs to dynamically look back at the input.
+
+Once this point is understood, the later cross-attention, self-attention, and multi-head attention will not seem so sudden. They are essentially all answering the same question:
+
+> **When the model processes one position, how should it dynamically find the currently most relevant part from a set of candidate information?**
+
+## 9.1.7 Summary
+
+This section started from the fixed-length context vector of traditional seq2seq and introduced the core idea of Bahdanau attention.
+
+Traditional seq2seq compresses the whole source sentence into a fixed vector. This causes an information bottleneck and also makes the decoder lack the ability to dynamically choose information when generating different target words. Bahdanau attention chooses to keep the hidden states of all time steps of the encoder, lets the decoder recalculate attention weights at every generation moment, and obtains a context vector dedicated to the current moment according to these weights.
+
+Intuitively, attention is dynamically deciding where to look during generation. From the perspective of machine translation, it can also be understood as a kind of soft alignment: the model no longer hard-selects one source word, but assigns continuous weights to all source positions, and automatically learns this alignment relation through end-to-end training.
+
+The focus of this section is not to memorize a specific scoring function, but to understand the problem attention solves and the changes it brings. It makes the model move from compressing the input into one representation at once to dynamically retrieving relevant information when needed. In the next section, we will further abstract this idea into a more modern form, discuss cross-attention and self-attention, and formally introduce the representation system of query, key, and value.

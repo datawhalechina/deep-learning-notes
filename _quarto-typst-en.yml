@@ -4,7 +4,7 @@ project:
   render:
     - "*.qmd"
   post-render:
-    - "utils/rename_pdf.py"
+    - "utils/rename_pdfs.py"
 
 execute:
   enabled: false
@@ -65,19 +65,19 @@ book:
         - "en/ch4-optimization-algorithms/ch4.7-muon.qmd"
         - "en/ch4-optimization-algorithms/ch4.8-optimizer-practice.qmd"
         - "en/ch4-optimization-algorithms/ch4.9-learning-rate-schedulers.qmd"
-    - part: "Chapter 8: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
+    - part: "Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
       chapters:
-        - "en/ch8-attention-and-transformer/ch8.1-bahdanau-attention.qmd"
-        - "en/ch8-attention-and-transformer/ch8.2-cross-attention.qmd"
-        - "en/ch8-attention-and-transformer/ch8.3-self-attention.qmd"
-        - "en/ch8-attention-and-transformer/ch8.4-multi-head-attention.qmd"
-        - "en/ch8-attention-and-transformer/ch8.5-positional-encoding.qmd"
-        - "en/ch8-attention-and-transformer/ch8.6-transformer-encoder.qmd"
-        - "en/ch8-attention-and-transformer/ch8.7-transformer-decoder.qmd"
-        - "en/ch8-attention-and-transformer/ch8.8-encoder-decoder-transformer.qmd"
-        - "en/ch8-attention-and-transformer/ch8.9-kv-cache.qmd"
-        - "en/ch8-attention-and-transformer/ch8.10-transformer-architectures.qmd"
-        - "en/ch8-attention-and-transformer/ch8.11-hugging-face-transformers-api.qmd"
+        - "en/ch9-attention-and-transformer/ch9.1-bahdanau-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.2-cross-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.3-self-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.4-multi-head-attention.qmd"
+        - "en/ch9-attention-and-transformer/ch9.5-positional-encoding.qmd"
+        - "en/ch9-attention-and-transformer/ch9.6-transformer-encoder.qmd"
+        - "en/ch9-attention-and-transformer/ch9.7-transformer-decoder.qmd"
+        - "en/ch9-attention-and-transformer/ch9.8-encoder-decoder-transformer.qmd"
+        - "en/ch9-attention-and-transformer/ch9.9-kv-cache.qmd"
+        - "en/ch9-attention-and-transformer/ch9.10-transformer-architectures.qmd"
+        - "en/ch9-attention-and-transformer/ch9.11-hugging-face-transformers-api.qmd"
     - part: "Chapter 10: Efficient Attention Implementations: From Memory-Efficient Attention to FlashAttention"
       chapters:
         - "en/ch10-efficient-attention/ch10.1-attention-is-io-bound.qmd"
@@ -89,9 +89,6 @@ book:
         - "en/ch11-vision-transformers/ch11.3-positional-embedding.qmd"
         - "en/ch11-vision-transformers/ch11.4-vit-encoder.qmd"
         - "en/ch11-vision-transformers/ch11.5-vit-as-backbone.qmd"
-    - part: "Chapter 12: GAN: Learning to Generate through Adversarial Training"
-      chapters:
-        - "en/ch12-generative-adversarial-networks/ch12.1-gan-basics.qmd"
     - part: "Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation"
       chapters:
         - "en/ch13-autoencoders-and-vaes/ch13.1-autoencoder.qmd"
@@ -106,6 +103,3 @@ book:
         - "en/ch14-diffusion-models/ch14.3-ddpm-reverse.qmd"
         - "en/ch14-diffusion-models/ch14.4-ddpm-design-and-sampling.qmd"
         - "en/ch14-diffusion-models/ch14.5-elbo-for-ddpm.qmd"
-    - part: "Chapter 15: Vision-Language Models: From Image-Text Alignment to Multimodal Dialogue"
-      chapters:
-        - "en/ch15-vision-language-models/ch15.1-clip.qmd"

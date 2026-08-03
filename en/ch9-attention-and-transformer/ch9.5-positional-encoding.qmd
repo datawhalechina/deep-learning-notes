@@ -1,0 +1,307 @@
+---
+author: jshn9515
+date: 2026-04-09
+date-modified: 2026-05-04
+open-graph:
+  title: ch9.5-positional-encoding
+  description: "9.5 Positional Encoding: Adding Positional Information to Attention"
+title: "9.5 Positional Encoding: Adding Positional Information to Attention"
+order: 5
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch9-attention-and-transformer/ch9.5-positional-encoding.ipynb){fig-align="left"}
+
+In the previous section on self-attention, we saw that each token can directly build connections with all tokens in the sequence. Compared with RNNs, which can only pass information step by step, the advantage of self-attention is that it can be computed in parallel and can more easily capture long-range dependencies. But self-attention also has one very important problem: **by itself, it does not know the order of tokens.**
+
+In other words, if we only feed a set of token embeddings into self-attention, what attention sees is just a pile of vectors, not an ordered sentence. It can compute similarities between tokens and decide which token to attend to, but it cannot naturally distinguish whether a token appears in the first position or the fifth position.
+
+For example, consider the following two sentences:
+
+```text
+1. dog bites man
+2. man bites dog
+```
+
+These two sentences contain exactly the same words, but their order is different, and their meanings are also completely different. If the model only knows which words appear, but does not know the order in which they appear, it will be hard to judge the real meaning of these two sentences.
+
+This is the problem that positional encoding is meant to solve.
+
+```{python}
+import dnnlpy.nn as dnn
+import torch
+import torch.nn as nn
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 9.5.1 Why Attention Needs Positional Information
+
+Suppose the input sequence is:
+
+$$
+x_1, x_2, x_3, \dots, x_n
+$$
+
+In self-attention, each position generates its own query, key, and value:
+
+$$
+Q = XW_Q,\quad K = XW_K,\quad V = XW_V
+$$
+
+Then scaled dot-product attention is computed as:
+
+$$
+\operatorname{Attention}(Q, K, V) = \operatorname{softmax} \left(\frac{QK^\top}{\sqrt{d_k}} \right)V
+$$
+
+This computation process itself does not explicitly use position indices. It only cares about the matching degree between token vectors.
+
+If positional encoding is not added, then even if we shuffle the order of the input tokens, as long as the corresponding token embeddings are shuffled together, self-attention can still compute normally. More precisely, self-attention without positional encoding is **permutation equivariant** with respect to the input order. If the input order changes, the output order changes in the same way. When dog appears in position 1 and position 3, its token embedding itself is the same. Without an extra position embedding, what self-attention sees is still just the same dog, not dog at position 1 or dog at position 3.
+
+This is very different from RNNs. An RNN reads tokens one by one according to time steps. The first token participates in the computation first, the second token participates later, and the hidden state is continuously passed along the sequence direction. Therefore, order information is naturally reflected in the computation path. Even without adding an extra positional encoding, an RNN can distinguish “seeing dog before man” from “seeing man before dog”.
+
+However, it is exactly this sequential recursive computation that makes RNN training extremely slow. The reason Transformer can be efficiently parallelized is precisely that it no longer computes recursively in sequence order. This brings parallelism, but it also makes the model lose order information. So, if we want Transformer to understand sequences, we must additionally tell it which position this token is in.
+
+This is the core role of positional encoding.
+
+## 9.5.2 The Most Direct Method: Give Each Position a Vector
+
+Since token embedding represents what this token is, we can also give each position an embedding to represent where this token is.
+
+Suppose the word vector of the $i$-th token is $x_i$, and the positional vector of the $i$-th position is $p_i$. Before feeding them into Transformer, we can add them together:
+
+$$
+z_i = x_i + p_i
+$$
+
+It can also be written in matrix form:
+
+$$
+Z = X + P
+$$
+
+Here, $X$ is the token embedding, and $P$ is the positional embedding.
+
+In this way, what the model receives is no longer only the information of the token itself, but a combination of token information and positional information. For example:
+
+$$
+\mathrm{embedding}(\mathrm{dog}) + \mathrm{position}(1)
+$$
+
+and
+
+$$
+\mathrm{embedding}(\mathrm{dog}) + \mathrm{position}(3)
+$$
+
+will become two different representations. Even if they correspond to the same word, as long as they appear in different positions, the vectors fed into Transformer are also different.
+
+This step is very important. Because the later $Q$, $K$, and $V$ are all obtained by applying linear transformations to the input vectors:
+
+$$
+q_i = z_i W_Q,\quad k_i = z_i W_K,\quad v_i = z_i W_V
+$$
+
+So once $z_i$ contains positional information, attention also has the opportunity to use positional information when computing matching relationships.
+
+## 9.5.3 Why Addition Instead of Concatenation?
+
+At this point, you may have a question: since token embedding and positional encoding are two different kinds of information, why do we usually add them together instead of concatenating them?
+
+For example, why not use:
+
+$$
+z_i = [x_i; p_i]
+$$
+
+but instead use:
+
+$$
+z_i = x_i + p_i
+$$
+
+One intuitive explanation is:
+
+> **Addition lets token information and positional information live in the same representation space.**
+
+The later layers of Transformer do not separately process word information and positional information. What they see is just a vector. Therefore, adding the two is equivalent to adding a position-related offset to the original token representation, so that the same token has slightly different representations at different positions. According to the distributive property of multiplication, the linear transformation will act on both token information and positional information:
+
+$$
+q_i = (x_i + p_i) W_Q = x_i W_Q + p_i W_Q
+$$
+
+In this way, the model can naturally use positional information in the attention computation.
+
+This also has an engineering advantage: addition does not change the vector dimension. If the dimension of the token embedding is $d_\mathrm{model}$, and the dimension of the positional encoding is also set to $d_\mathrm{model}$, then the result after addition is still $d_\mathrm{model}$. If concatenation is used, the dimension becomes $2d_\mathrm{model}$, and all the following linear layers have to be changed accordingly. This is certainly possible, but it makes the model structure more complicated.
+
+So addition is not the only choice, but it is a simple, effective, and convenient design.
+
+## 9.5.4 Sinusoidal Positional Encoding
+
+In the original Transformer paper, the authors used a fixed sinusoidal positional encoding. It is not learned through training, but directly generated from a formula.
+
+For position $pos$ and dimension $i$, positional encoding is defined as:
+
+$$
+\begin{align*}
+PE_{(pos, 2i)} &= \sin \left(\frac{pos}{10000^{2i / d_\mathrm{model}}} \right) \\
+PE_{(pos, 2i+1)} &= \cos \left(\frac{pos}{10000^{2i / d_\mathrm{model}}} \right)
+\end{align*}
+$$
+
+This formula looks a little complicated, but the core idea is actually very simple:
+
+> **Use sine and cosine functions with different frequencies to represent different positions.**
+
+Even dimensions use sine, and odd dimensions use cosine. Different dimensions correspond to different wavelengths. Some dimensions change quickly, while some dimensions change slowly. In this way, each position gets a unique vector representation.
+
+For example, earlier positions and later positions correspond to different sine and cosine values, and the encoding between adjacent positions also changes continuously. The model can use these changes to sense the absolute position of a token, and it can also learn relative positional patterns through the relationships between positional encodings.
+
+More intuitively, sinusoidal positional encoding assigns a coordinate to each position in the sequence. This coordinate is not a simple integer, but a high-dimensional vector. Transformer does not directly know that this is the 5th token, but it can know through this positional vector how this token is related to other tokens in terms of position.
+
+Next, let's implement sinusoidal positional encoding with PyTorch:
+
+```{python}
+class SinusoidalPositionalEncoding(nn.Module):
+    """Sinusoidal Positional Encoding used in the original Transformer paper."""
+
+    pos_embed: Tensor
+
+    def __init__(self, embed_dim: int, max_len: int = 5000):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.max_len = max_len
+
+        pos = torch.arange(max_len).unsqueeze(1)
+        exp_term = torch.arange(0, embed_dim, 2) / embed_dim
+        div_term = torch.pow(10000.0, exp_term)
+
+        pos_embed = torch.zeros(max_len, embed_dim)
+        pos_embed[:, 0::2] = torch.sin(pos / div_term)
+        pos_embed[:, 1::2] = torch.cos(pos / div_term[: pos_embed[:, 1::2].size(1)])
+
+        # Add a batch dimension for broadcasting
+        self.register_buffer('pos_embed', pos_embed.unsqueeze(0))
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.size(1) > self.max_len:
+            raise AssertionError(f'Sequence length {x.size(1)} exceeds {self.max_len}.')
+
+        seq_len = x.size(1)
+        x = x + self.pos_embed[:, :seq_len]
+        return x
+
+
+x = torch.zeros(2, 32, 512)  # (batch_size, seq_len, d_model)
+pos_encoder = SinusoidalPositionalEncoding(embed_dim=512)
+output = pos_encoder(x)
+print('Output shape:', output.shape)
+```
+
+There is one detail here:
+
+```python
+self.register_buffer('pe', pe.unsqueeze(0))
+```
+
+We did not define `pe` as an `nn.Parameter`, because sinusoidal positional encoding is not a trainable parameter. It does not need to be updated by the optimizer, but it should still be saved and loaded together with the model, and it should automatically move to the corresponding device when `.to(device)` is called. So here we use `register_buffer`.
+
+## 9.5.5 Learnable Positional Encoding
+
+Besides fixed sinusoidal positional encoding, there is also a more direct method: treat positions as a kind of embedding and let the model learn them by itself.
+
+In this case, we define a positional embedding matrix:
+
+$$
+P \in \mathbb{R}^{L \times d_\mathrm{model}}
+$$
+
+Here, $L$ is the maximum sequence length, and $d_\mathrm{model}$ is the embedding dimension. The $pos$-th row is the positional vector corresponding to position $pos$.
+
+Then, as before, we add the token embedding and the position embedding together:
+
+$$
+z_i = x_i + p_i
+$$
+
+This method is very intuitive: since word vectors can be learned through training, positional vectors can also be learned through training.
+
+Many modern models use learnable positional embeddings. Their advantage is flexibility: the model can learn by itself what kind of positional information is most useful for the task. The disadvantage is that they usually depend on a preset maximum length. If the model only learns positions up to $L$ during training, then when it sees a longer sequence during inference, it may not naturally generalize.
+
+In contrast, sinusoidal positional encoding is generated by a formula, so in theory it can be extended to longer positions. However, in actual models, long-context generalization is also affected by many other factors, so we cannot judge it only by the positional encoding.
+
+Similarly, learnable positional embeddings are also easy to implement:
+
+```{python}
+class LearnablePositionalEmbedding(nn.Module):
+    """Learnable Positional Embedding used in many modern Transformer models."""
+
+    def __init__(self, embed_dim: int, max_len: int = 5000):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.max_len = max_len
+        self.embed = dnn.Embedding(max_len, embed_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.size(1) > self.max_len:
+            raise AssertionError(f'Sequence length {x.size(1)} exceeds {self.max_len}.')
+
+        seq_len = x.size(1)
+        pos = torch.arange(seq_len, device=x.device)
+        pos_emb = self.embed(pos)
+        x = x + pos_emb.unsqueeze(0)
+        return x
+
+
+x = torch.zeros(2, 32, 512)  # (batch_size, seq_len, d_model)
+pos_encoder = LearnablePositionalEmbedding(embed_dim=512)
+output = pos_encoder(x)
+print('Output shape:', output.shape)
+```
+
+The difference from sinusoidal positional encoding is that the positional vectors here are model parameters and will be updated together during training.
+
+## 9.5.6 Where Positional Encoding Is Added
+
+In the standard Transformer structure, positional encoding is usually added to the initial token embeddings:
+
+$$
+Z = \mathrm{TokenEmbedding}(X) + \mathrm{PositionalEncoding}
+$$
+
+Then this $Z$ is fed into the Transformer blocks.
+
+That is, positional encoding is not added separately inside each attention layer. Instead, positional information is injected at the input stage first. Every later self-attention layer and feed-forward network continues computing based on this representation that already contains positional information.
+
+The complete process can be written simply as:
+
+$$
+X
+\rightarrow
+\text{Token Embedding}
+\rightarrow
++\ \text{Positional Encoding}
+\rightarrow
+\text{Transformer Blocks}
+$$
+
+The effect of doing this is that from the first layer onward, the model can see both token content and token position.
+
+Of course, later Transformer variants introduced many different ways of modeling position, such as relative positional encoding, RoPE, ALiBi, and so on. They are not necessarily all simple additions of positional vectors to the input embeddings. Some directly modify the computation of attention scores. But in this section, we first understand the most basic method: adding positional information to the input.
+
+## 9.5.7 Summary
+
+In this section, we solved a core problem of self-attention: it has no natural sense of order by itself.
+
+RNNs naturally contain order information through recursive computation over time steps. Transformer, in order to compute in parallel, gives up this recursive structure. Therefore, Transformer needs to additionally add positional encoding so that the model knows where each token is in the sequence.
+
+The most common method is to add token embedding and positional encoding together:
+
+$$
+z_i = x_i + p_i
+$$
+
+In this way, the same token gets different input representations when it appears in different positions. When $Q$, $K$, and $V$ are later generated, positional information is also carried into the attention computation.
+
+At this point, several key components of Transformer have gradually come together: self-attention lets tokens exchange information with one another, multi-head attention lets the model model relationships in multiple representation spaces in parallel, and positional encoding adds sequence order. In the next section, we will combine these components and look at what a complete Transformer Encoder looks like.
