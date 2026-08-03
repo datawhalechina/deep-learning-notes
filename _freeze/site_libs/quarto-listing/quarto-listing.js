@@ -58,13 +58,13 @@ window["quarto-listing-loaded"] = () => {
 window.document.addEventListener("DOMContentLoaded", function (_event) {
   // Attach click handlers to categories
   const categoryEls = window.document.querySelectorAll(
-    ".quarto-listing-category .category",
+    ".quarto-listing-category .category"
   );
 
   for (const categoryEl of categoryEls) {
     // category needs to support non ASCII characters
     const category = decodeURIComponent(
-      atob(categoryEl.getAttribute("data-category")),
+      atob(categoryEl.getAttribute("data-category"))
     );
     categoryEl.onclick = () => {
       activateCategory(category);
@@ -75,7 +75,7 @@ window.document.addEventListener("DOMContentLoaded", function (_event) {
   // Attach a click handler to the category title
   // (there should be only one, but since it is a class name, handle N)
   const categoryTitleEls = window.document.querySelectorAll(
-    ".quarto-listing-category-title",
+    ".quarto-listing-category-title"
   );
   for (const categoryTitleEl of categoryTitleEls) {
     categoryTitleEl.onclick = () => {
@@ -118,7 +118,7 @@ function getListingPageKey(listingId) {
 function refreshPaginationHandlers(listingId) {
   const listingEl = window.document.getElementById(listingId);
   const paginationEls = listingEl.querySelectorAll(
-    ".pagination li.page-item:not(.disabled) .page.page-link",
+    ".pagination li.page-item:not(.disabled) .page.page-link"
   );
   for (const paginationEl of paginationEls) {
     paginationEl.onclick = (sender) => {
@@ -135,7 +135,7 @@ function renderVisibleProgressiveImages(list) {
     const itemEl = item.elm;
     if (itemEl) {
       const progressiveImgs = itemEl.querySelectorAll(
-        `img[${kProgressiveAttr}]`,
+        `img[${kProgressiveAttr}]`
       );
       for (const progressiveImg of progressiveImgs) {
         const srcValue = progressiveImg.getAttribute(kProgressiveAttr);
@@ -207,7 +207,7 @@ function showPage(listingId, page) {
 function activateCategory(category) {
   // Deactivate existing categories
   const activeEls = window.document.querySelectorAll(
-    ".quarto-listing-category .category.active",
+    ".quarto-listing-category .category.active"
   );
   for (const activeEl of activeEls) {
     activeEl.classList.remove("active");
@@ -216,8 +216,8 @@ function activateCategory(category) {
   // Activate this category
   const categoryEl = window.document.querySelector(
     `.quarto-listing-category .category[data-category='${btoa(
-      encodeURIComponent(category),
-    )}']`,
+      encodeURIComponent(category)
+    )}']`
   );
   if (categoryEl) {
     categoryEl.classList.add("active");
@@ -241,7 +241,7 @@ function filterListingCategory(category) {
           const itemValues = item.values();
           if (itemValues.categories !== null) {
             const categories = decodeURIComponent(
-              atob(itemValues.categories),
+              atob(itemValues.categories)
             ).split(",");
             return categories.includes(category);
           } else {
