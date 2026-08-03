@@ -85,9 +85,6 @@
 - 11.4 ViT Encoder：让 Patch Token 之间交换信息
 - 11.5 ViT Backbone：预训练与微调
 
-## Chapter 12: GAN：在对抗中学习生成
-
-
 ## Chapter 13: VAE：从压缩重建到概率生成
 
 - 13.1 AutoEncoder：从压缩与重建开始
@@ -103,9 +100,6 @@
 - 14.3 DDPM 的反向去噪过程与训练目标
 - 14.4 DDPM 的网络结构与采样过程
 - 14.5 从变分推导看 DDPM：ELBO 从哪里来
-
-## Chapter 15: 视觉语言模型：从图文对齐到多模态对话
-
 
 ## Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构
 

@@ -65,9 +65,6 @@
 - 11.4 ViT Encoder: Letting Patch Tokens Exchange Information
 - 11.5 ViT Backbone: Pretraining and Fine-Tuning
 
-## Chapter 12: GAN: Learning to Generate through Adversarial Training
-
-
 ## Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation
 
 - 13.1 AutoEncoder: Starting with Compression and Reconstruction
@@ -83,5 +80,3 @@
 - 14.3 DDPM's Reverse Denoising Process and Training Objective
 - 14.4 DDPM Network Structure and Sampling Process
 - 14.5 DDPM from a Variational Derivation: Where Does the ELBO Come From?
-
-## Chapter 15: Vision-Language Models: From Image-Text Alignment to Multimodal Dialogue
