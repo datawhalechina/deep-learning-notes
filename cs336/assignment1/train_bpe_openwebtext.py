@@ -11,8 +11,8 @@ import dnnlpy.tokenizers as dltk
 import psutil
 
 __all__ = [
-    'train_bpe_openwebtext',
     'profile_train_bpe_openwebtext',
+    'train_bpe_openwebtext',
 ]
 
 NUM_STORIES = 8013769

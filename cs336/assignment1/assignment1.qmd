@@ -7,6 +7,7 @@ open-graph:
   description: "CS336 Assignment 1 Writeup: Building a Transformer LM"
 title: "CS336 Assignment 1：从零实现一个小型语言模型"
 order: 1
+eval: false
 ---
 
 这一部分对应 CS336 Assignment 1：从零实现一个小型语言模型。
@@ -87,7 +88,7 @@ except UnicodeDecodeError as err:
 try:
     b'\xc3\x28'.decode('utf-8')
 except UnicodeDecodeError as err:
-     print('UnicodeDecodeError:', err)
+    print('UnicodeDecodeError:', err)
 ```
 
 ## 2.4 BPE Tokenizer Training
@@ -254,10 +255,10 @@ tokenizer = dltk.Tokenizer(
     decoder=dltk.ByteLevelDecoder(),
     num_workers=1,
 )
+tokenizer.add_special_tokens(['[UNK]', '[PAD]', '[CLS]', '[SEP]'])
 tokenizer.train_from_iterator(
     ['low lower lowest', 'newer wider'],
     vocab_size=300,
-    special_tokens=['[UNK]', '[PAD]', '[CLS]', '[SEP]'],
     initial_alphabet=dltk.ByteLevelPreTokenizer.alphabet(),
 )
 print('Vocab size:', tokenizer.vocab_size)
@@ -406,19 +407,6 @@ print('normalized.dtype:', normalized.dtype)
 
 ### Problem (rope)
 
-> **dnnlpy 状态：已在 dnnlpy.nn.RotaryPositionalEmbedding 中实现。**
-
-和 CS336 不同，`dnnlpy` 按需计算 sine 和 cosine，不预先缓存到 `max_seq_len`。因此，构造函数不需要 `max_seq_len` 参数。CS336 支持 `token_positions` 作为输入，允许指定任意 token 的位置；`dnnlpy` 只支持从零开始的连续位置，并且 `position_offset` 只能是单个整数，不能传入 tensor。
-
-```{python}
-rope = dnn.RotaryPositionalEmbedding(embed_dim=4, base=10000)
-
-x = torch.randn(2, 3, 4)
-rotated = rope(x, position_offset=5)
-
-print('rotated.shape:', rotated.shape)
-```
-
 ### Problem (softmax)
 
 > **dnnlpy 状态：已在 dnnlpy.nn.functional.softmax 中实现。**
@@ -457,14 +445,13 @@ print('weights.shape:', weights.shape)
 
 > **dnnlpy 状态：已在 dnnlpy.nn.MultiheadAttention 中实现。**
 
-`dnnlpy.nn.MultiheadAttention` 是通用的 attention module，而不是只接收单个输入的 self-attention 接口。Bias 默认开启，可使用 dropout，并返回 `(output, weights)`。启用 `use_rope=True` 时，RoPE 使用从零开始的连续位置，不能接收用户提供的 token-position tensor。同时，boolean mask 仍采用上一题所述的反向语义。
+`dnnlpy.nn.MultiheadAttention` 是通用的 attention module，而不是只接收单个输入的 self-attention 接口。Bias 默认开启，可使用 dropout，并返回 `(output, weights)`。同时，boolean mask 仍采用上一题所述的反向语义。
 
 ```{python}
 self_attn = dnn.MultiheadAttention(
     embed_dim=8,
     num_heads=2,
     bias=False,
-    use_rope=True,
 )
 
 x = torch.randn(2, 4, 8)

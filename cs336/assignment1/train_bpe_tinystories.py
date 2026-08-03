@@ -11,8 +11,8 @@ import dnnlpy.tokenizers as dltk
 import psutil
 
 __all__ = [
-    'train_bpe_tinystories',
     'profile_train_bpe_tinystories',
+    'train_bpe_tinystories',
 ]
 
 NUM_STORIES = 2119719
