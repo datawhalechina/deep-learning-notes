@@ -15,8 +15,8 @@ order: 6
 
 - `nn.Module` 负责组织模型参数和前向计算；
 - Loss function 负责把预测和目标变成一个标量损失；
-- Optimizer 负责根据梯度更新参数；
-- `state_dict` 负责保存模块和优化器的状态。
+- `optim.Optimizer` 负责根据梯度更新参数；
+- `model.state_dict` 负责保存模块和优化器的状态。
 
 但是，真正写实验代码时，我们不会每次都从零开始随手写一遍训练循环。因为训练代码里有很多固定动作：设置随机种子、选择设备、把数据搬到设备上、切换训练和评估模式、统计 loss 和 metric。这些操作本身不复杂，但如果没有一个固定的模板，后面就很容易出错。
 
@@ -73,7 +73,7 @@ optimizer.step()
 
 - 模型参数的随机初始化；
 - 数据集的随机划分；
-- `DataLoader` 的随机打乱；
+- DataLoader 的随机打乱；
 - Dropout 等随机层；
 - 某些底层算子的非确定性实现。
 
@@ -83,18 +83,22 @@ optimizer.step()
 
 ```{python}
 def set_seed(
-    seed: int = 42,
+    seed: int | None = None,
     *,
-    deterministic: bool = True,
+    deterministic: bool = False,
     benchmark: bool = False,
     warn_only: bool = True,
 ) -> torch.Generator:
+    """Seed Python, NumPy, and PyTorch random number generators."""
     random.seed(seed)
     np.random.seed(seed)
-    torch_rng = torch.manual_seed(seed)
+
+    if seed is not None:
+        torch_rng = torch.manual_seed(seed)
+    else:
+        torch_rng = torch.default_generator
 
     torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
-    # These two lines will explain in the future chapter
     torch.backends.cudnn.deterministic = deterministic
     torch.backends.cudnn.benchmark = benchmark
 
@@ -106,10 +110,10 @@ def set_seed(
 这一行：
 
 ```python
-torch.use_deterministic_algorithms(True, warn_only=True)
+torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
 ```
 
-表示尽量使用确定性算法。这里设置 `warn_only=True`，是因为某些操作可能没有确定性实现。对于教学代码，我们用 warning 提醒我们就够了。如果需要严格确保确定性，可以把 `warn_only` 设置为 False，这样一旦遇到非确定性操作就直接报错。
+表示尽量使用确定性算法。这里设置 `warn_only`，是因为某些操作可能没有确定性实现。对于教学代码，我们用 warning 提醒我们就够了。如果需要严格确保确定性，可以把 `warn_only` 设置为 False，这样一旦遇到非确定性操作就直接报错。
 
 不过要注意，固定随机种子并不意味着所有环境下结果都能完全一模一样。不同硬件、不同 PyTorch 版本、不同底层库，都可能带来细微差异。所以更准确地说，固定随机种子是为了让实验**尽量可复现**，而不是保证数学意义上的完全相同。
 
@@ -123,7 +127,7 @@ torch_rng = set_seed(42)
 
 以前很多 PyTorch 教程会这样选择设备：
 
-```{python}
+```python
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ```
 
@@ -180,7 +184,7 @@ val_dl = utils.DataLoader(val_ds, batch_size=128, shuffle=False)
 这里有一个小细节：
 
 ```python
-generator=torch.Generator().manual_seed(42)
+generator = torch.Generator().manual_seed(42)
 ```
 
 `random_split` 本身也有随机性。虽然我们前面已经用 `torch.manual_seed()` 固定了全局随机种子，但它依赖全局 RNG 当前走到了哪里。为了让数据划分不受前面模型初始化、随机张量、数据增强等操作影响，我们给它单独传入了一个 `Generator`。
@@ -306,7 +310,7 @@ optimizer.step()
 total_loss += loss.item()
 ```
 
-这里，我们对 `total_loss` 的计算按 batch 进行了简单平均。注意，这样是不太严谨的。因为最后一个 batch 的样本数可能和前面不一样。比如，我有 100 个训练样本，batch size 是 32，那么前面两个 batch 是 32 个样本，最后一个 batch 只有 4 个样本。这样直接平均就会有一点误差。更严谨的做法是把每个 batch 的 loss 乘以当前 batch 的样本数，累积到 `total_loss` 里，最后再除以总样本数，或者在使用 DataLoader 加载数据集时设置 `drop_last=True`。但是，这里我们就先采用简单平均的方式，保持代码简洁。
+这里我们对 `total_loss` 的计算按 batch 进行了简单平均。这样是不太严谨的，因为最后一个 batch 的样本数可能和前面不一样。比如，我有 100 个训练样本，batch size 是 32，那么前面两个 batch 是 32 个样本，最后一个 batch 只有 4 个样本。这样直接平均就会有一点误差。更严谨的做法是把每个 batch 的 loss 乘以当前 batch 的样本数，累积到 `total_loss` 里，最后再除以总样本数，或者在使用 DataLoader 加载数据集时设置 `drop_last=True`。但是，这里我们就先采用简单平均的方式，保持代码简洁。
 
 ## 2.6.7 单轮验证：evaluate
 
@@ -402,14 +406,7 @@ def train_and_evaluate(
         )
 ```
 
-这里我给训练和验证分别传入了两个 metric：
-
-```python
-train_metric: Metric
-val_metric: Metric
-```
-
-这是因为 metric 有自己的内部状态。虽然我们每次都会调用 `reset()`，但训练和验证本来就是两段不同的统计过程，把它们分开会更清晰。
+这里我们给训练和验证分别传入了两个 metric。这是因为 metric 有自己的内部状态。虽然我们每次都会调用 `reset()`，但训练和验证本来就是两段不同的统计过程，把它们分开会更清晰。
 
 现在运行一下完整模板：
 

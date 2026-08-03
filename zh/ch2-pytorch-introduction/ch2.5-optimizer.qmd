@@ -25,11 +25,7 @@ $$
 
 如果不用优化器，我们其实也可以手动更新参数：
 
-```{python}
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
+```python
 x = torch.randn(8, 3)
 y = torch.randn(8, 1)
 
@@ -140,10 +136,10 @@ optimizer.step()
 
 after = model.weight.detach().clone()
 
-flag = before.allclose(after)
-max_err = (before - after).abs().max().item()
+flag = torch.allclose(before, after)
+max_diff = (before - after).abs().max().item()
 print('Is the parameter unchanged?', flag)
-print('Max absolute difference:', max_err)
+print('Max absolute difference:', max_diff)
 ```
 
 这说明参数确实被优化器修改了。
@@ -157,11 +153,11 @@ print('Max absolute difference:', max_err)
 ```{python}
 w = torch.tensor([1.0], requires_grad=True)
 
-loss1 = w ** 2
+loss1 = w.pow(2)
 loss1.backward()
 print('After first backward:', w.grad)
 
-loss2 = w ** 2
+loss2 = w.pow(2)
 loss2.backward()
 print('After second backward:', w.grad)
 ```
@@ -222,6 +218,7 @@ flag1 = model.weight.grad is None
 print('Whether grad is None before zero_grad?', flag1)
 
 optimizer.zero_grad(set_to_none=True)
+
 flag2 = model.weight.grad is None
 print('Whether grad is None after zero_grad?', flag2)
 ```
@@ -294,9 +291,7 @@ optimizer = optim.SGD(
 
 for i, group in enumerate(optimizer.param_groups):
     print(
-        f'Parameter group {i}: '
-        f'learning rate = {group["lr"]}, '
-        f'weight decay = {group["weight_decay"]}'
+        f'Parameter group {i}: lr={group["lr"]}, weight_decay={group["weight_decay"]}'
     )
 ```
 
@@ -335,8 +330,8 @@ optimizer = optim.SGD(split_weight_decay_params(model), lr=1e-3)
 for i, group in enumerate(optimizer.param_groups):
     print(
         f'Parameter group {i}: '
-        f'weight decay = {group["weight_decay"]}, '
-        f'number of params = {len(group["params"])}'
+        f'weight_decay={group["weight_decay"]}, '
+        f'n_params={len(group["params"])}'
     )
 ```
 
@@ -459,16 +454,13 @@ for param in params:
 
 `foreach` 的思路是：不要一个张量一个张量地更新，而是把很多张量作为一个列表，一起交给底层实现处理。它通常比普通 for-loop 更快，尤其是在 GPU 上有很多参数张量时。但 `foreach` 也不是完全免费的，因为它经常需要保存中间的张量列表，所以峰值显存可能会更高。
 
-`fused` 则更进一步。它希望把优化器更新里的多个操作融合起来，减少 kernel 的反复启动和中间读写。直观地说，foreach 更像是一次处理很多张量，而 fused 更像是把一次更新里的多个操作合并执行。
-
-因此，在支持良好的 CUDA 场景下，`fused=True` 可能更快。但它对设备、数据类型和优化器实现的支持要求更高。
+`fused` 则更进一步。它希望把优化器更新里的多个操作融合起来，减少 kernel 的反复启动和中间读写。直观地说，foreach 更像是一次处理很多张量，而 fused 更像是把一次更新里的多个操作合并执行。因此，在较新版本的 CUDA 场景下，`fused=True` 可能更快。但它对设备、数据类型和优化器实现的支持要求更高。
 
 我们可以先把它们理解为三种执行方式：
 
 1. for-loop：最朴素，兼容性最好；
 2. foreach：通常更快，但可能多占显存；
 3. fused：更激进，可能最快，但支持范围更有限。
-
 
 实际使用时，如果没有特别需求，通常可以先让 PyTorch 使用默认选择。只有当你在优化大模型训练性能、显存或遇到兼容性问题时，才需要手动指定 `foreach` 或 `fused`。
 
@@ -486,7 +478,6 @@ optimizer = optim.AdamW(
     foreach=False,
     fused=False,
 )
-
 print(optimizer)
 ```
 
@@ -499,17 +490,13 @@ with torch.no_grad():
     param -= lr * param.grad
 ```
 
-这是因为普通训练中，参数更新本身通常不需要被 Autograd 记录。
-
-换句话说，我们一般只关心 `loss` 如何对参数求梯度，而不关心 `optimizer.step()` 这个更新过程本身如何再被求导。
+这是因为普通训练中，参数更新本身通常不需要被 Autograd 记录。换句话说，我们一般只关心 `loss` 如何对参数求梯度，而不关心 `optimizer.step()` 这个更新过程本身如何再被求导。
 
 PyTorch 的优化器也是这个默认逻辑。`optimizer.step()` 默认会在不记录梯度的上下文里更新参数。
 
-这对普通训练是合理的，因为如果每一步参数更新都被记录进计算图，显存会迅速增长，训练也会变得复杂。但是，有些更高级的场景确实需要对优化过程求导。例如元学习，可微分优化，学习学习率，或者把若干步梯度更新当成计算图的一部分。
+这对普通训练是合理的，因为如果每一步参数更新都被记录进计算图，显存会迅速增长，训练也会变得复杂。但是，有些更高级的场景确实需要对优化过程求导。例如元学习，可微分优化，学习学习率，或者把若干步梯度更新当成计算图的一部分。这时就需要让优化器的更新过程也参与 Autograd。
 
-这时需要让优化器的更新过程也参与 Autograd。PyTorch 优化器里对应的参数叫 `differentiable`。设置为 `True` 后，优化器的 step 过程就会被追踪，允许我们对更新后的参数继续求导。
-
-例如：
+PyTorch 优化器里对应的参数叫 `differentiable`。设置为 `True` 后，优化器的 step 过程就会被追踪，允许我们对更新后的参数继续求导。例如：
 
 ```{python}
 model = nn.Linear(3, 1)

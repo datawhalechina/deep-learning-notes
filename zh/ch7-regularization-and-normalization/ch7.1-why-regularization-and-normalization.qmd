@@ -9,6 +9,8 @@ title: "7.1 为什么深层网络需要正则化与归一化"
 order: 1
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.1-why-regularization-and-normalization.ipynb){fig-align="left"}
+
 随着神经网络变得更深、参数量变得更大，模型通常会获得更强的表达能力。它可以拟合更复杂的函数，学习更丰富的特征，也更有可能在训练数据上取得很低的误差。但模型变强以后，训练并不会自动变得更容易。相反，我们经常会遇到两类不同的问题。
 
 第一类问题是，模型在训练集上表现很好，在没有见过的数据上却表现不佳。模型可能记住了训练样本中的偶然模式和噪声，却没有学到真正能够泛化的规律。这就是**过拟合（overfitting）**。

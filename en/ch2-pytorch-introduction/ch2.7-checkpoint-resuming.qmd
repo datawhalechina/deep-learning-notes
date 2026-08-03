@@ -223,7 +223,7 @@ There are two small details here.
 The first is:
 
 ```python
-map_location=device
+map_location = device
 ```
 
 Its role is to load tensors in the checkpoint onto the current device. For example, the checkpoint may have been saved on a GPU, but the current machine only has a CPU. `map_location` can avoid device mismatch problems.
@@ -231,7 +231,7 @@ Its role is to load tensors in the checkpoint onto the current device. For examp
 The second is:
 
 ```python
-weights_only=True
+weights_only = True
 ```
 
 Newer versions of PyTorch recommend using `weights_only=True` when loading checkpoints that only contain tensors and simple Python objects. This can reduce security risks from pickle deserialization. Our checkpoint only saves model state, optimizer state, epoch, and history, so this setting can be used. If a checkpoint stores custom class objects, `weights_only=True` may not be able to load it. This is also why we usually recommend saving `state_dict` rather than saving the entire model object directly.
@@ -256,7 +256,7 @@ history = []
 Suppose we originally planned to train for 5 epochs, but the program suddenly crashes after epoch 3. We can use `signal.SIGINT` inside the training loop to simulate this crash:
 
 ```{python}
-from utils import evaluate, train_one_epoch
+from utils import train_one_epoch, evaluate
 
 num_epochs = 5
 crash_after_epoch = 3
@@ -287,9 +287,9 @@ for epoch in range(1, num_epochs + 1):
     }
     history.append(record)
 
-    width = len(str(num_epochs))
+    n = len(str(num_epochs))
     print(
-        f'Epoch [{epoch:0{width}d}/{num_epochs:0{width}d}] '
+        f'Epoch [{epoch:0{n}d}/{num_epochs:0{n}d}] '
         f'| loss: {loss:.4f} '
         f'| acc: {acc:.4f} '
         f'| val_loss: {val_loss:.4f} '
@@ -375,9 +375,9 @@ for epoch in range(last_epoch + 1, num_epochs + 1):
     }
     history.append(record)
 
-    width = len(str(num_epochs))
+    n = len(str(num_epochs))
     print(
-        f'Epoch [{epoch:0{width}d}/{num_epochs:0{width}d}] '
+        f'Epoch [{epoch:0{n}d}/{num_epochs:0{n}d}] '
         f'| train_loss: {train_loss:.4f} '
         f'| train_acc: {train_acc:.4f} '
         f'| val_loss: {val_loss:.4f} '

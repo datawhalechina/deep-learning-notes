@@ -9,6 +9,8 @@ title: "7.2 Dropout：通过随机失活减少过拟合"
 order: 2
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.2-dropout.ipynb){fig-align="left"}
+
 上一节我们把深层网络中常见的问题分成了两类：一类是模型表达能力过强以后容易出现的过拟合，另一类是网络变深以后可能出现的优化困难。Dropout 和 normalization 虽然经常一起使用，但它们处理问题的方式并不相同。
 
 这一节先讨论 **Dropout** [@srivastava2014Dropout]。它的做法看起来很直接：训练时随机把一部分中间激活设为 0。但这一步并不是简单地删掉一些神经元，而是在训练过程中持续扰动网络的信息路径，让模型不能过度依赖某几个固定特征。
@@ -48,7 +50,7 @@ forward 3: [1, 1, 0, 1]
 
 于是，同一个样本每次经过网络时，真正参与后续计算的特征组合都可能不同。模型训练的就不再是一条完全固定的信息路径，而是许多共享参数的随机子网络。
 
-![图 7.2.1 Dropout 让网络在训练时随机选择子网络 [@zhang2023d2l, fig. 4.6.1]](figures/dropout.svg)
+![图 7.2.1 Dropout 让网络在训练时随机选择子网络 [@zhang2023d2l, fig. 4.6.1]](figures/ch7.2-dropout.svg)
 
 从这个角度看，Dropout 给训练过程加入了结构化噪声。它通常会让训练任务变难一些，因此训练损失可能下降得更慢，甚至训练集准确率也可能略低。但如果正则化强度合适，验证集性能反而可能更好。
 
@@ -98,7 +100,7 @@ output:  [2, 0, 6, 0]
 
 ```{python}
 x = torch.ones(10)
-output = F.dropout(x, p=0.5, training=True)
+output = F.dropout(x, p=0.5)
 
 print('Input:')
 print(x)

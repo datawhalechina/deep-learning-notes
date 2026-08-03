@@ -45,6 +45,7 @@ PyTorch 用两个概念来组织这件事：
 ```{python}
 from collections.abc import Iterator
 
+import dnnlpy
 import torch
 import torch.utils.data as utils
 from torch import Tensor
@@ -53,9 +54,7 @@ print('PyTorch version:', torch.__version__)
 ```
 
 ```{python}
-device = torch.accelerator.current_accelerator(check_available=True)
-if device is None:
-    device = torch.device('cpu')
+device = dnnlpy.get_default_device()
 print('Using device:', device)
 ```
 
@@ -97,18 +96,20 @@ sample = dataset[index]
 
 ```{python}
 class SimpleTensorDataset(utils.Dataset):
+    """Simple dataset that wraps training data and targets."""
+
     def __init__(self, X: Tensor, y: Tensor):
-        if len(X) != len(y):
-            raise ValueError('X and y must have the same length.')
+        if X.size(0) != y.size(0):
+            raise AssertionError('X and y must have the same length.')
         self.X = X
         self.y = y
 
     def __len__(self) -> int:
         return len(self.X)
 
-    def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
-        X = self.X[index]
-        y = self.y[index]
+    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
+        X = self.X[idx]
+        y = self.y[idx]
         return X, y
 ```
 
@@ -204,6 +205,8 @@ y: (32, 1)
 
 ```{python}
 class VariableLengthDataset(utils.Dataset):
+    """Variable-length sequence dataset for demonstration."""
+
     def __init__(self):
         self.samples = [
             torch.tensor([1, 2, 3]),
@@ -215,8 +218,8 @@ class VariableLengthDataset(utils.Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, index: int) -> Tensor:
-        return self.samples[index]
+    def __getitem__(self, idx: int) -> Tensor:
+        return self.samples[idx]
 ```
 
 如果直接使用 DataLoader，它会尝试把不同长度的张量堆成一个规则张量，但这显然做不到：
@@ -237,6 +240,7 @@ except RuntimeError as err:
 
 ```{python}
 def pad_collate_fn(batch: list[Tensor]) -> tuple[Tensor, Tensor]:
+    """Pad variable-length sequences in a batch to the same length."""
     lengths = torch.tensor([len(x) for x in batch])
     max_len = lengths.max().item()
 
@@ -257,8 +261,8 @@ dataloader = utils.DataLoader(
 )
 
 for tokens, lengths in dataloader:
-    print(f'tokens:\n{tokens}')
-    print(f'lengths: {lengths}\n')
+    print('tokens:', tokens, sep='\n')
+    print('lengths:', lengths, end='\n\n')
 ```
 
 这样，PyTorch 就会用我们定义的 `pad_collate_fn` 来把每个 batch 组织成一个张量和一个长度向量。
@@ -308,15 +312,15 @@ main process -> 训练模型
 
 首先，更多 worker 意味着更多进程和更多内存开销。每个 worker 都会持有 dataset 的一个副本，至少会复制 dataset 中的 Python 对象。如果 dataset 在 `__init__()` 里保存了一个很大的 Python list，开启多个 worker 可能会明显增加内存占用。
 
-其次，多进程会让调试更困难。`Dataset.__getitem__()` 里的错误不一定会直接在主进程里清楚显示，有时只会看到类似 "DataLoader worker exited unexpectedly" 的错误。遇到这种情况，就应该先把 `num_workers` 改成 0，让错误在主进程里暴露出来。
+其次，多进程会让调试更困难。`__getitem__()` 里的错误不一定会直接在主进程里显示清楚，可能只会看到类似“DataLoader worker exited unexpectedly”的错误。遇到这种情况，就应该先把 `num_workers` 改成 0，让错误在主进程里暴露出来。
 
 最后，不同操作系统启动 worker 的方式不同，这会影响代码写法和性能。
 
-在 Linux 上，多进程通常使用 fork。子进程从父进程复制出一个几乎相同的状态。它启动快，而且很多内存页可以通过 copy-on-write 暂时共享。但如果 worker 修改了某些对象，或者 dataset 中有复杂的 Python 对象，内存仍然可能逐渐增加。
+在 Linux 上，多进程通常使用 fork[^2.3.4]，子进程从父进程复制出一个几乎相同的状态。它启动快，而且很多内存页可以通过 copy-on-write 暂时共享。但如果 worker 修改了某些对象，或者 dataset 中有复杂的 Python 对象，内存仍然可能逐渐增加。
 
-在 Windows 上，没有 Unix 风格的 fork，多进程通常使用 spawn。子进程会启动一个新的 Python 解释器，然后重新导入你的脚本，再把需要的对象序列化传过去。这更安全，但启动更慢，也要求 dataset、`collate_fn` 等对象必须能被序列化。
+[^2.3.4]: 对于 Python 3.14 及以上，默认使用 forkserver。它在一定程度上比 fork 更安全。
 
-因此，在 Windows 上使用 `num_workers>0` 时，通常需要把训练入口放在：
+在 Windows 上，没有 Unix 风格的 fork，多进程通常使用 spawn。子进程会启动一个新的 Python 解释器，然后重新导入你的脚本，再把需要的对象序列化传过去。这更安全，但启动更慢，也要求 dataset、`collate_fn` 等对象必须能被序列化。因此，在 Windows 上使用 `num_workers>0` 时，通常需要把训练入口放在：
 
 ```python
 if __name__ == '__main__':
@@ -377,11 +381,9 @@ X = X.to(device)
 y = y.to(device)
 ```
 
-这里会发生一次 host-to-device 拷贝，也就是从 CPU 内存到 GPU 显存的拷贝。`pin_memory=True` 的作用，是让 DataLoader 把返回的张量放到 pinned memory，也叫 page-locked memory 或锁页内存中。
+这里会发生一次 host-to-device 拷贝，也就是从 CPU 内存到 GPU 显存的拷贝。`pin_memory=True` 的作用，是让 DataLoader 把返回的张量放到 pinned memory，也叫 page-locked memory 或锁页内存中。普通 CPU 内存可能会被操作系统换页管理，而 pinned memory 则不会被换出，因此 GPU 可以更高效地从这块内存中拷贝数据。
 
-普通 CPU 内存可能会被操作系统换页管理；pinned memory 则不会被换出，因此 GPU 可以更高效地从这块内存中拷贝数据。直观来说，如果我们经常把 batch 从 CPU 传到 GPU，pinned memory 可以让这条数据通道更顺畅。
-
-用法很简单：
+用法也很简单：
 
 ```{python}
 dataloader = utils.DataLoader(
@@ -395,7 +397,7 @@ dataloader = utils.DataLoader(
 注意，`pin_memory` 通常针对 CUDA。因此，如果使用 CUDA 训练，通常可以设置：
 
 ```python
-pin_memory=True
+pin_memory = True
 ```
 
 然后在把数据搬到 GPU 时配合 `non_blocking=True`：
@@ -448,6 +450,8 @@ IterableDataset 不实现 `__getitem__()`，而是实现 `__iter__()`：
 
 ```{python}
 class SimpleCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1."""
+
     def __init__(self, end: int):
         self.end = end
 
@@ -497,6 +501,8 @@ for i, batch in enumerate(dataloader, start=1):
 
 ```{python}
 class ShardedCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1, sharded across workers."""
+
     def __init__(self, end: int):
         self.end = end
 
@@ -539,7 +545,7 @@ class ShardedCountingDataset(utils.IterableDataset):
 这里我们使用较新的 `torch.accelerator` API 来动态检测当前可用的加速器设备。如果有 CUDA 可用，就使用 CUDA；如果有 XPU 可用，就用 XPU；如果所有加速器都没有，就回退到 CPU。这种方式比直接写 `torch.device('cuda' if torch.cuda.is_available() else 'cpu')` 更现代，也更适合未来可能出现的新加速器类型。我们后面的所有训练代码都会使用这种方式来获取设备。该 API 在 PyTorch 2.6 中引入。
 :::
 
-```{python}
+```python
 device = torch.accelerator.current_accelerator(check_available=True)
 if device is None:
     device = torch.device('cpu')
@@ -569,9 +575,7 @@ for X, y in dataloader:
     optimizer.zero_grad()
 ```
 
-不过，这段配置不是所有情况的最优解。比如在 Windows 上，`num_workers=2` 会使用 spawn 启动子进程，第一次启动可能比较慢；在 notebook 环境里，多进程也更容易遇到序列化或入口问题；如果数据本来就是内存里的小张量，`num_workers=0` 反而可能更简单更快。
-
-因此，DataLoader 的参数不应该死记成固定模板，而应该根据瓶颈来调整：
+当然，DataLoader 的参数不应该记成固定模板，而应该根据瓶颈来调整：
 
 - 代码还没跑通：先 `num_workers=0`；
 - 数据读取慢、GPU 等数据：增加 `num_workers`；

@@ -34,6 +34,7 @@ import warnings
 import torch
 import torch.autograd.functional as AF
 from torch import Tensor
+from torch.testing import assert_close
 
 print('PyTorch version:', torch.__version__)
 ```
@@ -147,8 +148,8 @@ print('y.grad:', y.grad)
 expected_x_grad = y * x.dot(y).cos()
 expected_y_grad = x * x.dot(y).cos()
 
-assert torch.allclose(x.grad, expected_x_grad)
-assert torch.allclose(y.grad, expected_y_grad)
+assert_close(x.grad, expected_x_grad)
+assert_close(y.grad, expected_y_grad)
 ```
 
 这就是自动微分的核心。PyTorch 并不需要提前写出完整的全局导数公式，它只需要知道每个操作的局部求导规则，然后在反向传播时把这些规则按照计算图连接起来。
@@ -246,7 +247,7 @@ print('y.grad:', y.grad)
 ```{python}
 x = torch.tensor(2.0, requires_grad=True)
 y = torch.tensor(4.0, requires_grad=True)
-z = torch.sin(x * y)
+z = x.mul(y).sin()
 
 dzdx, dzdy = torch.autograd.grad(z, (x, y), create_graph=True)
 
@@ -261,7 +262,7 @@ print('dz/dy:', dzdy)
 ```{python}
 x = torch.tensor(2.0, requires_grad=True)
 y = torch.tensor(4.0, requires_grad=True)
-z = torch.sin(x * y)
+z = x.mul(y).sin()
 
 dzdx, dzdy = torch.autograd.grad(z, (x, y), create_graph=True)
 print('dz/dx:', dzdx)
@@ -295,7 +296,7 @@ $$
 
 ### 2.1.6.1 VJP：向量-雅可比积
 
-反向模式自动微分计算的是 **VJP（vector-Jacobian product）**：
+反向模式自动微分计算的是 **VJP (vector-Jacobian product)**：
 
 $$
 v^\top J \in \mathbb{R}^n
@@ -342,7 +343,7 @@ print('VJP output:', output[1])
 
 ### 2.1.6.2 JVP：雅可比-向量积
 
-正向模式自动微分计算的是 **JVP（Jacobian-vector product）**：
+正向模式自动微分计算的是 **JVP (Jacobian-vector product)**：
 
 $$
 Ju \in \mathbb{R}^m

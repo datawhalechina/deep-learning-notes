@@ -25,11 +25,7 @@ Here, $\theta$ is the parameter, $\nabla_\theta L$ is the gradient of the parame
 
 Without an optimizer, we can actually update parameters manually:
 
-```{python}
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
+```python
 x = torch.randn(8, 3)
 y = torch.randn(8, 1)
 
@@ -140,10 +136,10 @@ optimizer.step()
 
 after = model.weight.detach().clone()
 
-flag = before.allclose(after)
-max_err = (before - after).abs().max().item()
+flag = torch.allclose(before, after)
+max_diff = (before - after).abs().max().item()
 print('Is the parameter unchanged?', flag)
-print('Max absolute difference:', max_err)
+print('Max absolute difference:', max_diff)
 ```
 
 This shows that the parameter was indeed modified by the optimizer.
@@ -157,11 +153,11 @@ Let's look at a tiny example:
 ```{python}
 w = torch.tensor([1.0], requires_grad=True)
 
-loss1 = w ** 2
+loss1 = w.pow(2)
 loss1.backward()
 print('After first backward:', w.grad)
 
-loss2 = w ** 2
+loss2 = w.pow(2)
 loss2.backward()
 print('After second backward:', w.grad)
 ```
@@ -222,6 +218,7 @@ flag1 = model.weight.grad is None
 print('Whether grad is None before zero_grad?', flag1)
 
 optimizer.zero_grad(set_to_none=True)
+
 flag2 = model.weight.grad is None
 print('Whether grad is None after zero_grad?', flag2)
 ```
@@ -294,9 +291,7 @@ optimizer = optim.SGD(
 
 for i, group in enumerate(optimizer.param_groups):
     print(
-        f'Parameter group {i}: '
-        f'learning rate = {group["lr"]}, '
-        f'weight decay = {group["weight_decay"]}'
+        f'Parameter group {i}: lr={group["lr"]}, weight_decay={group["weight_decay"]}'
     )
 ```
 
@@ -335,8 +330,8 @@ optimizer = optim.SGD(split_weight_decay_params(model), lr=1e-3)
 for i, group in enumerate(optimizer.param_groups):
     print(
         f'Parameter group {i}: '
-        f'weight decay = {group["weight_decay"]}, '
-        f'number of params = {len(group["params"])}'
+        f'weight_decay={group["weight_decay"]}, '
+        f'n_params={len(group["params"])}'
     )
 ```
 
@@ -485,7 +480,6 @@ optimizer = optim.AdamW(
     foreach=False,
     fused=False,
 )
-
 print(optimizer)
 ```
 

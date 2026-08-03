@@ -25,7 +25,7 @@ $$
 
 第二个问题是：不同参数的梯度尺度可能差别很大。如果所有参数共享同一个学习率，有些参数可能更新太快，有些参数可能更新太慢。
 
-对此，RMSProp 的改进就是，为每个参数维护平方梯度的滑动平均：
+对此，RMSprop 的改进就是，为每个参数维护平方梯度的滑动平均：
 
 $$
 v_t = \rho v_{t-1} + (1 - \rho) g_t^2
@@ -59,7 +59,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-plt.rc('figure', dpi=100)
 dnnlpy.set_matplotlib_format('svg')
 print('PyTorch version:', torch.__version__)
 ```

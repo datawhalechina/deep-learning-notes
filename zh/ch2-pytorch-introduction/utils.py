@@ -11,11 +11,11 @@ from torchmetrics import Metric
 import dnnlpy
 
 __all__ = [
-    'train_one_epoch',
     'evaluate',
-    'train_and_evaluate',
     'load_checkpoint',
     'save_checkpoint',
+    'train_and_evaluate',
+    'train_one_epoch',
 ]
 
 

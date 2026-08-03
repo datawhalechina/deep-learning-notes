@@ -59,7 +59,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-plt.rc('figure', dpi=100)
 dnnlpy.set_matplotlib_format('svg')
 print('PyTorch version:', torch.__version__)
 ```

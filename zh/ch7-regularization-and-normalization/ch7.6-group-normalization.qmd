@@ -9,6 +9,8 @@ title: "7.6 GroupNorm：在通道组内归一化特征"
 order: 6
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.6-group-normalization.ipynb){fig-align="left"}
+
 上一节我们介绍了 Instance Normalization。对于形状为 `(N, C, H, W)` 的图像特征，InstanceNorm 会固定样本和通道，只沿空间维度 `H`、`W` 计算均值和方差。它不依赖 batch 中的其他样本，因此即使 batch size 很小，也不会出现 BatchNorm 那样的统计量不稳定问题。
 
 但是，InstanceNorm 也带来了一个新的问题：每个通道都被完全独立地归一化，不同通道之间不再共享统计信息。对于风格迁移和图像生成，这种性质往往很有用；但对于目标检测、语义分割等视觉任务，我们可能希望在不依赖 batch 的同时，仍然保留一部分通道之间的联系。
@@ -90,7 +92,7 @@ print('Grouped shape:', x_grouped.shape)
 对于每个样本和每个 group，GroupNorm 会沿组内通道和空间维度计算统计量，也就是沿：
 
 ```python
-dim=(2, 3, 4)
+dim = (2, 3, 4)
 ```
 
 进行归约。
@@ -515,7 +517,7 @@ block = nn.Sequential(
 由于 GroupNorm 自带可学习偏置，紧跟在它前面的卷积层通常可以设置：
 
 ```python
-bias=False
+bias = False
 ```
 
 原因和 Conv-BN 结构类似：卷积产生的常数偏置会在标准化时被减去，随后 GroupNorm 的 `bias` 可以完成平移。

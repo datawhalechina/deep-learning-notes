@@ -9,6 +9,8 @@ title: "7.4 LayerNorm：在单个样本内部归一化特征"
 order: 4
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.4-layer-normalization.ipynb){fig-align="left"}
+
 上一节我们介绍了 Batch Normalization。BatchNorm 会为每个特征或通道收集当前 mini-batch 的统计量，因此同一个样本的输出会受到 batch 中其他样本的影响。
 
 这种做法在 CNN 中非常有效，但并不适合所有网络。对于 Transformer 这样的序列模型，batch 中的句子长度、padding 数量和 token 内容都可能不同；在推理时，batch size 也可能从几十变成 1。如果归一化依赖当前 batch，模型的行为就会随着 batch 的组成发生变化。

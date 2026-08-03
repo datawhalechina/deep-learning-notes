@@ -34,6 +34,7 @@ import warnings
 import torch
 import torch.autograd.functional as AF
 from torch import Tensor
+from torch.testing import assert_close
 
 print('PyTorch version:', torch.__version__)
 ```
@@ -147,8 +148,8 @@ We can verify by hand that the results match.
 expected_x_grad = y * x.dot(y).cos()
 expected_y_grad = x * x.dot(y).cos()
 
-assert torch.allclose(x.grad, expected_x_grad)
-assert torch.allclose(y.grad, expected_y_grad)
+assert_close(x.grad, expected_x_grad)
+assert_close(y.grad, expected_y_grad)
 ```
 
 This is the core of automatic differentiation. PyTorch does not need to write out the complete global derivative formula in advance. It only needs to know the local derivative rule for each operation, and then connect those rules according to the computation graph during backpropagation.
@@ -246,7 +247,7 @@ Therefore, `torch.autograd.grad` is more commonly used.
 ```{python}
 x = torch.tensor(2.0, requires_grad=True)
 y = torch.tensor(4.0, requires_grad=True)
-z = torch.sin(x * y)
+z = x.mul(y).sin()
 
 dzdx, dzdy = torch.autograd.grad(z, (x, y), create_graph=True)
 
@@ -261,7 +262,7 @@ When computing higher-order derivatives, we sometimes want to differentiate with
 ```{python}
 x = torch.tensor(2.0, requires_grad=True)
 y = torch.tensor(4.0, requires_grad=True)
-z = torch.sin(x * y)
+z = x.mul(y).sin()
 
 dzdx, dzdy = torch.autograd.grad(z, (x, y), create_graph=True)
 print('dz/dx:', dzdx)

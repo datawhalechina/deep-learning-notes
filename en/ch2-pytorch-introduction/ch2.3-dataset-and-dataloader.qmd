@@ -45,6 +45,7 @@ In this section, we start from the simplest tensor data and gradually understand
 ```{python}
 from collections.abc import Iterator
 
+import dnnlpy
 import torch
 import torch.utils.data as utils
 from torch import Tensor
@@ -53,9 +54,7 @@ print('PyTorch version:', torch.__version__)
 ```
 
 ```{python}
-device = torch.accelerator.current_accelerator(check_available=True)
-if device is None:
-    device = torch.device('cpu')
+device = dnnlpy.get_default_device()
 print('Using device:', device)
 ```
 
@@ -97,18 +96,20 @@ First, write a minimal version:
 
 ```{python}
 class SimpleTensorDataset(utils.Dataset):
+    """Simple dataset that wraps training data and targets."""
+
     def __init__(self, X: Tensor, y: Tensor):
-        if len(X) != len(y):
-            raise ValueError('X and y must have the same length.')
+        if X.size(0) != y.size(0):
+            raise AssertionError('X and y must have the same length.')
         self.X = X
         self.y = y
 
     def __len__(self) -> int:
         return len(self.X)
 
-    def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
-        X = self.X[index]
-        y = self.y[index]
+    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
+        X = self.X[idx]
+        y = self.y[idx]
         return X, y
 ```
 
@@ -204,6 +205,8 @@ However, if each sample has a different shape, default collation fails. The most
 
 ```{python}
 class VariableLengthDataset(utils.Dataset):
+    """Variable-length sequence dataset for demonstration."""
+
     def __init__(self):
         self.samples = [
             torch.tensor([1, 2, 3]),
@@ -215,8 +218,8 @@ class VariableLengthDataset(utils.Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, index: int) -> Tensor:
-        return self.samples[index]
+    def __getitem__(self, idx: int) -> Tensor:
+        return self.samples[idx]
 ```
 
 If we use DataLoader directly, it tries to stack tensors of different lengths into a regular tensor, which clearly cannot be done:
@@ -237,6 +240,7 @@ At this point, we need a custom `collate_fn`.
 
 ```{python}
 def pad_collate_fn(batch: list[Tensor]) -> tuple[Tensor, Tensor]:
+    """Pad variable-length sequences in a batch to the same length."""
     lengths = torch.tensor([len(x) for x in batch])
     max_len = lengths.max().item()
 
@@ -257,8 +261,8 @@ dataloader = utils.DataLoader(
 )
 
 for tokens, lengths in dataloader:
-    print(f'tokens:\n{tokens}')
-    print(f'lengths: {lengths}\n')
+    print('tokens:', tokens, sep='\n')
+    print('lengths:', lengths, end='\n\n')
 ```
 
 Now PyTorch uses our `pad_collate_fn` to organize each batch into a tensor and a length vector.
@@ -395,7 +399,7 @@ dataloader = utils.DataLoader(
 Note that `pin_memory` usually targets CUDA. Therefore, if training with CUDA, we can usually set:
 
 ```python
-pin_memory=True
+pin_memory = True
 ```
 
 Then use `non_blocking=True` when moving data to the GPU:
@@ -448,6 +452,8 @@ IterableDataset does not implement `__getitem__()`; it implements `__iter__()`:
 
 ```{python}
 class SimpleCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1."""
+
     def __init__(self, end: int):
         self.end = end
 
@@ -497,6 +503,8 @@ Second, when IterableDataset is used with multiple workers, each worker receives
 
 ```{python}
 class ShardedCountingDataset(utils.IterableDataset):
+    """Simple iterable dataset that counts from 0 to end-1, sharded across workers."""
+
     def __init__(self, end: int):
         self.end = end
 
@@ -539,7 +547,7 @@ In a common GPU training script, we might write:
 Here we use the newer `torch.accelerator` API to dynamically detect the currently available accelerator device. If CUDA is available, CUDA is used; if XPU is available, XPU is used; if no accelerator is available, it falls back to CPU. This approach is more modern than directly writing `torch.device('cuda' if torch.cuda.is_available() else 'cpu')` and is also more suitable for future accelerator types. All later training code will use this approach to obtain the device. This API was introduced in PyTorch 2.6.
 :::
 
-```{python}
+```python
 device = torch.accelerator.current_accelerator(check_available=True)
 if device is None:
     device = torch.device('cpu')

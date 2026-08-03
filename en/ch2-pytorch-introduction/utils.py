@@ -1,6 +1,5 @@
 import os
 
-import dnnlpy
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,12 +8,14 @@ from torch import Tensor
 from torch.types import Device
 from torchmetrics import Metric
 
+import dnnlpy
+
 __all__ = [
-    'train_one_epoch',
     'evaluate',
-    'train_and_evaluate',
     'load_checkpoint',
     'save_checkpoint',
+    'train_and_evaluate',
+    'train_one_epoch',
 ]
 
 

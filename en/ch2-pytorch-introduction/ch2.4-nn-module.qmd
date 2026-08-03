@@ -17,14 +17,12 @@ But so far, we have not really answered one question: **how should the model its
 
 The simplest linear model can be written directly as tensor operations:
 
-```{python}
-import torch
-
+```python
 x = torch.randn(4, 3)
 weight = torch.randn(2, 3, requires_grad=True)
 bias = torch.randn(2, requires_grad=True)
 
-y = torch.addmm(bias, x, weight.T)
+y = x @ weight.T + bias
 ```
 
 This certainly works. `weight` and `bias` participate in the computation graph, and after `loss.backward()` they can receive gradients.
@@ -71,16 +69,16 @@ weight = torch.randn(out_features, in_features, requires_grad=True)
 bias = torch.randn(out_features, requires_grad=True)
 
 x = torch.randn(4, in_features)
-y = torch.addmm(bias, x, weight.T)
+y = x @ weight.T + bias
 
-print(y.shape)
+print('y.shape:', y.shape)
 ```
 
 Here, `weight` and `bias` are model parameters. But PyTorch does not know they belong to the same model, because they are just two ordinary variables. This creates a problem: if there are more parameters later, we have to collect them manually:
 
 ```{python}
-parameters = [weight, bias]
-pprint(parameters)
+params = [weight, bias]
+pprint(params)
 ```
 
 For a linear model with only two parameters, this is acceptable. But if a model has dozens of layers and hundreds of parameter tensors, maintaining this list manually is very easy to get wrong.
@@ -104,7 +102,7 @@ class SimpleLinear(nn.Module):
         self.bias = nn.Parameter(torch.randn(out_features))
 
     def forward(self, x: Tensor) -> Tensor:
-        return torch.addmm(self.bias, x, self.weight.T)
+        return x @ self.weight.T + self.bias
 ```
 
 Now `weight` and `bias` are no longer scattered external variables; they belong to the `SimpleLinear` module:
@@ -113,7 +111,7 @@ Now `weight` and `bias` are no longer scattered external variables; they belong 
 linear = SimpleLinear(3, 2)
 
 for name, param in linear.named_parameters():
-    print(f'{name}: {param.shape}')
+    print(f'{name}: {param.size()}')
 ```
 
 The key change is: as long as an nn.Parameter is assigned to an nn.Module attribute, PyTorch automatically registers it as a parameter of that module. To get model parameters, we only need to call:
@@ -131,10 +129,8 @@ An nn.Module usually implements a `forward()` method to describe how input becom
 
 ```python
 class SimpleLinear(nn.Module):
-    ...
-
     def forward(self, x: Tensor) -> Tensor:
-        return torch.addmm(self.bias, x, self.weight.T)
+        return x @ self.weight.T + self.bias
 ```
 
 When using it, we usually write:
@@ -142,7 +138,8 @@ When using it, we usually write:
 ```{python}
 x = torch.randn(4, 3)
 y = linear(x)
-print(y.shape)
+
+print('y.shape:', y.shape)
 ```
 
 Notice that we call:
@@ -176,7 +173,8 @@ The first is the module style:
 ```{python}
 linear = nn.Linear(3, 2)
 y1 = linear(x)
-print(y1.shape)
+
+print('y1.shape:', y1.shape)
 ```
 
 The second is the functional style:
@@ -185,7 +183,8 @@ The second is the functional style:
 weight = torch.randn(2, 3)
 bias = torch.randn(2)
 y2 = F.linear(x, weight, bias)
-print(y2.shape)
+
+print('y2.shape:', y2.shape)
 ```
 
 Both perform a linear transformation, but their meanings differ.
@@ -200,7 +199,7 @@ for name, param in linear.named_parameters():
 `F.linear` is a function. It does not store parameters or register any state. You must explicitly pass in `weight` and `bias`:
 
 ```python
-F.linear(input, weight, bias)
+F.linear(x, weight, bias)
 ```
 
 So their relationship can be understood simply as:
@@ -213,14 +212,17 @@ nn.functional  = stateless function
 In fact, if you look at PyTorch source code, many nn.Module `forward()` implementations are essentially calls to the corresponding nn.functional function. For example, `nn.Linear` can roughly be understood as:
 
 ```python
-def forward(self, input: Tensor) -> Tensor:
-    return F.linear(input, self.weight, self.bias)
+class Linear(nn.Module):
+    def forward(self, input: Tensor) -> Tensor:
+        return F.linear(x, self.weight, self.bias)
 ```
 
 This is why we often mix the two when writing custom modules:
 
 ```{python}
 class SimpleMLP(nn.Module):
+    """Minimal multi-layer perceptron with one hidden layer."""
+
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
@@ -311,9 +313,6 @@ class ExplicitLinear(nn.Module):
 
 Most of the time, writing:
 
-```python
-self.weight = nn.Parameter(...)
-```
 
 is enough. `register_parameter()` is more common when parameter names are generated dynamically, or when we want to explicitly control whether a certain name registers a parameter. For example, some modules can choose whether to use bias:
 
@@ -675,7 +674,7 @@ When loading, recreate a model with the same structure first, then call `load_st
 model = SimpleMLP()
 state_dict = torch.load('model.pt')
 flag = model.load_state_dict(state_dict)
-print(flag)
+print('Load state dict flag:', flag)
 ```
 
 The important idea is:
@@ -714,13 +713,13 @@ We can inspect the `training` attribute:
 
 ```{python}
 model = SimpleMLP()
-print(f'Initial training mode: {model.training}')
+print('Initial training mode:', model.training)
 
 model.eval()
-print(f'After calling eval(): {model.training}')
+print('After calling eval():', model.training)
 
 model.train()
-print(f'After calling train(): {model.training}')
+print('After calling train():', model.training)
 ```
 
 `model.train()` sets the model and all its submodules to training mode; `model.eval()` recursively sets them to evaluation mode. It is essentially equivalent to `model.train(False)`.
@@ -731,7 +730,7 @@ However, `eval()` does not disable automatic differentiation. That is, even thou
 model.eval()
 x = torch.randn(4, 3, requires_grad=True)
 y = model(x)
-print(f'y.requires_grad: {y.requires_grad}')
+print('y.requires_grad:', y.requires_grad)
 ```
 
 Therefore, validation or inference usually needs both:
@@ -804,14 +803,14 @@ At this point, the module still does not know the input dimension. Its parameter
 
 ```{python}
 for name, param in lazy_linear.named_parameters():
-    print(f'{name}: {type(param).__name__}')
+    print(f'{name}: {param.__class__.__name__}')
 ```
 
 This kind of parameter is not an ordinary `Parameter`, but an `UninitializedParameter`. It means the parameter belongs to the model, but its full shape is not known yet. Therefore, if we try to access its shape, an error occurs:
 
 ```{python}
 try:
-    print(lazy_linear.weight.shape)
+    size = lazy_linear.weight.size()
 except RuntimeError as err:
     print('RuntimeError:', err)
 ```
@@ -876,7 +875,6 @@ Only after the first forward pass is `classifier` concretely initialized:
 ```{python}
 x = torch.randn(4, 1, 28, 28)
 y = lazy_cnn(x)
-
 print(lazy_cnn.classifier)
 ```
 
@@ -1034,7 +1032,7 @@ Inspect submodules:
 ```{python}
 print('Submodules:')
 for name, module in demo.named_modules():
-    print(repr(name), '->', type(module).__name__)
+    print(repr(name), '->', module.__class__.__name__)
 ```
 
 Together, these outputs show nn.Module's core management abilities:

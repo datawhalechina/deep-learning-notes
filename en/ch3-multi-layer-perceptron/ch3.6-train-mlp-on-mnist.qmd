@@ -396,8 +396,7 @@ loss = loss_fn(logits, y)
 dlogits = criterion.backward()
 model.backward(dlogits)
 
-# Summary
-
+# update
 optimizer.step()
 ```
 

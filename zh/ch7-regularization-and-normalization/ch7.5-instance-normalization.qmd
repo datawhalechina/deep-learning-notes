@@ -9,6 +9,8 @@ title: "7.5 InstanceNorm：对样本的每个通道进行归一化"
 order: 5
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.5-instance-normalization.ipynb){fig-align="left"}
+
 上一节我们介绍了 Layer Normalization。LayerNorm 不依赖 batch 中的其他样本，而是在每个样本自己的特征内部计算均值和方差。对于 Transformer 输入 `(batch_size, sequence_length, hidden_size)`，它通常会对每个 token 的 `hidden_size` 维特征单独归一化。
 
 这一节我们继续讨论另一种不依赖 batch 的归一化方法：**Instance Normalization (InstanceNorm)** [@ulyanov2017InstanceNorm]。
@@ -236,7 +238,7 @@ print('Affine bias shape:', instance_norm_affine.bias.shape)
 PyTorch 中 `InstanceNorm2d` 的另一个重要默认值是：
 
 ```python
-track_running_stats=False
+track_running_stats = False
 ```
 
 这意味着默认情况下，它不会维护 `running_mean` 和 `running_var`，训练和推理时都会使用当前输入自己的统计量。

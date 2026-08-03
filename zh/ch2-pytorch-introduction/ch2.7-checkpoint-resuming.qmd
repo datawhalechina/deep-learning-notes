@@ -223,7 +223,7 @@ def load_checkpoint(
 第一个是：
 
 ```python
-map_location=device
+map_location = device
 ```
 
 它的作用是把 checkpoint 里的张量加载到当前设备上。例如，checkpoint 可能是在 GPU 上保存的，但现在这台机器只有 CPU，那么 `map_location` 可以避免设备不匹配带来的问题。
@@ -231,7 +231,7 @@ map_location=device
 第二个是：
 
 ```python
-weights_only=True
+weights_only = True
 ```
 
 新版 PyTorch 更推荐用 `weights_only=True` 加载只包含张量和简单 Python 对象的 checkpoint。这样可以减少 pickle 反序列化带来的安全风险。我们的 checkpoint 只保存了模型状态、优化器状态、epoch 和 history，所以可以使用这个设置。如果 checkpoint 里保存了自定义类对象，那么 `weights_only=True` 可能无法加载。这也是为什么我们通常更推荐保存 `state_dict`，而不是直接保存整个模型对象。
@@ -287,9 +287,9 @@ for epoch in range(1, num_epochs + 1):
     }
     history.append(record)
 
-    width = len(str(num_epochs))
+    n = len(str(num_epochs))
     print(
-        f'Epoch [{epoch:0{width}d}/{num_epochs:0{width}d}] '
+        f'Epoch [{epoch:0{n}d}/{num_epochs:0{n}d}] '
         f'| loss: {loss:.4f} '
         f'| acc: {acc:.4f} '
         f'| val_loss: {val_loss:.4f} '
@@ -375,9 +375,9 @@ for epoch in range(last_epoch + 1, num_epochs + 1):
     }
     history.append(record)
 
-    width = len(str(num_epochs))
+    n = len(str(num_epochs))
     print(
-        f'Epoch [{epoch:0{width}d}/{num_epochs:0{width}d}] '
+        f'Epoch [{epoch:0{n}d}/{num_epochs:0{n}d}] '
         f'| train_loss: {train_loss:.4f} '
         f'| train_acc: {train_acc:.4f} '
         f'| val_loss: {val_loss:.4f} '

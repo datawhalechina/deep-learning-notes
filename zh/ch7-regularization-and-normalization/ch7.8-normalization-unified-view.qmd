@@ -9,6 +9,8 @@ title: "7.8 归一化方法的统一视角：统计量到底在哪些维度上�
 order: 7
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.8-normalization-unified-view.ipynb){fig-align="left"}
+
 前面几节，我们分别介绍了 Batch Normalization、Layer Normalization、Instance Normalization、Group Normalization 和 RMS Normalization。前四种方法都会先计算均值和方差，再进行标准化；RMSNorm 则省略均值中心化，只根据均方根调整特征尺度。
 
 真正让这些方法彼此不同的，并不是标准化公式本身，而是：
@@ -128,7 +130,7 @@ print('Variance shape:', var.shape)
 对于输入 `(N, C, H, W)`，BatchNorm 的统计维度为：
 
 ```python
-dim=(0, 2, 3)
+dim = (0, 2, 3)
 ```
 
 因此，它固定通道 $c$，沿 batch 和空间维度统计：
@@ -167,7 +169,7 @@ nn.LayerNorm((C, H, W))
 那么 LayerNorm 会固定样本，沿 `(C, H, W)` 统计：
 
 ```python
-dim=(1, 2, 3)
+dim = (1, 2, 3)
 ```
 
 均值和方差可以写成：
@@ -217,7 +219,7 @@ print(y.mean(dim=-1))
 对于输入 `(N, C, H, W)`，InstanceNorm 的统计维度为：
 
 ```python
-dim=(2, 3)
+dim = (2, 3)
 ```
 
 它固定样本 $n$ 和通道 $c$，沿空间维度统计：
@@ -258,7 +260,7 @@ $$
 随后固定样本和 group，沿组内通道与空间维度统计：
 
 ```python
-dim=(2, 3, 4)
+dim = (2, 3, 4)
 ```
 
 ```{python}

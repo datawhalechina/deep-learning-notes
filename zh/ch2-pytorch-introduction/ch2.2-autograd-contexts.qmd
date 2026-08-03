@@ -227,13 +227,13 @@ def run_one_epoch(model: Module, dataloader: DataLoader, training: bool):
 
 原因是，`no_grad()` 的语义还比较保守。它只是说这段代码暂时不记录梯度。但是 PyTorch 仍然会维护一些和 Autograd 有关的内部信息，比如版本计数器和视图追踪。这些机制在训练中很重要，因为它们可以帮助 PyTorch 检查原地操作、共享存储等情况是否会破坏梯度计算。但是，如果我们不仅知道当前不需要梯度，还知道这段计算以后永远不可能参与反向传播，那么框架是不是可以做得更激进一点？把所有和梯度有关的开销全部去掉？
 
-这就是 `inference_mode()` 的设计动机[^1]：
+这就是 `inference_mode()` 的设计动机[^2.2.4]：
 
 > **这段代码不仅现在不需要梯度，而且它产生的结果也不准备再加入自动微分系统。**
 
 所以它通常比 `no_grad()` 更快、更省内存，但限制也更强。
 
-[^1]: `torch.inference_mode()` 是在 PyTorch 1.9 版本引入的，专门针对推理阶段的性能优化。关于它的具体实现，可以参考 [RFC-0011-InferenceMode](https://github.com/pytorch/rfcs/blob/master/RFC-0011-InferenceMode.md)。
+[^2.2.4]: `torch.inference_mode()` 是在 PyTorch 1.9 版本引入的，专门针对推理阶段的性能优化。关于它的具体实现，可以参考 [RFC-0011-InferenceMode](https://github.com/pytorch/rfcs/blob/master/RFC-0011-InferenceMode.md)。
 
 先看普通 `no_grad()`：
 

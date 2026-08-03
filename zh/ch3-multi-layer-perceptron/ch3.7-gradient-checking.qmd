@@ -250,6 +250,7 @@ def loss_fn_bias(b: np.ndarray) -> float:
     linear.b = old_b
     return loss
 
+
 grad_b_numeric = numerical_gradient(loss_fn_bias, linear.b.copy())
 error = relative_error(grad_b_analytic, grad_b_numeric)
 print('Relative Error for b:', error)
@@ -306,7 +307,7 @@ x = rng.standard_normal((4, 5))
 relu = mlp.ReLU()
 
 out = relu(x)
-loss = np.sum(out ** 2)
+loss = np.sum(out**2)
 dout = 2 * out
 
 grad_x_analytic = relu.backward(dout)

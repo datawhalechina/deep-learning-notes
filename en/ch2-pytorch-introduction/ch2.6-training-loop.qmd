@@ -83,18 +83,22 @@ So in later experiments, we usually fix the random seed first:
 
 ```{python}
 def set_seed(
-    seed: int = 42,
+    seed: int | None = None,
     *,
-    deterministic: bool = True,
+    deterministic: bool = False,
     benchmark: bool = False,
     warn_only: bool = True,
 ) -> torch.Generator:
+    """Seed Python, NumPy, and PyTorch random number generators."""
     random.seed(seed)
     np.random.seed(seed)
-    torch_rng = torch.manual_seed(seed)
+
+    if seed is not None:
+        torch_rng = torch.manual_seed(seed)
+    else:
+        torch_rng = torch.default_generator
 
     torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
-    # These two lines will explain in the future chapter
     torch.backends.cudnn.deterministic = deterministic
     torch.backends.cudnn.benchmark = benchmark
 
@@ -106,7 +110,7 @@ This sets the random seeds for Python, NumPy, and PyTorch.
 This line:
 
 ```python
-torch.use_deterministic_algorithms(True, warn_only=True)
+torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
 ```
 
 means to use deterministic algorithms as much as possible. We set `warn_only=True` because some operations may not have deterministic implementations. For teaching code, a warning is enough to remind us. If strict determinism is required, `warn_only` can be set to False, so any nondeterministic operation will directly raise an error.
@@ -123,7 +127,7 @@ torch_rng = set_seed(42)
 
 Many older PyTorch tutorials choose the device like this:
 
-```{python}
+```python
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ```
 
@@ -180,7 +184,7 @@ val_dl = utils.DataLoader(val_ds, batch_size=128, shuffle=False)
 There is a small detail here:
 
 ```python
-generator=torch.Generator().manual_seed(42)
+generator = torch.Generator().manual_seed(42)
 ```
 
 `random_split` itself is also random. Although we already fixed the global random seed with `torch.manual_seed()`, it depends on where the global RNG currently is. To make the data split unaffected by earlier operations such as model initialization, random tensors, or data augmentation, we pass it a separate `Generator`.
@@ -404,10 +408,6 @@ def train_and_evaluate(
 
 Here I pass separate metrics for training and validation:
 
-```python
-train_metric: Metric
-val_metric: Metric
-```
 
 This is because metrics have their own internal state. Although we call `reset()` every time, training and validation are two different statistical processes, so keeping them separate is clearer.
 

@@ -9,6 +9,9 @@ title: "7.3 BatchNorm：利用 batch 统计量稳定训练"
 order: 3
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.3-batch-normalization.ipynb){fig-align="left"}
+
+
 上一节我们介绍了 dropout。它通过随机丢弃中间激活，迫使网络不能过度依赖少数固定特征，主要用于缓解过拟合。
 
 这一节讨论另一类常见操作：**Batch Normalization (BatchNorm)** [@ioffe2015BatchNorm]。BatchNorm 在训练过程中利用 mini-batch 的均值和方差，对中间特征进行标准化，然后通过可学习参数对其重新缩放和平移。这样可以稳定不同层输入的数值尺度，改善优化过程，并在一定程度上缓解梯度过大或过小的问题。

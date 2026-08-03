@@ -17,14 +17,12 @@ order: 4
 
 最简单的线性模型可以直接写成张量运算：
 
-```{python}
-import torch
-
+```python
 x = torch.randn(4, 3)
 weight = torch.randn(2, 3, requires_grad=True)
 bias = torch.randn(2, requires_grad=True)
 
-y = torch.addmm(bias, x, weight.T)
+y = x @ weight.T + bias
 ```
 
 这当然可以工作。`weight` 和 `bias` 会参与计算图，`loss.backward()` 之后也可以得到梯度。
@@ -71,16 +69,16 @@ weight = torch.randn(out_features, in_features, requires_grad=True)
 bias = torch.randn(out_features, requires_grad=True)
 
 x = torch.randn(4, in_features)
-y = torch.addmm(bias, x, weight.T)
+y = x @ weight.T + bias
 
-print(y.shape)
+print('y.shape:', y.shape)
 ```
 
 这段代码里，`weight` 和 `bias` 是模型参数。但是 PyTorch 并不知道它们属于同一个模型，因为它们只是两个普通变量。这会带来一个问题：如果以后参数变多了，我们需要手动收集它们：
 
 ```{python}
-parameters = [weight, bias]
-pprint(parameters)
+params = [weight, bias]
+pprint(params)
 ```
 
 对于一个只有两个参数的线性模型，这还可以接受。但如果模型有几十层、上百个参数张量，手动维护这个列表就很容易出错。
@@ -104,7 +102,7 @@ class SimpleLinear(nn.Module):
         self.bias = nn.Parameter(torch.randn(out_features))
 
     def forward(self, x: Tensor) -> Tensor:
-        return torch.addmm(self.bias, x, self.weight.T)
+        return x @ self.weight.T + self.bias
 ```
 
 现在，`weight` 和 `bias` 不再是散落在外面的变量，而是属于 `SimpleLinear` 这个模块：
@@ -113,7 +111,7 @@ class SimpleLinear(nn.Module):
 linear = SimpleLinear(3, 2)
 
 for name, param in linear.named_parameters():
-    print(f'{name}: {param.shape}')
+    print(f'{name}: {param.size()}')
 ```
 
 这里最重要的变化是：只要把 nn.Parameter 赋值给 nn.Module 的属性，PyTorch 就会自动把它注册成这个模块的参数。如果我们想要获取模型参数，只需要调用：
@@ -131,10 +129,8 @@ pprint(params)
 
 ```python
 class SimpleLinear(nn.Module):
-    ...
-
     def forward(self, x: Tensor) -> Tensor:
-        return torch.addmm(self.bias, x, self.weight.T)
+        return x @ self.weight.T + self.bias
 ```
 
 使用时，我们通常写：
@@ -142,7 +138,8 @@ class SimpleLinear(nn.Module):
 ```{python}
 x = torch.randn(4, 3)
 y = linear(x)
-print(y.shape)
+
+print('y.shape:', y.shape)
 ```
 
 注意，我们调用的是：
@@ -176,7 +173,8 @@ Module = parameters + forward computation
 ```{python}
 linear = nn.Linear(3, 2)
 y1 = linear(x)
-print(y1.shape)
+
+print('y1.shape:', y1.shape)
 ```
 
 第二种是函数式写法：
@@ -185,7 +183,8 @@ print(y1.shape)
 weight = torch.randn(2, 3)
 bias = torch.randn(2)
 y2 = F.linear(x, weight, bias)
-print(y2.shape)
+
+print('y2.shape:', y2.shape)
 ```
 
 它们都能完成线性变换，但语义不一样。
@@ -200,7 +199,7 @@ for name, param in linear.named_parameters():
 而 `F.linear` 是一个函数。它不会保存参数，也不会注册任何状态。你必须显式把 `weight` 和 `bias` 传进去：
 
 ```python
-F.linear(input, weight, bias)
+F.linear(x, weight, bias)
 ```
 
 所以，二者的关系可以简单理解为：
@@ -213,14 +212,17 @@ nn.functional  = 不保存状态的函数
 实际上，如果你去看 PyTorch 的源代码，很多 nn.Module 的 `forward()` 内部，本质上就是调用对应的 nn.functional 函数。例如，`nn.Linear` 内部大致可以理解成：
 
 ```python
-def forward(self, input: Tensor) -> Tensor:
-    return F.linear(input, self.weight, self.bias)
+class Linear(nn.Module):
+    def forward(self, input: Tensor) -> Tensor:
+        return F.linear(x, self.weight, self.bias)
 ```
 
 这也是为什么我们在自定义模块时，经常会混合使用两者：
 
 ```{python}
 class SimpleMLP(nn.Module):
+    """Minimal multi-layer perceptron with one hidden layer."""
+
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
@@ -271,7 +273,7 @@ for name, param in bad.named_parameters():
 
 这里 `self.weight` 确实是一个需要梯度的张量，但它没有被注册成 Module 的参数。因此 `parameters()` 不会返回它，优化器也不会自动更新它。
 
-如果希望一个张量成为模型参数，需要使用 nn.Paramete：
+如果希望一个张量成为模型参数，需要使用 nn.Parameter：
 
 ```{python}
 class GoodLinear(nn.Module):
@@ -309,13 +311,7 @@ class ExplicitLinear(nn.Module):
         return F.linear(x, self.weight, self.bias)
 ```
 
-当然，大多数时候，直接写：
-
-```python
-self.weight = nn.Parameter(...)
-```
-
-就够了。`register_parameter()` 更常见于参数名需要动态生成，或者你想显式控制某个名字是否注册参数的情况。例如，有些模块可以选择是否使用 bias：
+当然，大多数时候，直接写 `self.weight = nn.Parameter(...)` 就够了。`register_parameter()` 更常见于参数名需要动态生成，或者你想显式控制某个名字是否注册参数的情况。例如，有些模块可以选择是否使用 bias：
 
 ```{python}
 class OptionalBiasLinear(nn.Module):
@@ -381,7 +377,7 @@ pprint(normalize.state_dict())
 
 这说明它们会随着模型状态一起保存。
 
-Buffer 还有一个重要特点：当我们调用 `model.to(device)` 时，buffer 会和 parameter 一起被移动到对应设备。比如，如果我们只是把它们保存成普通属性：
+Buffer 还有一个重要特点：当我们调用 `model.to(device)` 时，buffer 会和 parameter 一起被移动到对应设备。例如，如果我们只是把它们保存成普通属性：
 
 ```python
 self.mean = mean
@@ -431,7 +427,7 @@ for name, buffer in cache.named_buffers():
 print('State dict keys:', cache.state_dict())
 ```
 
-总结一下，`Parameter` 和 Buffer 的区别是：
+总结一下，parameter 和 buffer 的区别是：
 
 ::: {.list-table}
 表 1：Parameter 和 Buffer 的区别
@@ -480,9 +476,7 @@ model = SimpleMLP()
 print(model)
 ```
 
-这里 `fc1`、`relu` 和 `fc2` 都是 `model` 的子模块。只要把一个 nn.Module 赋值给另一个 nn.Module 的属性，它也会被自动注册。
-
-因此，`model.parameters()` 会递归地找到所有子模块里的参数：
+这里 `fc1`、`relu` 和 `fc2` 都是 `model` 的子模块。只要把一个 nn.Module 赋值给另一个 nn.Module 的属性，它也会被自动注册。因此，`model.parameters()` 会递归地找到所有子模块里的参数：
 
 ```{python}
 for name, param in model.named_parameters():
@@ -532,9 +526,7 @@ for name, module in model.named_modules():
 
 这里第一个名字是空字符串，表示模型本身。
 
-这些方法在调试模型结构、冻结部分层、替换某些子模块时都很常用。
-
-例如，我们可以找到所有线性层：
+这些方法在调试模型结构、冻结部分层、替换某些子模块时都很常用。例如，我们可以找到所有线性层：
 
 ```{python}
 for name, module in model.named_modules():
@@ -675,7 +667,7 @@ torch.save(model.state_dict(), 'model.pt')
 model = SimpleMLP()
 state_dict = torch.load('model.pt')
 flag = model.load_state_dict(state_dict)
-print(flag)
+print('Load state dict flag:', flag)
 ```
 
 这里有一个很重要的思想：
@@ -714,13 +706,13 @@ print('Eval mode:', dropout(x))
 
 ```{python}
 model = SimpleMLP()
-print(f'Initial training mode: {model.training}')
+print('Initial training mode:', model.training)
 
 model.eval()
-print(f'After calling eval(): {model.training}')
+print('After calling eval():', model.training)
 
 model.train()
-print(f'After calling train(): {model.training}')
+print('After calling train():', model.training)
 ```
 
 `model.train()` 会把模型及其所有子模块都设置为训练模式；`model.eval()`会递归地把它们设置为评估模式。它本质上等价于 `model.train(False)`。
@@ -731,7 +723,7 @@ print(f'After calling train(): {model.training}')
 model.eval()
 x = torch.randn(4, 3, requires_grad=True)
 y = model(x)
-print(f'y.requires_grad: {y.requires_grad}')
+print('y.requires_grad:', y.requires_grad)
 ```
 
 因此，验证或推理时通常需要同时写：
@@ -804,14 +796,14 @@ print(lazy_linear)
 
 ```{python}
 for name, param in lazy_linear.named_parameters():
-    print(f'{name}: {type(param).__name__}')
+    print(f'{name}: {param.__class__.__name__}')
 ```
 
 这种参数不是普通的 `Parameter`，而是 `UninitializedParameter`。它表示这个参数属于模型，但目前还不知道完整形状。因此，如果我们尝试访问它的 形状，就会报错：
 
 ```{python}
 try:
-    print(lazy_linear.weight.shape)
+    size = lazy_linear.weight.size()
 except RuntimeError as err:
     print('RuntimeError:', err)
 ```
@@ -876,7 +868,6 @@ print(lazy_cnn)
 ```{python}
 x = torch.randn(4, 1, 28, 28)
 y = lazy_cnn(x)
-
 print(lazy_cnn.classifier)
 ```
 
@@ -1034,18 +1025,16 @@ for key, value in demo.state_dict().items():
 ```{python}
 print('Submodules:')
 for name, module in demo.named_modules():
-    print(repr(name), '->', type(module).__name__)
+    print(repr(name), '->', module.__class__.__name__)
 ```
 
 这几个输出合起来，就展示了 nn.Module 的核心管理能力：
 
-```text
-parameters()    -> 找到可学习参数
-buffers()       -> 找到非参数状态
-modules()       -> 找到子模块结构
-state_dict()    -> 导出可保存的模型状态
-train()/eval()  -> 切换模块行为
-```
+- `parameters()` 找到可学习参数；
+- `buffers()` 找到非参数状态；
+- `modules()` 找到子模块结构；
+- `state_dict()` 导出可保存的模型状态；
+- `train() / eval()` 切换模块行为。
 
 到这里，我们就能更完整地理解 nn.Module：它不是某个单独 API，而是 PyTorch 模型系统的中心。只要一个对象继承了 nn.Module，它就进入了 PyTorch 的模型管理体系。
 

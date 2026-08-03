@@ -9,6 +9,8 @@ title: "7.7 RMSNorm：不做均值中心化的特征尺度归一化"
 order: 7
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch7-regularization-and-normalization/ch7.7-rms-normalization.ipynb){fig-align="left"}
+
 上一节介绍了 Group Normalization。到目前为止，我们已经看到，BatchNorm、LayerNorm、InstanceNorm 和 GroupNorm 虽然使用场景不同，但都包含两个基本步骤：
 
 1. 减去某组元素的均值；
