@@ -31,7 +31,7 @@ def test_unfold_matches_torch(
     padding: Size2D,
     stride: Size2D,
 ):
-    base = torch.randn(2, 3, 6, 7, dtype=torch.float64)
+    base = torch.randn(2, 3, 6, 7, dtype=torch.float64, requires_grad=True)
     x1 = _copy(base)
     x2 = _copy(base)
 
@@ -77,7 +77,7 @@ def test_fold_matches_torch(
     padding: Size2D,
     stride: Size2D,
 ):
-    images = torch.randn(2, 3, *output_size)
+    images = torch.randn(2, 3, *output_size, dtype=torch.float64)
     blocks = F.unfold(
         images,
         kernel_size=kernel_size,

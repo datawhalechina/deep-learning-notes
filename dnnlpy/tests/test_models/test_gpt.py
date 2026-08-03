@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.testing import assert_close
 
-import dnnlpy.models.gpt as gpt
+from dnnlpy.models import gpt
 
 
 def _make_model(**overrides: Any) -> gpt.MiniGPT:
@@ -32,7 +32,7 @@ def test_minigpt_forward_returns_vocab_logits_and_supports_backward():
 
     assert logits.shape == (2, 5, 17)
     assert model.token_embed.weight.grad is not None
-    assert torch.isfinite(model.token_embed.weight.grad).all()
+    assert model.token_embed.weight.grad.isfinite().all()
 
 
 def test_minigpt_causal_attention_hides_future_tokens():
@@ -187,8 +187,8 @@ def test_top_k_and_top_p_sampling_mask_filtered_logits():
     top_k = gpt.top_k_sampling(logits.clone(), top_k=2)
     top_p = gpt.top_p_sampling(logits.clone(), top_p=0.7)
 
-    assert torch.equal(torch.isfinite(top_k), torch.tensor([[True, True, False]]))
-    assert torch.equal(torch.isfinite(top_p), torch.tensor([[True, True, False]]))
+    assert torch.equal(top_k.isfinite(), torch.tensor([[True, True, False]]))
+    assert torch.equal(top_p.isfinite(), torch.tensor([[True, True, False]]))
 
 
 def test_sample_next_token_validates_logits_and_temperature():

@@ -6,12 +6,12 @@ import dnnlpy.nn as dnn
 from .embedding import ViTEmbedding
 
 __all__ = [
-    'ViTMLP',
-    'ViTEncoderLayer',
-    'ViTEncoder',
-    'ViTModel',
     'ViTClassificationHead',
+    'ViTEncoder',
+    'ViTEncoderLayer',
     'ViTForImageClassification',
+    'ViTMLP',
+    'ViTModel',
 ]
 
 

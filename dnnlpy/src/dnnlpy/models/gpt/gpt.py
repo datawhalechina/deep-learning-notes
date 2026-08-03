@@ -10,10 +10,10 @@ import dnnlpy.nn.functional as dF
 from .utils import sample_next_token
 
 __all__ = [
+    'MiniGPT',
+    'MiniGPTBlock',
     'MiniGPTCausalSelfAttention',
     'MiniGPTMLP',
-    'MiniGPTBlock',
-    'MiniGPT',
 ]
 
 

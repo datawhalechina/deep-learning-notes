@@ -3,9 +3,11 @@ from .adagrad import Adagrad as Adagrad
 from .adam import Adam as Adam
 from .adamw import AdamW as AdamW
 from .base import Optimizer as Optimizer
-from .lr_schedule import ConstantLR as ConstantLR
-from .lr_schedule import CosineAnnealingLR as CosineAnnealingLR
-from .lr_schedule import LinearLR as LinearLR
+from .lr_schedule import (
+    ConstantLR as ConstantLR,
+    CosineAnnealingLR as CosineAnnealingLR,
+    LinearLR as LinearLR,
+)
 from .muon import Muon as Muon
 from .rmsprop import RMSprop as RMSprop
 from .sgd import SGD as SGD

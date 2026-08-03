@@ -4,8 +4,8 @@ import torch
 from torch import Tensor
 
 __all__ = [
-    'flash_attention_v1_forward',
     'flash_attention_v1_backward',
+    'flash_attention_v1_forward',
 ]
 
 

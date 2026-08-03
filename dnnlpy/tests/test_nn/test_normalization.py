@@ -11,8 +11,10 @@ from torch.testing import assert_close
 
 import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
-from dnnlpy.nn.normalization import _BatchNorm as CustomBatchNorm
-from dnnlpy.nn.normalization import _InstanceNorm as CustomInstanceNorm
+from dnnlpy.nn.normalization import (
+    _BatchNorm as CustomBatchNorm,
+    _InstanceNorm as CustomInstanceNorm,
+)
 
 
 def _copy(x: Tensor, mode: bool = True) -> Tensor:

@@ -89,9 +89,9 @@ def test_bce_with_logits_loss_function_matches_torch_with_weights(
 def test_bce_with_logits_loss_function_is_stable_for_extreme_logits(
     reduction: str,
 ):
-    x = Tensor([[-1000.0, -100.0, 0.0, 100.0, 1000.0]])
-    target = Tensor([[0.0, 1.0, 0.25, 0.75, 1.0]])
-    pos_weight = Tensor([0.5, 1.0, 1.5, 2.0, 2.5])
+    x = torch.tensor([[-1000.0, -100.0, 0.0, 100.0, 1000.0]])
+    target = torch.tensor([[0.0, 1.0, 0.25, 0.75, 1.0]])
+    pos_weight = torch.tensor([0.5, 1.0, 1.5, 2.0, 2.5])
 
     actual = dF.bce_with_logits_loss(
         x,

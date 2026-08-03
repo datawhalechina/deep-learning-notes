@@ -72,13 +72,14 @@ def test_sigmoid_is_stable_for_extreme_inputs():
     actual = dF.sigmoid(x1)
     expected = torch.sigmoid(x2)
 
-    assert torch.isfinite(actual).all()
+    assert actual.isfinite().all()
     assert_close(actual, expected)
 
     actual.sum().backward()
     expected.sum().backward()
 
-    assert torch.isfinite(x1.grad).all()
+    assert x1.grad is not None
+    assert x1.grad.isfinite().all()
     assert_close(x1.grad, x2.grad)
 
 

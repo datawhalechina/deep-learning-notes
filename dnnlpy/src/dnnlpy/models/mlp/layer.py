@@ -6,8 +6,8 @@ import numpy as np
 from .base import Module, Parameter
 
 __all__ = [
-    'Identity',
     'Flatten',
+    'Identity',
     'Linear',
 ]
 

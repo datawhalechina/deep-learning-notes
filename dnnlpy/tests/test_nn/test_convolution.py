@@ -1,5 +1,4 @@
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 import pytest
 import torch
@@ -18,6 +17,20 @@ type Size1D = int | tuple[int]
 type Size2D = int | tuple[int, int]
 type Size3D = int | tuple[int, int, int]
 type SizeND = int | TupleND
+
+
+class ConvFn(Protocol):
+    def __call__(
+        self,
+        input: Tensor,
+        weight: Tensor,
+        bias: Tensor | None = None,
+        stride: SizeND = 1,
+        padding: SizeND = 0,
+        dilation: SizeND = 1,
+        groups: int = 1,
+        padding_mode: str = 'zeros',
+    ) -> Tensor: ...
 
 
 def _copy(x: Tensor, mode: bool = True) -> Tensor:
@@ -55,8 +68,8 @@ def _copy_conv_parameters(custom: CustomConv, reference: ReferenceConv):
     ],
 )
 def test_convolution_function_gradients_match_torch(
-    custom_fn: Callable[..., Tensor],
-    reference_fn: Callable[..., Tensor],
+    custom_fn: ConvFn,
+    reference_fn: ConvFn,
     shape: TupleND,
     weight_shape: TupleND,
     stride: TupleND,
@@ -326,7 +339,7 @@ def test_conv_module_matches_torch(
     custom_cls: type[CustomConv],
     reference_cls: type[ReferenceConv],
     shape: TupleND,
-    kwargs: dict[str, Any],
+    kwargs: Any,
 ):
     x = torch.randn(shape)
     custom = custom_cls(**kwargs)

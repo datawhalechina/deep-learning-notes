@@ -4,9 +4,9 @@ import itertools as it
 import os
 from abc import ABC, abstractmethod
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from functools import partial
-from typing import Self, Sequence
+from typing import Self
 
 from ..configtools import get_num_workers
 from .utils import parallel_map
@@ -328,7 +328,6 @@ class TraditionalTokenizer(ABC):
             *args: Additional tokenizer-specific positional arguments.
             **kwargs: Additional tokenizer-specific keyword arguments.
         """
-        pass
 
     @abstractmethod
     def encode(self, text: str) -> list[int]:

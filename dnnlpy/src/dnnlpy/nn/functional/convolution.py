@@ -50,12 +50,12 @@ def _conv_nd(
             x = F.pad(x, padding)
 
     # Calculate output dimensions
-    output_dim = []
+    output_size = []
     for l, k, s, d in zip(x.shape[2:], kernel_size, stride, dilation, strict=True):
-        output_dim.append((l - d * (k - 1) - 1) // s + 1)
-    output_dim = tuple(output_dim)
+        output_size.append((l - d * (k - 1) - 1) // s + 1)
+    output_dim = tuple(output_size)
 
-    if any(dim <= 0 for dim in output_dim):
+    if any(size <= 0 for size in output_size):
         raise RuntimeError('Calculated output size is too small.')
 
     # Calculate effective kernel size considering dilation

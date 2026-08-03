@@ -1,8 +1,7 @@
 from collections.abc import Iterable
 
 import torch
-import torch.linalg as linalg
-from torch import Tensor
+from torch import Tensor, linalg
 
 type TensorOrTensors = Tensor | Iterable[Tensor]
 

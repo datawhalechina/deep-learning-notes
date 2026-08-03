@@ -36,7 +36,6 @@ class Optimizer(ABC):
     @abstractmethod
     def step(self):
         """Update parameters in place using their current gradients."""
-        pass
 
     def zero_grad(self, set_to_none: bool = False):
         """Clear stored parameter gradients.

@@ -1,10 +1,10 @@
 import inspect
 
+import pytest
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr
-import pytest
 from torch.testing import assert_close
 
 import dnnlpy.optim as dopt

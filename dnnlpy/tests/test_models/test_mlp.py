@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose, assert_equal
 
-import dnnlpy.models.mlp as mlp
+from dnnlpy.models import mlp
 
 
 def test_parameter_tracks_grad_and_returns_plain_data():

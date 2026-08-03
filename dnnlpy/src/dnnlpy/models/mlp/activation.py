@@ -5,10 +5,10 @@ import numpy as np
 from .base import Module
 
 __all__ = [
-    'Sigmoid',
-    'Tanh',
     'ReLU',
+    'Sigmoid',
     'Softmax',
+    'Tanh',
 ]
 
 

@@ -12,9 +12,9 @@ type Loss = Callable[[Tensor], Tensor]
 type Optimizer = optim.Optimizer | dopt.Optimizer
 
 __all__ = [
-    'run_optimizer',
     'collect_lr_schedule',
     'plot_lr_schedule',
+    'run_optimizer',
 ]
 
 

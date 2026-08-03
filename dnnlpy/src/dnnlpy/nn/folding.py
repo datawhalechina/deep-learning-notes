@@ -5,7 +5,10 @@ from torch import Tensor
 from . import functional as dF
 from .common_types import Size2D
 
-__all__ = ['Fold', 'Unfold']
+__all__ = [
+    'Fold',
+    'Unfold',
+]
 
 
 class Fold(nn.Module):

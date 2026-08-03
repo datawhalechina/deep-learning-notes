@@ -3,7 +3,7 @@ import torch
 from torch.testing import assert_close
 
 import dnnlpy.optim as dopt
-import dnnlpy.optim.muon as muon
+from dnnlpy.optim import muon
 
 
 def test_muon_skips_parameters_without_gradients():

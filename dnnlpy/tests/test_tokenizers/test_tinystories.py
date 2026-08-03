@@ -56,7 +56,7 @@ def trained_tokenizer() -> tk.Tokenizer:
     )
     elapsed = time.perf_counter() - start
 
-    setattr(tokenizer, 'training_time', elapsed)
+    tokenizer.training_time = elapsed
     return tokenizer
 
 

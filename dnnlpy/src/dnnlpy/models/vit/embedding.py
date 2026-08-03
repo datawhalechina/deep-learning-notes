@@ -6,10 +6,10 @@ from torch import Tensor
 import dnnlpy.nn as dnn
 
 __all__ = [
-    'ViTLinearPatchEmbedding',
     'ViTConvPatchEmbedding',
-    'ViTPositionalEmbedding',
     'ViTEmbedding',
+    'ViTLinearPatchEmbedding',
+    'ViTPositionalEmbedding',
 ]
 
 

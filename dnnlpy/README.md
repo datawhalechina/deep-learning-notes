@@ -1,13 +1,13 @@
 # dnnlpy
 
-**dnnlpy** is the companion Python package for **Deep Learning Notes Library**. It provides code examples, helper functions, and small utilities used throughout the tutorial, similar in spirit to the `d2l` package for _Dive into Deep Learning_.
+**dnnlpy** is the companion Python package for **Deep Learning Notes**. It provides code examples, helper functions, and small utilities used throughout the tutorial, similar in spirit to the `d2l` package for _Dive into Deep Learning_.
 
 The package structure is similar to PyTorch, but keeps a clear boundary between reusable neural network building blocks and complete model implementations:
 
 - `dnnlpy.nn` contains general neural network modules, such as attention layers, positional encodings, and other reusable components.
 - `dnnlpy.nn.functional` contains stateless helper functions, such as functional attention implementations.
-- `dnnlpy.models` contains higher-level model architectures or model-specific components, such as ViT, DDPM, or other models introduced in the notes.
 - `dnnlpy.optim` contains small optimizer implementations for teaching purposes, such as SGD and Adam.
+- `dnnlpy.models` contains higher-level model architectures or model-specific components, such as ViT, DDPM, or other models introduced in the notes.
 - `dnnlpy.tokenizers` contains small tokenizer implementations for teaching purposes, such as a simple BPE tokenizer.
 
 The APIs are designed to feel close to their PyTorch counterparts where practical, while still keeping the code lightweight and easy to read for tutorial purposes.
@@ -16,7 +16,7 @@ This package is intended as a lightweight code supplement rather than a general-
 
 ## What is this package for?
 
-The `dnnlpy` package is designed to support the code in the **Deep Learning Notes Library** tutorial.
+The `dnnlpy` package is designed to support the code in the **Deep Learning Notes** tutorial.
 
 It can be used to:
 
@@ -37,7 +37,7 @@ In short, this package serves as the code companion to the tutorial.
 Install the published package from PyPI with:
 
 ```bash
-pip install dnnlpy
+uv pip install dnnlpy
 ```
 
 To install the latest version directly from this repository, use:
@@ -45,9 +45,6 @@ To install the latest version directly from this repository, use:
 ```bash
 uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirectory=dnnlpy"
 ```
-
-> [!NOTE]
-> The package name has been renamed to `dnnlpy` due to PyPI naming constraints.
 
 This project uses [uv](https://docs.astral.sh/uv/) for local package development.
 
@@ -70,8 +67,8 @@ This way, changes to the source code take effect immediately without reinstallin
 After installation, you can import reusable neural network modules from `dnnlpy.nn`:
 
 ```python
-import torch
 import dnnlpy.nn as dnn
+import torch
 
 attn = dnn.MultiheadAttention(embed_dim=16, num_heads=4)
 
@@ -85,8 +82,8 @@ output = attn(query, key, value)
 You can also import stateless functions from `dnnlpy.nn.functional`:
 
 ```python
-import torch
 import dnnlpy.nn.functional as dF
+import torch
 
 query = torch.randn(2, 4, 8, 16)
 key = torch.randn(2, 4, 8, 16)
@@ -104,9 +101,9 @@ Higher-level model architectures live under `dnnlpy.models`:
 
 ```python
 import torch
-from dnnlpy.models.vit import ViTForImageClassification
+import dnnlpy.models.vit as vit
 
-model = ViTForImageClassification(
+model = vit.ViTForImageClassification(
     image_size=224,
     patch_size=16,
     in_channels=3,

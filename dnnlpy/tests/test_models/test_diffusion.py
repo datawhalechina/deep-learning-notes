@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch.testing import assert_close
 
-import dnnlpy.models.ddpm as ddpm
+from dnnlpy.models import ddpm
 
 
 def test_add_noise_matches_closed_form_sample():
@@ -183,8 +183,8 @@ def test_unet_forward_and_backward_support_configured_channels():
 
     assert output.shape == (1, 2, 4, 4)
     assert x.grad is not None
-    assert torch.isfinite(x.grad).all()
-    assert any(parameter.grad is not None for parameter in model.parameters())
+    assert x.grad.isfinite().all()
+    assert any(p.grad is not None for p in model.parameters())
 
 
 def test_unet_requires_one_timestep_per_batch_item():

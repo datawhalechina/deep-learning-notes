@@ -1,8 +1,6 @@
 import os
-import random
 import sys
 
-import numpy as np
 import torch
 import torch.accelerator as accl
 
@@ -43,9 +41,6 @@ def set_seed(
     Returns:
         Generator: The PyTorch generator returned by `torch.manual_seed`.
     """
-    random.seed(seed)
-    np.random.seed(seed)
-
     if seed is not None:
         torch_rng = torch.manual_seed(seed)
     else:

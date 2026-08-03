@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch.testing import assert_close
 
-import dnnlpy.models.vit as vit
+from dnnlpy.models import vit
 
 
 def test_vit_linear_patch_embedding_returns_patch_tokens():

@@ -8,9 +8,9 @@ import dnnlpy.nn.functional as dF
 __all__ = [
     'get_batch',
     'greedy_sampling',
+    'sample_next_token',
     'top_k_sampling',
     'top_p_sampling',
-    'sample_next_token',
 ]
 
 

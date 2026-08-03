@@ -6,9 +6,9 @@ import numpy as np
 import numpy.typing as npt
 
 __all__ = [
-    'Parameter',
     'Module',
     'Optimizer',
+    'Parameter',
 ]
 
 
@@ -70,12 +70,10 @@ class Module(ABC):
     @abstractmethod
     def forward(self, *args: Any, **kwargs: Any) -> np.ndarray:
         """Compute layer outputs from input values."""
-        pass
 
     @abstractmethod
     def backward(self, grad: np.ndarray) -> np.ndarray:
         """Propagate output gradients back to this layer's inputs."""
-        pass
 
     def save_to_context(self, *args: Any):
         """Save any objects needed for backward pass in the layer context."""
@@ -109,7 +107,6 @@ class Optimizer(ABC):
     @abstractmethod
     def step(self):
         """Update all parameters owned by this optimizer."""
-        pass
 
     def zero_grad(self, set_to_none: bool = True):
         """Clear stored parameter gradients.

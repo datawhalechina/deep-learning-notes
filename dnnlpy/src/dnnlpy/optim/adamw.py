@@ -32,7 +32,7 @@ class AdamW(optim.Optimizer):
                 coefficient applied directly to parameters before the Adam
                 update.
         """
-        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
+        defaults = {'lr': lr, 'betas': betas, 'eps': eps, 'weight_decay': weight_decay}
         super().__init__(params, defaults)
 
     @torch.no_grad()

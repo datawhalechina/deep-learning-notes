@@ -28,8 +28,6 @@ from .traditional import (
 from .trainer import BPETrainer as BPETrainer
 from .utils import (
     bytes_to_unicode as bytes_to_unicode,
-    get_num_workers as get_num_workers,
-    has_gil as has_gil,
     parallel_map as parallel_map,
     unicode_to_bytes as unicode_to_bytes,
 )
