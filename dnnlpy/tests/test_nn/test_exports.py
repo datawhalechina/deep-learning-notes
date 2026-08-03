@@ -4,6 +4,15 @@ import dnnlpy.nn.functional as dF
 
 def test_nn_exports_new_modules():
     for name in [
+        'AdaptiveAvgPool1d',
+        'AdaptiveAvgPool2d',
+        'AdaptiveAvgPool3d',
+        'AdaptiveMaxPool1d',
+        'AdaptiveMaxPool2d',
+        'AdaptiveMaxPool3d',
+        'AvgPool1d',
+        'AvgPool2d',
+        'AvgPool3d',
         'Bilinear',
         'BatchNorm1d',
         'BatchNorm2d',
@@ -45,6 +54,9 @@ def test_nn_exports_new_modules():
         'LogSoftmax',
         'MSELoss',
         'Mish',
+        'MaxPool1d',
+        'MaxPool2d',
+        'MaxPool3d',
         'NLLLoss',
         'PReLU',
         'RMSNorm',
@@ -72,6 +84,15 @@ def test_nn_exports_new_modules():
 
 def test_functional_exports_new_functions():
     for name in [
+        'adaptive_avg_pool1d',
+        'adaptive_avg_pool2d',
+        'adaptive_avg_pool3d',
+        'adaptive_max_pool1d',
+        'adaptive_max_pool2d',
+        'adaptive_max_pool3d',
+        'avg_pool1d',
+        'avg_pool2d',
+        'avg_pool3d',
         'batch_norm',
         'basic_attention',
         'bce_loss',
@@ -108,6 +129,9 @@ def test_functional_exports_new_functions():
         'log_softmax',
         'log_sigmoid',
         'mish',
+        'max_pool1d',
+        'max_pool2d',
+        'max_pool3d',
         'mse_loss',
         'multi_head_attention',
         'nll_loss',

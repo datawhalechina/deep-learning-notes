@@ -64,6 +64,20 @@ from .normalization import (
     local_response_norm as local_response_norm,
     rms_norm as rms_norm,
 )
+from .pooling import (
+    adaptive_avg_pool1d as adaptive_avg_pool1d,
+    adaptive_avg_pool2d as adaptive_avg_pool2d,
+    adaptive_avg_pool3d as adaptive_avg_pool3d,
+    adaptive_max_pool1d as adaptive_max_pool1d,
+    adaptive_max_pool2d as adaptive_max_pool2d,
+    adaptive_max_pool3d as adaptive_max_pool3d,
+    avg_pool1d as avg_pool1d,
+    avg_pool2d as avg_pool2d,
+    avg_pool3d as avg_pool3d,
+    max_pool1d as max_pool1d,
+    max_pool2d as max_pool2d,
+    max_pool3d as max_pool3d,
+)
 from .regularization import (
     dropout as dropout,
     dropout1d as dropout1d,
