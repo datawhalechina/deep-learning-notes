@@ -9,40 +9,46 @@ license = "CC BY-NC 4.0"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     # Deep learning core libraries
-    "torch>=2.12.0,<2.13.0",
-    "torchvision>=0.27.0,<0.28.0",
-    "torchmetrics>=1.9.0,<1.10.0",
     "accelerate>=1.14.0,<1.15.0",
-    "transformers>=5.13.0,<5.14.0",
-    "diffusers>=0.39.0,<0.40.0",
     "datasets>=5.0.0,<5.1.0",
+    "diffusers>=0.39.0,<0.40.0",
     "evaluate>=0.4.0,<0.5.0",
     "opt-einsum>=3.4.0,<3.5.0",
+    "tokenizers>=0.22.0,<0.23.0",
+    "torch>=2.12.0,<2.13.0",
+    "torchinfo>=1.8.0,<1.9.0",
+    "torchmetrics>=1.9.0,<1.10.0",
+    "torchvision>=0.27.0,<0.28.0",
+    "transformers>=5.14.1,<5.15.0",
 
     # Jupyter and related tools
     "ipython>=9.10.0",
     "ipywidgets>=8.0.0",
-    "jupyterlab>=4.3.0",
     "jupyter-cache>=1.0.0",
+    "jupyterlab>=4.3.0",
 
     # Data processing and visualization
+    "matplotlib>=3.11.0,<3.12.0",
     "numpy>=2.5.0,<2.6.0",
     "pandas>=3.0.0,<3.1.0",
     "pillow>=12.3.0,<12.4.0",
-    "matplotlib>=3.11.0,<3.12.0",
+    "scikit-learn>=1.9.0,<1.10.0",
     "scipy>=1.18.0,<1.19.0",
     "seaborn>=0.13.0,<0.14.0",
-    "scikit-learn>=1.9.0,<1.10.0",
-    "opencv-contrib-python>=5.0.0.0,<5.1.0",
 
     # Data download and management
     "gdown>=6.1.0,<6.2.0",
+    "pyyaml>=6.0.0,<6.1.0",
+
+    # The auxiliary package of dnnl
+    "dnnlpy==2026.7.21",
 ]
 
 [project.urls]
 Homepage = "https://github.com/jshn9515/deep-learning-notes"
 
 [tool.uv.sources]
+dnnlpy = { workspace = true }
 torch = { index = "pytorch" }
 torchvision = { index = "pytorch" }
 

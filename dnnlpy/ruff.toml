@@ -36,11 +36,8 @@ indent-width = 4
 target-version = "py312"
 
 [lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
-# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
-# McCabe complexity (`C901`) by default.
-select = ["E4", "E7", "E9", "F"]
-ignore = ["F403", "E741"]
+extend-select = ["NPY"]
+ignore = ["PLR0402", "SIM102"]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
@@ -50,7 +47,7 @@ unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [format]
-# Like Black, use double quotes for strings.
+# Like Black, use single quotes for strings.
 quote-style = "single"
 
 # Like Black, indent with spaces, rather than tabs.
@@ -82,3 +79,7 @@ force-single-line = false
 
 # Combines as imports on the same line. See isort's combine-as-imports option.
 combine-as-imports = true
+
+[lint.pydocstyle]
+# Use Google-style docstrings.
+convention = "google"
