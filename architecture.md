@@ -8,30 +8,53 @@ This repository contains three related deliverables built from one source tree:
 
 ## Repository Layout
 
-| Path                        | Purpose                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------- |
-| `zh/`, `en/`                | Chinese and English Quarto chapters, chapter assets, and generated language indexes.  |
-| `cs336/`                    | CS336 notes and assignment material included in the website.                          |
-| `dnnlpy/src/dnnlpy/`        | Installable package source, organized into `models`, `nn`, `optim`, and `tokenizers`. |
-| `dnnlpy/tests/`             | Package tests.                                                                        |
-| `assets/`                   | Shared website assets.                                                                |
-| `utils/`                    | Dataset, cleanup, table-of-contents, notebook, Mermaid, and PDF build helpers.        |
-| `.github/workflows/`        | Website, notebook, PDF, package CI, and package release workflows.                    |
-| `_quarto.yml`               | Settings shared by all Quarto profiles.                                               |
-| `_quarto-html.yml`          | Executed website profile and navigation structure.                                    |
-| `_quarto-jupyter.yml`       | Non-executing notebook conversion profile.                                            |
-| `_quarto-typst-{zh,en}.yml` | Non-executing, language-specific Typst book profiles.                                 |
-| `pyproject.toml`            | Python 3.14 environment for the notes and the uv workspace root.                      |
-| `dnnlpy/pyproject.toml`     | Independently buildable `dnnlpy` package supporting Python 3.12-3.14.                 |
+- `zh`, `en`: Chinese and English Quarto chapters, chapter assets, and generated language indexes.
+- `cs336`: CS336 notes and assignment material included in the website.
+- `dnnlpy/src/dnnlpy`: Installable package source, organized into `models`, `nn`, `optim`, and `tokenizers`.
+- `dnnlpy/tests`: Package tests.
+- `assets`: Shared website assets.
+- `utils`: Dataset, cleanup, table-of-contents, notebook, Mermaid, and PDF build helpers.
+- `.github/workflows`: Website, notebook, PDF, package CI, and package release workflows.
+- `_quarto.yml`: Settings shared by all Quarto profiles.
+- `_quarto-html.yml`: Executed website profile and navigation structure.
+- `_quarto-jupyter.yml`: Non-executing notebook conversion profile.
+- `_quarto-typst-{zh,en}.yml`: Non-executing, language-specific Typst book profiles.
+- `pyproject.toml`: Python 3.14 environment for the notes and the uv workspace root.
+- `dnnlpy/pyproject.toml`: Independently buildable `dnnlpy` package supporting Python 3.12-3.14.
 
 The generated directories `_site/`, `_jupyter/`, `_typst/`, and `_freeze/` are ignored build state rather than authored source.
 
 ## Build and Delivery Flow
 
 ```mermaid
+---
+config:
+  theme: base
+  htmlLabels: false
+  fontFamily: "Arial, Microsoft YaHei, sans-serif"
+  themeVariables:
+    fontSize: "18px"
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    secondaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
 flowchart LR
     NOTES["Bilingual sources: zh and en"]
-    CS336["Website-only source: cs336"]
     PKG["dnnlpy source"]
     HTML["Executed HTML in _site"]
     IPYNB["Non-executed notebooks in _jupyter"]
@@ -40,12 +63,11 @@ flowchart LR
     MIRROR["jshn9515/dnnl-notebooks"]
     PYPI["TestPyPI / PyPI"]
 
+    PKG --> PYPI
     PKG --> HTML
     NOTES --> HTML --> PAGES
-    CS336 --> HTML
     NOTES --> IPYNB --> MIRROR
     NOTES --> PDF
-    PKG --> PYPI
 ```
 
 The HTML build is the integration path: it installs the root uv workspace, downloads required datasets, and executes applicable code. Notebook and PDF builds are distribution conversions and deliberately set `execute.enabled: false`.
