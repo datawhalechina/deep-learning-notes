@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXCLUDED_DIRS = {'.venv', 'models'}
+EXCLUDED_DIRS = {'models'}
 
 
 def main():
@@ -14,7 +14,7 @@ def main():
             p = directory / filename
 
             if p.suffix.lower() in {'.pt', '.pth'}:
-                print(f'Deleting: {p}', flush=True)
+                print(f'Deleting: {p.name}', flush=True)
                 p.unlink()
 
 

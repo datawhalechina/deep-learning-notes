@@ -1,8 +1,11 @@
 project:
   type: default
 
+filters:
+  - utils/mermaid-defaults.lua
+
 author: jshn9515
 date: today
 date-format: iso
 bibliography: [refs-article.bib, refs-media.bib]
-quarto-required: ">=1.9.0"
+quarto-required: ">=1.10.0"
