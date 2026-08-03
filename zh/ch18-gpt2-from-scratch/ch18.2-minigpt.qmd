@@ -28,11 +28,25 @@ order: 2
 
 这一节，我们先来实现一个 GPT-2 的缩小版，MiniGPT [@nanoGPT]。MiniGPT 的整体数据流如下：
 
-![图 18.2.0 MiniGPT 的数据流](figures/ch18.2-minigpt.svg){height=400px}
+```{mermaid}
+%%| fig-height: 400px
+%%| fig-cap: "图 18.2.0 MiniGPT 的数据流"
+
+flowchart TD
+    A[Input token ids]
+    B[Token embedding + positional embedding]
+    C[Causal GPT blocks]
+    D[Final layer norm]
+    E[LM head]
+    F[Logits over vocabulary]
+
+    A --> B --> C --> D --> E --> F
+```
 
 ```{python}
 from typing import cast
 
+import dnnlpy
 import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
 import torch
@@ -185,7 +199,7 @@ class MiniGPTMLP(nn.Module):
             dnn.Linear(embed_dim, hidden_dim, bias=bias),
             dnn.GELU(),
             dnn.Linear(hidden_dim, embed_dim, bias=bias),
-            nn.Dropout(dropout),
+            dnn.Dropout(dropout),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -207,11 +221,11 @@ class MiniGPTBlock(nn.Module):
         dropout: float = 0.0,
     ):
         super().__init__()
-        self.norm1 = nn.LayerNorm(embed_dim, bias=bias)
+        self.norm1 = dnn.LayerNorm(embed_dim, bias=bias)
         self.attn = MiniGPTCausalSelfAttention(
             embed_dim, num_heads, bias=bias, dropout=dropout
         )
-        self.norm2 = nn.LayerNorm(embed_dim, bias=bias)
+        self.norm2 = dnn.LayerNorm(embed_dim, bias=bias)
         self.mlp = MiniGPTMLP(embed_dim, hidden_dim, bias=bias, dropout=dropout)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -394,9 +408,9 @@ class MiniGPT(nn.Module):
         self.block_size = block_size
         self.weight_tying = weight_tying
 
-        self.token_embed = nn.Embedding(vocab_size, embed_dim)
-        self.pos_embed = nn.Embedding(block_size, embed_dim)
-        self.embed_dropout = nn.Dropout(dropout)
+        self.token_embed = dnn.Embedding(vocab_size, embed_dim)
+        self.pos_embed = dnn.Embedding(block_size, embed_dim)
+        self.embed_dropout = dnn.Dropout(dropout)
 
         self.blocks = nn.Sequential(
             *[
@@ -411,7 +425,7 @@ class MiniGPT(nn.Module):
             ]
         )
 
-        self.final_norm = nn.LayerNorm(embed_dim, bias=bias)
+        self.final_norm = dnn.LayerNorm(embed_dim, bias=bias)
         self.lm_head = dnn.Linear(embed_dim, vocab_size, bias=bias)
 
         if weight_tying:
@@ -423,7 +437,7 @@ class MiniGPT(nn.Module):
     def reset_parameters(self):
         """Initialize the model parameters."""
         for module in self.modules():
-            if isinstance(module, nn.Embedding):
+            if isinstance(module, dnn.Embedding):
                 nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
             elif isinstance(module, dnn.Linear):
@@ -431,7 +445,7 @@ class MiniGPT(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 
-            elif isinstance(module, nn.LayerNorm):
+            elif isinstance(module, dnn.LayerNorm):
                 nn.init.ones_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
@@ -620,7 +634,17 @@ print('Next token:', next_token)
 
 到此，我们已经完成了从 token ids 到 logits 的完整数据流：
 
-![图 18.2.8 MiniGPT 的数据流](figures/ch18.2-minigpt-dataflow.svg){height=350px}
+```{mermaid}
+%%| fig-height: 350px
+%%| fig-cap: "图 18.2.8 MiniGPT 的数据流"
+
+flowchart TD
+    A[Given a Prefix] --> B[Run MiniGPT]
+    B --> C[Take the logits at the last position]
+    C --> D[Select the next token]
+    D --> E[Append the new token to the prefix]
+    E --> B
+```
 
 后面讲 generation 时，我们会在这个基础上加入 temperature、top-k 和 top-p sampling。
 
@@ -629,19 +653,15 @@ print('Next token:', next_token)
 我们可以简单统计模型参数量：
 
 ```{python}
-def count_parameters(module: nn.Module) -> int:
-    return sum(p.numel() for p in module.parameters())
-
-
-params = count_parameters(model)
-print(f'Total parameters: {params:,}')
+params = dnnlpy.count_params(model)
+print(f'Total parameters: {params:,}.')
 ```
 
 按顶层模块查看：
 
 ```{python}
 for name, module in model.named_children():
-    print(f'{name}: {count_parameters(module)}')
+    print(f'{name}: {dnnlpy.count_params(module):,}')
 ```
 
 MiniGPT 的参数主要来自：

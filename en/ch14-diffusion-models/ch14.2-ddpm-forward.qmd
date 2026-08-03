@@ -30,7 +30,6 @@ import torchvision.datasets as datasets
 import torchvision.transforms.v2 as v2
 from torch import Tensor
 
-plt.rc('figure', dpi=100)
 print('PyTorch version:', torch.__version__)
 ```
 
@@ -102,7 +101,7 @@ betas = torch.linspace(0.0001, 0.02, steps=1000)
 samples = [x0]
 t1 = time.time()
 for i in range(len(betas)):
-    xt = add_noise_v1(x0, betas[:i + 1])
+    xt = add_noise_v1(x0, betas[: i + 1])
     samples.append(xt)
 t2 = time.time()
 print(f'[Time]: add_noise_v1 took {t2 - t1:.4f} seconds.')

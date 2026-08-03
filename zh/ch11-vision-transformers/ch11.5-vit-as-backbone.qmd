@@ -365,6 +365,7 @@ $$
 我们用 Hugging Face 的 `beans` 数据集做一个小实验。这个数据集是豆叶病害分类数据集，一共有 3 个类别。我们先加载一个 ImageNet 上预训练过的 ViT，然后把分类头替换成 3 类。这段代码现在看不懂也没关系，在章节末尾我们会专门介绍如何微调 ViT，以及如何把 ViT 应用到具体的下游任务上。
 
 ```{python}
+# | eval: false
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 model_id = 'google/vit-base-patch16-224'
@@ -449,6 +450,7 @@ print(after_finetuning)
 可视化一下 loss 和 accuracy 曲线：
 
 ```{python}
+# | eval: false
 log_df = pd.DataFrame(trainer.state.log_history)
 train_df = log_df[log_df.loss.notna()]
 eval_df = log_df[log_df.eval_loss.notna()]
@@ -472,7 +474,7 @@ line2 = ax2.plot(
     eval_df.eval_accuracy,
     color='tab:orange',
     marker='o',
-    label='Evaluation Accuracy'
+    label='Evaluation Accuracy',
 )
 ax2.set_ylabel('Evaluation Accuracy', rotation=-90, labelpad=12)
 

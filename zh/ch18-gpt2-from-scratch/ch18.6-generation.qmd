@@ -7,6 +7,7 @@ open-graph:
   description: "18.6 From Training to Generation: Temperature, Top-k, and Top-p"
 title: "18.6 从训练到生成：Temperature、Top-k、Top-p"
 order: 6
+eval: false
 ---
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch18-gpt2-from-scratch/ch18.6-generation.ipynb){fig-align="left"}
@@ -239,7 +240,7 @@ def top_p_sampling(logits: Tensor, top_p: float) -> Tensor:
 
 
 logits = top_p_sampling(logits, top_p=0.9)
-probs = dF.softmax(logits, dim=-1)
+probs = logits.softmax(dim=-1)
 print('Original logits:', logits)
 print('Top-p sampling probs:', probs)
 ```
@@ -275,9 +276,9 @@ def sample_next_token(
 ) -> Tensor:
     """Sample next token ids from logits with temperature, top-k, and top-p."""
     if logits.ndim != 2:
-        raise ValueError('`logits` must have shape (B, V).')
+        raise AssertionError('`logits` must have shape (B, V).')
     if temperature <= 0:
-        raise ValueError('`temperature` must be positive.')
+        raise AssertionError('`temperature` must be positive.')
 
     if greedy:
         next_token = logits.argmax(dim=-1, keepdim=True)
@@ -340,7 +341,7 @@ def generate(
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
-            greedy=not do_sample
+            greedy=not do_sample,
         )
         input_ids = torch.concat([input_ids, next_token], dim=1)
 

@@ -27,6 +27,9 @@ import random
 
 import dnnlpy
 import dnnlpy.models.ddpm as ddpm
+import dnnlpy.models.ddpm.unet as unet
+import dnnlpy.nn as dnn
+import dnnlpy.nn.functional as dF
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -35,10 +38,8 @@ import torch.nn.functional as F
 import torch.utils.data as utils
 import torchvision.datasets as datasets
 import torchvision.transforms.v2 as v2
-from dnnlpy.models.ddpm import DDPMScheduler, UNet2DModel
 from torch import Tensor
 
-plt.rc('figure', dpi=100)
 print('PyTorch version:', torch.__version__)
 ```
 
@@ -185,11 +186,13 @@ U-Net 这个名字来自它的形状。它一般分成两部分：
 当然，在更现代的扩散模型里，除了时间嵌入，还常常会加入类别条件、文本条件，或者通过交叉注意力把外部信息融入到网络中。但在最基础的 DDPM 场景里，时间嵌入 + U-Net 就已经是非常经典的组合了。
 
 ```{python}
-#| eval: false
 #| code-fold: true
 #| code-summary: "UNet2DModel: a U-Net structure for 2D image denoising"
 
+
 class UNet2DModel(nn.Module):
+    """Lightweight U-Net model for 2D image denoising."""
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -200,13 +203,13 @@ class UNet2DModel(nn.Module):
         super().__init__()
         self.time_embedding = nn.Sequential(
             SinusoidalTimestepEmbedding(time_emb_dim),
-            nn.Linear(time_emb_dim, time_emb_dim),
-            nn.SiLU(),
-            nn.Linear(time_emb_dim, time_emb_dim),
+            dnn.Linear(time_emb_dim, time_emb_dim),
+            dnn.SiLU(),
+            dnn.Linear(time_emb_dim, time_emb_dim),
         )
 
         first_ch = block_out_channels[0]
-        self.init_conv = nn.Conv2d(
+        self.init_conv = dnn.Conv2d(
             in_channels,
             first_ch,
             kernel_size=3,
@@ -223,10 +226,10 @@ class UNet2DModel(nn.Module):
             self.downs.append(
                 nn.ModuleList(
                     [
-                        ResBlock(in_ch, out_ch, time_emb_dim),
-                        ResBlock(out_ch, out_ch, time_emb_dim),
-                        AttentionBlock(out_ch),
-                        Downsample(out_ch) if not is_last_ch else nn.Identity(),
+                        unet.ResBlock(in_ch, out_ch, time_emb_dim),
+                        unet.ResBlock(out_ch, out_ch, time_emb_dim),
+                        unet.AttentionBlock(out_ch),
+                        unet.Downsample(out_ch) if not is_last_ch else nn.Identity(),
                     ]
                 )
             )
@@ -235,9 +238,9 @@ class UNet2DModel(nn.Module):
 
         # Middle
         last_ch = block_out_channels[-1]
-        self.mid_block1 = ResBlock(last_ch, last_ch, time_emb_dim)
-        self.mid_attn = AttentionBlock(last_ch)
-        self.mid_block2 = ResBlock(last_ch, last_ch, time_emb_dim)
+        self.mid_block1 = unet.ResBlock(last_ch, last_ch, time_emb_dim)
+        self.mid_attn = unet.AttentionBlock(last_ch)
+        self.mid_block2 = unet.ResBlock(last_ch, last_ch, time_emb_dim)
 
         # Up path
         self.ups = nn.ModuleList()
@@ -248,17 +251,17 @@ class UNet2DModel(nn.Module):
             self.ups.append(
                 nn.ModuleList(
                     [
-                        ResBlock(in_ch + out_ch, out_ch, time_emb_dim),
-                        ResBlock(out_ch, out_ch, time_emb_dim),
-                        AttentionBlock(out_ch),
-                        Upsample(out_ch) if not is_first_ch else nn.Identity(),
+                        unet.ResBlock(in_ch + out_ch, out_ch, time_emb_dim),
+                        unet.ResBlock(out_ch, out_ch, time_emb_dim),
+                        unet.AttentionBlock(out_ch),
+                        unet.Upsample(out_ch) if not is_first_ch else dnn.Identity(),
                     ]
                 )
             )
             in_ch = out_ch
 
-        self.final_block = ConvBlock(in_ch, in_ch)
-        self.final_conv = nn.Conv2d(in_ch, out_channels, kernel_size=1)
+        self.final_block = unet.ConvBlock(in_ch, in_ch)
+        self.final_conv = dnn.Conv2d(in_ch, out_channels, kernel_size=1)
 
     def forward(self, x: Tensor, timesteps: Tensor) -> Tensor:
         if x.size(0) != timesteps.size(0):
@@ -298,12 +301,12 @@ class UNet2DModel(nn.Module):
 我们来测试一下我们写的 `UNet2DModel`：
 
 ```{python}
-unet = UNet2DModel().to(device)
+model = UNet2DModel().to(device)
 x = torch.randn(1, 3, 64, 64, device=device)
 timesteps = torch.tensor([10], dtype=torch.float32, device=device)
 
-out = unet(x, timesteps)
-print(out.shape)
+output = model(x, timesteps)
+print(output.shape)
 ```
 
 ## 14.4.4 DDPM 的采样过程：逐步去噪 + 每步带一点随机性
@@ -420,7 +423,7 @@ data = torch.randn(32, 3, 32, 32)
 train_ds = utils.TensorDataset(data)
 train_dl = utils.DataLoader(train_ds, batch_size=16, shuffle=True)
 model = UNet2DModel().to(device)
-scheduler = DDPMScheduler()
+scheduler = ddpm.DDPMScheduler()
 
 model.train()
 # 1. Iterate over the training data.
@@ -445,7 +448,7 @@ for x0, *_ in train_dl:
     pred_noise = model(xt, timesteps)
 
     # 6. Compute the loss between the predicted noise and the actual noise.
-    loss = F.mse_loss(pred_noise, noise)
+    loss = dF.mse_loss(pred_noise, noise)
     loss.backward()
 
 print('Training step completed, loss:', loss.item())

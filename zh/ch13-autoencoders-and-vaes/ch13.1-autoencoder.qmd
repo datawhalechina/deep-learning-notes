@@ -26,10 +26,10 @@ import math
 
 import dnnlpy
 import dnnlpy.nn as dnn
+import dnnlpy.optim as dopt
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.utils.data as utils
 import torchvision.datasets as datasets
 import torchvision.transforms.v2 as v2
@@ -38,7 +38,6 @@ from torch import Tensor
 from torchmetrics import MeanMetric
 from torchvision.utils import make_grid
 
-plt.rc('figure', dpi=100)
 print('PyTorch version:', torch.__version__)
 ```
 
@@ -216,9 +215,9 @@ class AutoEncoder(nn.Module):
 
 可以看到，整个训练过程只做三件事：
 
-1. 输入图片 $x$
-2. 得到重建结果 $\hat{x}$
-3. 最小化它们之间的差异
+1. 输入图片 $x$；
+2. 得到重建结果 $\hat{x}$；
+3. 最小化它们之间的差异。
 
 这就是 AutoEncoder 最核心的训练逻辑。
 
@@ -232,8 +231,8 @@ train_dl = utils.DataLoader(train_ds, batch_size=128, shuffle=True)
 
 input_shape = (1, 28, 28)
 model = AutoEncoder(input_shape).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
-loss_fn = nn.MSELoss()
+optimizer = dopt.AdamW(model.parameters(), lr=1e-3)
+loss_fn = dnn.MSELoss()
 loss_metric = MeanMetric().to(device)
 ```
 
@@ -355,9 +354,9 @@ plt.show()
 
 到这里，我们已经知道了 AutoEncoder 的基本思想：
 
-- 用 encoder 把输入压缩到 latent space
-- 用 decoder 从 latent 表示重建原输入
-- 通过重建误差训练模型
+- 用 encoder 把输入压缩到 latent space；
+- 用 decoder 从 latent 表示重建原输入；
+- 通过重建误差训练模型。
 
 它告诉我们，神经网络可以学会一种有意义的潜在表示。但与此同时，它也暴露出一个问题：
 

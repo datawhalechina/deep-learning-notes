@@ -75,7 +75,7 @@ We directly use the VAE model and ELBO loss function defined in the previous sec
 ```{python}
 input_shape = (1, 28, 28)
 model = VAE(input_shape).to(device)
-optimizer = dopt.Adam(model.parameters(), lr=1e-3)
+optimizer = dopt.AdamW(model.parameters(), lr=1e-3)
 ```
 
 Here we separately record the total loss:

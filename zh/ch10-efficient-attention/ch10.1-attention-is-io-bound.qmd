@@ -83,7 +83,7 @@ $$
 
 理解 attention 的 IO 问题，还需要知道 GPU 的存储并不是统一的。从速度和容量上看，GPU 的内存是分层的，大致可以粗略理解为：
 
-![图 1：GPU 内存分层模型 [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.1-gpu-memory.png){width="40%"}
+![图 10.1.1.3：GPU 内存分层模型 [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.1-gpu-memory.png){width="40%"}
 
 - 寄存器（Register）：容量极小，但最快，访问延迟几乎为零
 - SRAM / Shared Memory / L2 Cache：容量小，但速度快，访问延迟低，速度约为 19 TB/s

@@ -1,5 +1,2 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-
-# Chapter 18: GPT-2 from Scratch
-zh/ch18-gpt2-from-scratch/models/** filter=lfs diff=lfs merge=lfs -text

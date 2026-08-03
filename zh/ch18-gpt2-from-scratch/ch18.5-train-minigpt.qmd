@@ -7,6 +7,7 @@ open-graph:
   description: "18.5 Training MiniGPT on TinyStories"
 title: "18.5 在 TinyStories 上训练 MiniGPT"
 order: 5
+eval: false
 ---
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch18-gpt2-from-scratch/ch18.5-training-minigpt.ipynb){fig-align="left"}
@@ -17,7 +18,22 @@ order: 5
 
 完整流程是：
 
-![图 18.5.0 MiniGPT 训练流程](figures/ch18.5-train-minigpt.svg){height=550px}
+```{mermaid}
+%%| eval: true
+%%| fig-height: 550px
+%%| fig-cap: "图 18.5.0 MiniGPT 训练流程"
+
+flowchart TD
+    A[TinyStories documents]
+    B[Train a small BPE tokenizer]
+    C[Encode every story and append EOS]
+    D[Concatenate into token streams]
+    E[Sample input_ids and labels windows]
+    F[MiniGPT and cross-entropy loss]
+    G[Validation loss and text generation]
+
+    A --> B --> C --> D --> E --> F --> G
+```
 
 这里的目标是完成一次规模可控、能够真实运行的 MiniGPT 预训练实验。
 
@@ -105,7 +121,21 @@ print(train_texts[idx][:500])
 
 在实际进行模型训练之前，我们需要先把文本转换成 token ids。Hugging Face 的 Tokenizers [@Tokenizers] 库提供了高性能的 tokenizer 实现，支持多种预训练 tokenizer 结构，也允许我们从头训练一个适合当前语料的小型 tokenizer。
 
-![图 18.5.2 Hugging Face Tokenizers 组件](figures/ch18.5-hf-tokenizers.svg){height=550px}
+```{mermaid}
+%%| eval: true
+%%| fig-height: 550px
+%%| fig-cap: "图 18.5.2 Hugging Face Tokenizers 组件"
+
+flowchart TD
+    A[Raw text] --> B[Normalizer]
+    B --> C[Pre-tokenizer]
+    C --> D[Model<br/>BPE / WordPiece / Unigram]
+    D --> E[Post-processor]
+    E --> F[Encoding<br/>tokens / ids / offsets]
+
+    F --> G[Decoder]
+    G --> H[Decoded text]
+```
 
 下面分别看这些组件负责什么。
 
@@ -271,7 +301,6 @@ tokenizer.train_from_iterator(
     vocab_size=VOCAB_SIZE,
     min_frequency=2,
     special_tokens=SPECIAL_TOKENS,
-    show_progress=True,
     length=len(train_texts),
 )
 tokenizer.save('models/tokenizer.json')
@@ -374,6 +403,7 @@ def estimate_loss(
     device: torch.device,
     eval_batches: int = 20,
 ) -> dict[str, float]:
+    """Estimate the average loss on the training and validation token streams."""
     was_training = model.training
     model.eval()
     result = {}
@@ -446,7 +476,7 @@ for step in range(1, num_steps + 1):
         loss = model.loss(x, y)
 
     loss.backward()
-    nn.utils.clip_grad_norm_(model.parameters(), 1.0, foreach=True)
+    nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
     if step % eval_interval == 0:
         result = estimate_loss(

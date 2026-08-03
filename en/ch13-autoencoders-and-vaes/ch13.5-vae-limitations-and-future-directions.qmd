@@ -163,7 +163,7 @@ Simply speaking, it maintains a codebook. After the encoder outputs a continuous
 At this point, let us first compare several generative models together:
 
 ::: {.list-table}
-Table 1: Comparison of the advantages and disadvantages of generative models
+Table 13.5.4: Comparison of the advantages and disadvantages of generative models
 
 - - Model
   - Core idea

@@ -13,7 +13,17 @@ order: 4
 
 前面几节里，我们已经把 MiniGPT 的主体搭起来了：
 
-![图 18.3.0 MiniGPT 的数据流](figures/ch18.2-minigpt-dataflow.svg){height=350px}
+```{mermaid}
+%%| fig-height: 350px
+%%| fig-cap: "图 18.3.0 MiniGPT 的数据流"
+
+flowchart TD
+    A[Given a Prefix] --> B[Run MiniGPT]
+    B --> C[Take the logits at the last position]
+    C --> D[Select the next token]
+    D --> E[Append the new token to the prefix]
+    E --> B
+```
 
 但是这里其实藏着一个很重要的问题：
 
@@ -113,12 +123,14 @@ MiniGPT -> generated token ids -> tokenizer.decode -> text
 
 ```{python}
 class CharacterTokenizer(dltk.TraditionalTokenizer):
+    """A simple character-level tokenizer."""
+
     def __init__(self, vocab: dict[str, int], unk_token: str = '<unk>'):
         super().__init__(vocab, unk_token=unk_token)
 
     @override
     @classmethod
-    def from_text(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
+    def train(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
         if isinstance(text, str):
             text = [text]
 
@@ -151,7 +163,7 @@ class CharacterTokenizer(dltk.TraditionalTokenizer):
 
 ```{python}
 text = 'hello world'
-tokenizer = CharacterTokenizer.from_text(text)
+tokenizer = CharacterTokenizer.train(text)
 
 ids = tokenizer.encode('hello')
 recovered = tokenizer.decode(ids)
@@ -198,12 +210,14 @@ learners
 
 ```{python}
 class WordTokenizer(dltk.TraditionalTokenizer):
+    """A simple word-level tokenizer."""
+
     def __init__(self, vocab: dict[str, int], unk_token: str = '<unk>'):
         super().__init__(vocab, unk_token=unk_token)
 
     @override
     @classmethod
-    def from_text(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
+    def train(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
         if isinstance(text, str):
             text = [text]
 
@@ -234,7 +248,7 @@ class WordTokenizer(dltk.TraditionalTokenizer):
 
 ```{python}
 text = 'deep learning is fun deep learning is useful'
-tokenizer = WordTokenizer.from_text(text)
+tokenizer = WordTokenizer.train(text)
 
 print('Vocab:', tokenizer.vocab)
 print('Encode known words:', tokenizer.encode('deep learning is fun'))
@@ -310,6 +324,7 @@ low e s t
 
 ```{python}
 def word2symbols(word: str) -> Symbols:
+    """Convert a word into a tuple of symbols."""
     return tuple(word) + ('</w>',)
 ```
 
@@ -317,6 +332,7 @@ def word2symbols(word: str) -> Symbols:
 
 ```{python}
 def get_pair_counts(corpus: Corpus) -> Counter[Pair]:
+    """Count the frequency of adjacent symbol pairs in the corpus."""
     counts = Counter()
     for symbols, freq in corpus.items():
         for pair in it.pairwise(symbols):
@@ -346,6 +362,7 @@ pprint(pair_counts)
 
 ```{python}
 def merge_pair(symbols: Symbols, pair: Pair) -> Symbols:
+    """Merge a pair of symbols into one."""
     merged = []
     i = 0
     while i < len(symbols):
@@ -370,11 +387,8 @@ print('After merge:', merged_symbols)
 现在，我们可以把这个过程放在一个循环里，来训练 BPE。如果最高频的 pair 都只出现一次，就不继续合并。
 
 ```{python}
-def train_bpe(
-    corpus: Corpus,
-    num_merges: int,
-    min_frequency: int = 2,
-) -> list[Pair]:
+def train_bpe(corpus: Corpus, num_merges: int, min_frequency: int = 2) -> list[Pair]:
+    """Train BPE by merging the most frequent pairs."""
     corpus = dict(corpus)
     merges = []
 
@@ -419,6 +433,7 @@ BPE 训练结束后，得到的是一串 merge rules。编码一个新词时，�
 
 ```{python}
 def merge_word(word: str, merges: list[Pair]) -> Symbols:
+    """Merge a word into subword tokens using learned merges."""
     symbols = word2symbols(word)
     for pair in merges:
         symbols = merge_pair(symbols, pair)
@@ -483,9 +498,10 @@ def build_bpe_vocab(
     merges: list[Pair],
     special_tokens: list[str],
 ) -> dict[str, int]:
+    """Build a BPE vocabulary from the alphabet, merges, and special tokens."""
     tokens = set(alphabet)
     tokens.update(a + b for a, b in merges)
- 
+
     vocab_tokens = special_tokens + sorted(tokens - set(special_tokens))
     return {token: i for i, token in enumerate(vocab_tokens)}
 
@@ -521,6 +537,8 @@ print('Vocab size:', len(vocab))
 
 ```{python}
 class BPETokenizer(dltk.TraditionalTokenizer):
+    """A simple character-level tokenizer with BPE."""
+
     def __init__(
         self,
         vocab: dict[str, int],
@@ -532,7 +550,7 @@ class BPETokenizer(dltk.TraditionalTokenizer):
 
     @override
     @classmethod
-    def from_text(
+    def train(
         cls,
         text: str | list[str],
         vocab_size: int = 100,
@@ -582,7 +600,7 @@ class BPETokenizer(dltk.TraditionalTokenizer):
 
 ```{python}
 text = 'low lower lowest low lower newest deep learning deep learner'
-tokenizer = BPETokenizer.from_text(text, vocab_size=20)
+tokenizer = BPETokenizer.train(text, vocab_size=20)
 
 sample = 'lower newest learner'
 ids = tokenizer.encode(sample)
@@ -641,9 +659,9 @@ Tokenizer 是一个十分重要的预处理步骤。它会直接影响语言模�
 
 ```{python}
 text = 'Here is a simple example of tokenization.'
-char_tokenizer = CharacterTokenizer.from_text(text)
-word_tokenizer = WordTokenizer.from_text(text)
-bpe_tokenizer = BPETokenizer.from_text(text, vocab_size=20)
+char_tokenizer = CharacterTokenizer.train(text)
+word_tokenizer = WordTokenizer.train(text)
+bpe_tokenizer = BPETokenizer.train(text, vocab_size=20)
 ```
 
 #### **1. 影响序列长度**
@@ -702,7 +720,7 @@ smaller units. Some tokenizers use characters, some use complete words, and mode
 language models often use subword tokens to balance vocabulary size and sequence length.
 """
 text = text.replace('\n', ' ').strip()
-tokenizer = BPETokenizer.from_text(text, vocab_size=100)
+tokenizer = BPETokenizer.train(text, vocab_size=100)
 
 token_ids = tokenizer.encode(text)
 print('Token ids:', token_ids[:10], '...')
@@ -718,7 +736,9 @@ $$
 然后从里面切出长度为 `block_size + 1` 的片段，再错开一位得到 `input_ids` 和 `labels`：
 
 ```{python}
-def ids_to_tokens(tokenizer: dltk.TraditionalTokenizer, batch_ids: Tensor) -> list[list[str]]:
+def ids_to_tokens(
+    tokenizer: dltk.TraditionalTokenizer, batch_ids: Tensor
+) -> list[list[str]]:
     return [
         [tokenizer.id_to_token(token_id) for token_id in row]
         for row in batch_ids.tolist()

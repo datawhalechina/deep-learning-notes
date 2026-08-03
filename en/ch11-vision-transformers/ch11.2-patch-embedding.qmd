@@ -26,6 +26,7 @@ In this section, we focus only on this step, namely **patch embedding**. It answ
 > **How do we convert an image into a token embedding sequence that Transformer can process?**
 
 ```{python}
+import dnnlpy.nn as dnn
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -261,7 +262,7 @@ class ViTLinearPatchEmbedding(nn.Module):
         self.image_size = image_size
         self.patch_size = patch_size
         self.num_patches = (image_size // patch_size) ** 2
-        self.proj = nn.Linear(in_channels * patch_size * patch_size, embed_dim)
+        self.proj = dnn.Linear(in_channels * patch_size * patch_size, embed_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         patches = patchify(x, self.patch_size)
@@ -348,7 +349,7 @@ class ViTConvPatchEmbedding(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (image_size // patch_size) ** 2
 
-        self.proj = nn.Conv2d(
+        self.proj = dnn.Conv2d(
             in_channels=in_channels,
             out_channels=embed_dim,
             kernel_size=patch_size,
@@ -388,8 +389,8 @@ $$
 This is still a two-dimensional feature map. To pass it to Transformer, we need to flatten the last two spatial dimensions into the sequence length:
 
 ```python
-x = x.flatten(2)      # (B, D, H/P * W/P)
-x = x.transpose(1, 2) # (B, N, D)
+x = x.flatten(2)  # (B, D, H/P * W/P)
+x = x.transpose(1, 2)  # (B, N, D)
 ```
 
 The final shape is still:

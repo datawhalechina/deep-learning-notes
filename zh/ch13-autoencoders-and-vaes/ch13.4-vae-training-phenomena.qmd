@@ -75,7 +75,7 @@ train_dl = utils.DataLoader(train_ds, batch_size=256, shuffle=True, drop_last=Tr
 ```{python}
 input_shape = (1, 28, 28)
 model = VAE(input_shape).to(device)
-optimizer = dopt.Adam(model.parameters(), lr=1e-3)
+optimizer = dopt.AdamW(model.parameters(), lr=1e-3)
 ```
 
 这里我们把总损失拆开记录：

@@ -28,7 +28,6 @@ import torch
 import torchvision.datasets as datasets
 import torchvision.transforms.v2 as v2
 
-plt.rc('figure', dpi=100)
 dnnlpy.set_matplotlib_format('highdpi')
 print('PyTorch version:', torch.__version__)
 ```

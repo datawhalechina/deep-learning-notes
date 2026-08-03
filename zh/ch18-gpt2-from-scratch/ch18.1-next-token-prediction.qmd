@@ -30,8 +30,8 @@ p(x_{t+1} \mid x_{\le t})
 $$
 
 ```{python}
-import dnnlpy.nn.functional as dF
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 print('PyTorch version:', torch.__version__)
@@ -214,8 +214,7 @@ P(cat)      = 0.0001
 因此，语言模型训练可以看成在每个序列位置上进行一次词表分类。第 $t$ 个位置的负对数似然损失为：
 
 $$
-\ell_t
-= -\log p(x_{t+1} \mid x_{\le t})
+\ell_t = -\log p(x_{t+1} \mid x_{\le t})
 $$
 
 对整段序列取平均，可以写成：
@@ -259,7 +258,7 @@ B, T, V = 2, 4, 10
 logits = torch.randn(B, T, V)
 labels = torch.randint(V, (B, T))
 
-loss = dF.cross_entropy_loss(
+loss = F.cross_entropy(
     logits.reshape(B * T, V),
     labels.reshape(B * T),
 )
@@ -274,7 +273,7 @@ input_ids -> logits
 
 这一部分替换成多层 decoder-only Transformer。标签右移和 cross entropy 的计算方式并没有发生实质性变化。
 
-## 18.1.4 一条 Token Stream 如何变成训练 Batch
+## 18.1.4 一条 Token Stream 如何变成训练 batch
 
 真实训练时，我们通常不会每次只输入一句边界清晰的自然语言句子。更常见的做法是先把大量文档编码成 token，再将它们组织成较长的 token stream，最后从中切出固定长度的训练片段。
 

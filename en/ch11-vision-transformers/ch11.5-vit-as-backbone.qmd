@@ -7,6 +7,7 @@ open-graph:
   description: "11.5 ViT Backbone: Pretraining and Fine-Tuning"
 title: "11.5 ViT Backbone: Pretraining and Fine-Tuning"
 order: 5
+eval: false
 ---
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch11-vision-transformers/ch11.5-vit-as-backbone.ipynb){fig-align="left"}
@@ -472,7 +473,7 @@ line2 = ax2.plot(
     eval_df.eval_accuracy,
     color='tab:orange',
     marker='o',
-    label='Evaluation Accuracy'
+    label='Evaluation Accuracy',
 )
 ax2.set_ylabel('Evaluation Accuracy', rotation=-90, labelpad=12)
 

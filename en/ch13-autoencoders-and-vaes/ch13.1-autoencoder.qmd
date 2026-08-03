@@ -26,10 +26,10 @@ import math
 
 import dnnlpy
 import dnnlpy.nn as dnn
+import dnnlpy.optim as dopt
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.utils.data as utils
 import torchvision.datasets as datasets
 import torchvision.transforms.v2 as v2
@@ -38,7 +38,6 @@ from torch import Tensor
 from torchmetrics import MeanMetric
 from torchvision.utils import make_grid
 
-plt.rc('figure', dpi=100)
 print('PyTorch version:', torch.__version__)
 ```
 
@@ -231,8 +230,8 @@ train_dl = utils.DataLoader(train_ds, batch_size=128, shuffle=True)
 
 input_shape = (1, 28, 28)
 model = AutoEncoder(input_shape).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
-loss_fn = nn.MSELoss()
+optimizer = dopt.AdamW(model.parameters(), lr=1e-3)
+loss_fn = dnn.MSELoss()
 loss_metric = MeanMetric().to(device)
 ```
 

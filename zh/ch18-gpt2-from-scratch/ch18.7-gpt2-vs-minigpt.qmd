@@ -267,6 +267,7 @@ inputs = tokenizer(prompt, return_tensors='pt').to(device)
 GPT-2 是 causal language model，因此可以根据已有 token 逐步预测后续 token。下面使用 sampling 生成文本。这里我们设置 `repetition_penalty=1.1`，可以降低重复生成相同内容的倾向。
 
 ```{python}
+model.cpu()
 with torch.inference_mode():
     output_ids = model.generate(
         **inputs,

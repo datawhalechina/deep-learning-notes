@@ -35,6 +35,7 @@ import dnnlpy.nn.functional as dF
 import dnnlpy.models.gpt as gpt
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 print('PyTorch version:', torch.__version__)
@@ -281,11 +282,11 @@ B, T, D = 2, 4, 16
 V = 100
 
 h = torch.randn(B, T, D)
-lm_head = dnn.Linear(D, V, bias=False)
+lm_head = nn.Linear(D, V, bias=False)
 logits = lm_head(h)
 
 labels = torch.randint(0, V, (B, T))
-loss = dF.cross_entropy_loss(
+loss = F.cross_entropy(
     logits.reshape(B * T, V),
     labels.reshape(B * T),
 )
@@ -344,7 +345,7 @@ class TiedEmbeddingLM(nn.Module):
 
     def __init__(self, vocab_size: int, embed_dim: int = 128):
         super().__init__()
-        self.token_embed = nn.Embedding(vocab_size, embed_dim)
+        self.token_embed = dnn.Embedding(vocab_size, embed_dim)
         self.lm_head = dnn.Linear(embed_dim, vocab_size, bias=False)
 
         # Weight tying: both modules share the same Parameter object.
@@ -425,7 +426,7 @@ input_ids = torch.tensor([[1, 2, 3]])
 labels = torch.tensor([[2, 3, 4]])
 
 logits = model(input_ids)
-loss = dF.cross_entropy_loss(
+loss = F.cross_entropy(
     logits.reshape(-1, vocab_size),
     labels.reshape(-1),
 )
@@ -472,6 +473,8 @@ self.lm_head.weight = self.token_embed.weight
 
 ```{python}
 class MiniGPTWithWeightTying(nn.Module):
+    """A MiniGPT model with weight tying between token embedding and LM head."""
+
     def __init__(
         self,
         vocab_size: int,

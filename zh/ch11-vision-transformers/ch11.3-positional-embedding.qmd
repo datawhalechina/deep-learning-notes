@@ -41,6 +41,7 @@ $$
 这一节我们就来讨论这两个设计。
 
 ```{python}
+import dnnlpy.nn as dnn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -311,7 +312,7 @@ class ViTEmbedding(nn.Module):
             embed_dim=embed_dim,
             use_cls_token=True,
         )
-        self.dropout = nn.Dropout(dropout)  # <1>
+        self.dropout = dnn.Dropout(dropout)  # <1>
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)

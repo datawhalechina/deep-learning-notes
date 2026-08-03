@@ -7,6 +7,7 @@ open-graph:
   description: "11.4 ViT Encoder: Letting Patch Tokens Exchange Information"
 title: "11.4 ViT Encoder: Letting Patch Tokens Exchange Information"
 order: 4
+eval: false
 ---
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch11-vision-transformers/ch11.4-vit-encoder.ipynb){fig-align="left"}
@@ -125,7 +126,36 @@ This form is called a **Pre-Norm Transformer**, meaning layer norm is applied be
 
 In terms of module order, the computation flow of an encoder block is:
 
-![Figure 11.4.3: ViT Encoder model structure](figures/ch11.4-vit-encoder.svg){height=750px}
+```{mermaid}
+%%| eval: true
+%%| fig-height: 750px
+%%| fig-cap: "Figure 11.4.3: ViT Encoder model structure"
+
+---
+config:
+  flowchart:
+    wrappingWidth: 250
+---
+
+flowchart TD
+    X[Input]
+
+    X --> LN1[LayerNorm]
+    LN1 --> MSA[Multihead Self-Attention]
+    MSA --> ADD1((+))
+
+    X -. Residual .-> ADD1
+
+    ADD1 --> H[Hidden H]
+
+    H --> LN2[LayerNorm]
+    LN2 --> MLP[MLP]
+    MLP --> ADD2((+))
+
+    H -. Residual .-> ADD2
+
+    ADD2 --> OUT[Output]
+```
 
 This is very close to the Transformer Encoder we discussed earlier. The only difference is that the tokens are no longer words, but image patches.
 
@@ -213,11 +243,11 @@ class ViTMLP(nn.Module):
         super().__init__()
         hidden_dim = hidden_dim or embed_dim * 4
         self.net = nn.Sequential(
-            nn.Linear(embed_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, embed_dim),
-            nn.Dropout(dropout),
+            dnn.Linear(embed_dim, hidden_dim),
+            dnn.GELU(),
+            dnn.Dropout(dropout),
+            dnn.Linear(hidden_dim, embed_dim),
+            dnn.Dropout(dropout),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -260,15 +290,15 @@ class ViTEncoderLayer(nn.Module):
         super().__init__()
         hidden_dim = hidden_dim or embed_dim * 4
 
-        self.norm1 = nn.LayerNorm(embed_dim)
+        self.norm1 = dnn.LayerNorm(embed_dim)
         self.attn = dnn.MultiheadAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
             dropout=attn_dropout,
         )
-        self.dropout1 = nn.Dropout(dropout)
+        self.dropout1 = dnn.Dropout(dropout)
 
-        self.norm2 = nn.LayerNorm(embed_dim)
+        self.norm2 = dnn.LayerNorm(embed_dim)
         self.mlp = ViTMLP(
             embed_dim=embed_dim,
             hidden_dim=hidden_dim,
@@ -365,7 +395,7 @@ class ViTEncoder(nn.Module):
                 for _ in range(num_layers)
             ]
         )
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = dnn.LayerNorm(embed_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         for layer in self.layers:
@@ -425,7 +455,7 @@ Below is the simplest classification head implemented with PyTorch:
 class ViTClassificationHead(nn.Module):
     def __init__(self, embed_dim: int, num_classes: int):
         super().__init__()
-        self.head = nn.Linear(embed_dim, num_classes)
+        self.head = dnn.Linear(embed_dim, num_classes)
 
     def forward(self, x: Tensor) -> Tensor:
         cls_token = x[:, 0]
