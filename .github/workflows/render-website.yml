@@ -1,28 +1,32 @@
-name: Manual Publish Quarto Website
+name: Render Quarto Website
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "zh/**"
+      - "en/**"
+      - "cs336/**"
+      - "assets/**"
+      - "index.qmd"
+      - "pyproject.toml"
+      - "_quarto.yml"
+      - "_quarto-html.yml"
+      - "styles.css"
+      - "refs-*.bib"
+      - "utils/mermaid-defaults.lua"
+      - "utils/download_datasets.py"
+      - "utils/clean_checkpoints.py"
+      - "utils/generate_toc.py"
+      - ".github/workflows/render-website.yml"
+  release:
+    types: [published]
   workflow_dispatch:
-    inputs:
-      use_cache:
-        description: "Restore cache before rendering?"
-        required: true
-        default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
-
-      commit_back:
-        description: "Commit README.md changes back to the repository?"
-        required: true
-        default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
 
 env:
   DNNL_DATA_ROOT: ${{ github.workspace }}/datasets
+  HF_HOME: ~/.cache/huggingface
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
 permissions:
   contents: write
@@ -30,55 +34,41 @@ permissions:
   id-token: write
 
 concurrency:
-  group: manual-publish-website
+  group: render-website
   cancel-in-progress: true
 
 jobs:
-  build-deploy:
-    name: Manual Publish Quarto Website
+  render-website:
+    name: render-website
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           lfs: true
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
+          src: >-
+            zh/
+            en/
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Save repository freeze cache
-        if: ${{ inputs.use_cache == 'true' }}
-        shell: bash
-        run: |
-          if [ -d _freeze ]; then
-            rm -rf /tmp/repo_freeze
-            mkdir -p /tmp/repo_freeze
-            cp -a _freeze/. /tmp/repo_freeze/
-          fi
-
-      - name: Remove existing freeze cache
-        if: ${{ inputs.use_cache == 'true' }}
-        run: rm -rf _freeze
+      - name: Install Chrome for Quarto
+        run: quarto install chrome-headless-shell
 
       - name: Use Quarto freeze cache
-        if: ${{ inputs.use_cache == 'true' }}
         uses: actions/cache@v6
         with:
           path: _freeze
           key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             quarto-freeze-${{ runner.os }}-
-
-      - name: Overlay repository freeze cache
-        if: ${{ inputs.use_cache == 'true' }}
-        shell: bash
-        run: |
-          if [ -d /tmp/repo_freeze ]; then
-            mkdir -p _freeze
-            cp -a /tmp/repo_freeze/. _freeze/
-          fi
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v9.0.0
@@ -88,7 +78,7 @@ jobs:
             pyproject.toml
             dnnlpy/pyproject.toml
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           uv python install 3.14
           uv sync --python 3.14 --all-packages
@@ -109,28 +99,10 @@ jobs:
 
           uv run python utils/download_datasets.py
 
-      - name: Render site
+      - name: Render Quarto website
         env:
           QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: quarto render --profile html
-
-      - name: Commit back TOC changes
-        if: ${{ inputs.commit_back == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add zh/README.md en/README.md
-
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "MAINT: Update TOC for deep-learning-notes"
-            git push
-          fi
 
       - name: Upload freeze artifact
         if: ${{ hashFiles('_freeze/**') != '' }}
@@ -139,10 +111,10 @@ jobs:
           name: quarto-cache
           path: _freeze/
 
-      - name: Setup Pages
+      - name: Setup GitHub Pages
         uses: actions/configure-pages@v6
 
-      - name: Upload artifact
+      - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
           path: _site

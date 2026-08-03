@@ -1,0 +1,67 @@
+name: Bug Report
+description: Create a report to help us improve
+title: "[BUG]"
+labels:
+  - bug
+assignees:
+  - jshn9515
+body:
+  - type: checkboxes
+    id: issue-type
+    attributes:
+      label: Type of issue
+      description: Check all that apply.
+      options:
+        - label: Error or inaccuracy in the notes
+        - label: Unclear explanation, derivation, or wording
+        - label: Code example, notebook, or rendering problem
+        - label: "`dnnlpy` package issue"
+        - label: Topic request or content suggestion
+        - label: Build, workflow, or repository tooling issue
+        - label: Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior or text
+      description: What currently happens, or what does the current explanation say?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior or suggested change
+      description: What should happen instead, or how could the notes be improved?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction steps
+      description: For code, notebook, rendering, or package issues, include commands and a minimal example.
+      placeholder: |
+        1. Run the relevant command, notebook, or page render.
+        2. Observe the issue.
+        3. Share the error, output, or unexpected result.
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Fill in when relevant.
+      value: |
+        - OS:
+        - Python version:
+        - PyTorch version:
+        - Quarto version:
+        - `dnnlpy` version or commit:
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add screenshots, logs, links, references, or mathematical details that help explain the issue.

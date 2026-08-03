@@ -1,10 +1,10 @@
 # 深度学习笔记
 
-[![publish](https://github.com/jshn9515/deep-learning-notes/actions/workflows/quarto-publish.yml/badge.svg)](https://github.com/jshn9515/deep-learning-notes/actions/workflows/publish.yml)
+[![publish](https://github.com/jshn9515/deep-learning-notes/actions/workflows/quarto-ci.yml/badge.svg)](https://github.com/jshn9515/deep-learning-notes/actions/workflows/quarto-ci.yml)
 [![build](https://github.com/jshn9515/deep-learning-notes/actions/workflows/dnnlpy-ci.yml/badge.svg)](https://github.com/jshn9515/deep-learning-notes/actions/workflows/dnnlpy-ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.14-blue)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.12.0-ee4c2c?logo=pytorch)](https://pytorch.org/)
-[![Transformers](https://img.shields.io/badge/Transformers-5.12.0-ffcc00?logo=huggingface)](https://huggingface.co/docs/transformers/index)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.13.0-ee4c2c?logo=pytorch)](https://pytorch.org/)
+[![Transformers](https://img.shields.io/badge/Transformers-5.14.0-ffcc00?logo=huggingface)](https://huggingface.co/docs/transformers/index)
 
 [English](README.md) | **简体中文**
 
@@ -42,14 +42,14 @@ quarto convert path/to/file.qmd
 本仓库所有代码已在以下环境测试通过：
 
 - Python 3.14
-- PyTorch 2.12
+- PyTorch 2.13
 
 完整依赖见 `pyproject.toml`。
 
 在运行相关内容之前，请先安装 `dnnlpy` 库。这个库包含了笔记中使用的一些自定义实现和工具函数，安装完成后才能正常运行相关代码。
 
 ```bash
-pip install dnnlpy
+uv pip install dnnlpy
 ```
 
 如果你想直接从本仓库安装最新版本，可以使用：
@@ -89,4 +89,4 @@ uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirec
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=jshn9515/deep-learning-notes&type=date&legend=top-left&sealed_token=gjn4ZCMMOA8JtN4MhmjbjzrEuLkbuYUCHuT5iG8LPB8EDw_Gl9MHxruqH6EtwAH3Ow_uHqB_ON0YpzAd2goSav_XbWCzvEc_-r3oLsxgrl4QnQ-lQOIw9VNAjUMlpNQlcEKgix26qd8gW8WgaHFZmzfkcOY23PZnonm8QgFxm35chEzAGXcCMTX0L4xM)](https://www.star-history.com/?repos=jshn9515%2Fdeep-learning-notes&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=jshn9515/deep-learning-notes&type=date&legend=top-left&sealed_token=wiG1WR3EkVkgK2GohSBOvNvqY0gWGUZxg-e2f0eeKRrh1Nv1riNxNHhPIHHRyCzCx9L-13BAluh9NmVcowkA3maFoVv-nirk7JzUIuIjddQB63WZoA3J_1xHGaV1eoi_T3md3Ugu5K2piRsSRBJhMgpjd1ajEduJdsnN6UpSs6DdGj9bwo3-sBBjt8aN)](https://www.star-history.com/?repos=jshn9515%2Fdeep-learning-notes&type=date&legend=top-left)

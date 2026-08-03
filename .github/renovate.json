@@ -7,6 +7,10 @@
   "addLabels": ["dependencies", "python"],
   "packageRules": [
     {
+      "groupName": "PyTorch packages",
+      "matchPackageNames": ["torch", "torchvision", "torchaudio"]
+    },
+    {
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["patch"],
       "enabled": false

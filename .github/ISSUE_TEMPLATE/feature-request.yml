@@ -1,0 +1,51 @@
+name: Feature Request
+description: Suggest an improvement, new topic, or project feature
+title: "[FEAT]"
+labels:
+  - feature-request
+assignees:
+  - jshn9515
+body:
+  - type: checkboxes
+    id: request-type
+    attributes:
+      label: Type of request
+      description: Check all that apply.
+      options:
+        - label: New topic or chapter
+        - label: Improvement to an existing explanation
+        - label: New code example or notebook
+        - label: "`dnnlpy` package feature"
+        - label: Website or rendering improvement
+        - label: Build, workflow, or repository tooling improvement
+        - label: Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem would this request solve, or why would it improve the project?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-change
+    attributes:
+      label: Proposed change
+      description: Describe the content, behavior, or implementation you would like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any alternative approaches, workarounds, or related material you considered.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add examples, links, references, screenshots, or other details that support the request.

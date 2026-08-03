@@ -22,10 +22,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Format check with ruff
+      - name: Lint check with Ruff
         uses: astral-sh/ruff-action@v4.0.0
         with:
-          args: format --check --diff
+          args: check --output-format=github
+          src: >-
+            dnnlpy/src
+            dnnlpy/tests
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
           src: >-
             dnnlpy/src
             dnnlpy/tests
@@ -41,7 +49,7 @@ jobs:
         run: |
           uv python install ${{ matrix.python-version }}
           uv venv --python ${{ matrix.python-version }} .venv
-          uv pip install --python .venv --torch-backend cpu -e "dnnlpy[test]"
+          uv pip install --python .venv -e "dnnlpy[test]"
 
       - name: Test dnnlpy package
         run: .venv/bin/python -m pytest dnnlpy/tests
