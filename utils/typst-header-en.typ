@@ -38,20 +38,26 @@
 #show figure: set align(center)
 #show figure: set block(breakable: true)
 #show figure.where(kind: table): set figure.caption(position: top)
-#show raw: set text(font: "JetBrains Mono", size: 12pt, fallback: false)
+#show raw: set text(font: ("JetBrains Mono"), fallback: false)
+#show raw.where(block: true): set text(size: 8pt)
 #show table: it => align(center, it)
 #show math.equation: set block(breakable: true)
 
-#show quote.where(block: true): it => showybox(
+#show quote.where(block: true): it => block(
+  above: 1em,
+  below: 1em,
+)[
+  #showybox(
     frame: (
-        border-color: gray,
-        thickness: 0.6pt,
-        radius: 4pt,
+      border-color: gray,
+      thickness: 0.6pt,
+      radius: 4pt,
     ),
     body-style: (
-        fill: luma(248),
-        inset: 1em,
+      fill: luma(248),
+      inset: 1em,
     ),
-)[
-    #it
+  )[
+    #it.body
+  ]
 ]
