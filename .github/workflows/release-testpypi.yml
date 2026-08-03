@@ -5,6 +5,9 @@ on:
     types: [published]
   workflow_dispatch:
 
+env:
+  UV_TORCH_BACKEND: cpu
+
 jobs:
   test-dnnlpy:
     name: Test dnnlpy package (Python ${{ matrix.python-version }})

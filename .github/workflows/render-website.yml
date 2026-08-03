@@ -27,6 +27,7 @@ env:
   DNNL_DATA_ROOT: ${{ github.workspace }}/datasets
   HF_HOME: ~/.cache/huggingface
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  UV_TORCH_BACKEND: cpu
 
 permissions:
   contents: write
@@ -81,7 +82,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           uv python install 3.14
-          uv sync --python 3.14 --all-packages
+          uv sync --python 3.14 --all-packages --group cpu
 
       - name: Download datasets for notebooks
         shell: bash
