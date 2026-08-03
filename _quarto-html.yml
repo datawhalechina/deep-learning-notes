@@ -95,16 +95,10 @@ website:
               contents: "zh/ch11-vision-transformers/*.qmd"
         - section: "Part 6: 生成模型"
           contents:
-            - section: "Chapter 12: GAN：在对抗中学习生成"
-              contents: "zh/ch12-generative-adversarial-networks/*.qmd"
             - section: "Chapter 13: VAE：从压缩重建到概率生成"
               contents: "zh/ch13-autoencoders-and-vaes/*.qmd"
             - section: "Chapter 14: Diffusion Models：从去噪到生成"
               contents: "zh/ch14-diffusion-models/*.qmd"
-        - section: "Part 7: 多模态学习"
-          contents:
-            - section: "Chapter 15: 视觉语言模型：从图文对齐到多模态对话"
-              contents: "zh/ch15-vision-language-models/*.qmd"
         - section: "Part 8: LLM 基础：以 GPT-2 为例"
           contents:
             - section: "Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构"
@@ -134,13 +128,7 @@ website:
               contents: "en/ch11-vision-transformers/*.qmd"
         - section: "Part 6: Generative Models"
           contents:
-            - section: "Chapter 12: GAN: Learning to Generate through Adversarial Training"
-              contents: "en/ch12-generative-adversarial-networks/*.qmd"
             - section: "Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation"
               contents: "en/ch13-autoencoders-and-vaes/*.qmd"
             - section: "Chapter 14: Diffusion Models: From Denoising to Generation"
               contents: "en/ch14-diffusion-models/*.qmd"
-        - section: "Part 7: Multimodal Learning"
-          contents:
-            - section: "Chapter 15: Vision-Language Models: From Image-Text Alignment to Multimodal Dialogue"
-              contents: "en/ch15-vision-language-models/*.qmd"
