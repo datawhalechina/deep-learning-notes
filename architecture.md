@@ -150,7 +150,7 @@ Package changes run lint, format, test, and build jobs across Python 3.12, 3.13,
 ```bash
 uv python install <version>
 uv venv --python <version> .venv
-uv pip install --python .venv --torch-backend cpu -e "dnnlpy[test]"
+uv pip install --python .venv -e "dnnlpy[test]"
 .venv/bin/python -m pytest dnnlpy/tests
 uv build dnnlpy --out-dir dist
 ```
