@@ -1,4 +1,3 @@
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -19,12 +18,12 @@ def make_regression_loader() -> DataLoader:
     return DataLoader(TensorDataset(x, y), batch_size=4)
 
 
-def test_trainer_fits_plain_module_and_returns_metric_logs(capsys):
+def test_trainer_fits_plain_module_and_records_metric_logs(capsys):
     model = nn.Linear(1, 1)
     optimizer = optim.SGD(model.parameters(), lr=0.1)
     trainer = Trainer(max_epochs=2, device='cpu', verbose=True)
 
-    history = trainer.fit(
+    result = trainer.fit(
         model,
         make_regression_loader(),
         loss_fn=nn.MSELoss(),
@@ -33,10 +32,11 @@ def test_trainer_fits_plain_module_and_returns_metric_logs(capsys):
     )
 
     captured = capsys.readouterr()
-    assert len(history) == 2
+    assert result is None
+    assert len(trainer.history) == 2
     assert 'Training on cpu' in captured.out
     assert 'Epoch [1/2]' in captured.out
-    assert set(history[-1]) == {'train_loss', 'train_mse'}
+    assert set(trainer.history[-1]) == {'epoch', 'global_step', 'loss', 'mse'}
 
 
 def test_trainer_clips_gradients(monkeypatch):
@@ -122,7 +122,6 @@ def test_trainer_repr_shows_configuration():
         gradient_clip_algorithm='value',
         max_epochs=3,
         max_steps=5,
-        max_time=timedelta(seconds=30),
         checkpoint_path='checkpoints',
         checkpoint_every_n_epochs=2,
         verbose=False,
@@ -141,7 +140,6 @@ def test_trainer_repr_shows_configuration():
     assert "gradient_clip_algorithm='value'" in text
     assert 'max_epochs=3' in text
     assert 'max_steps=5' in text
-    assert 'max_time=datetime.timedelta(seconds=30)' in text
     assert f'checkpoint_path={Path("checkpoints")!r}' in text
     assert 'checkpoint_every_n_epochs=2' in text
     assert 'verbose=False' in text
@@ -159,7 +157,7 @@ def test_trainer_saves_and_loads_checkpoint(tmp_path):
         verbose=False,
     )
 
-    history = trainer.fit(
+    trainer.fit(
         model,
         make_regression_loader(),
         loss_fn=nn.MSELoss(),
@@ -185,7 +183,7 @@ def test_trainer_saves_and_loads_checkpoint(tmp_path):
     assert checkpoint['epoch'] == 1
     assert checkpoint['global_step'] == 2
     assert restored_trainer.global_step == 2
-    assert restored_trainer.history == history
+    assert restored_trainer.history == trainer.history
     assert restored_scheduler.state_dict() == lr_scheduler.state_dict()
 
     for restored, trained in zip(restored_model.parameters(), model.parameters()):
@@ -264,7 +262,7 @@ def test_trainer_stops_at_max_steps_and_steps_scheduler_per_update():
         verbose=False,
     )
 
-    history = trainer.fit(
+    trainer.fit(
         model,
         make_regression_loader(),
         loss_fn=nn.MSELoss(),
@@ -275,7 +273,7 @@ def test_trainer_stops_at_max_steps_and_steps_scheduler_per_update():
 
     assert trainer.global_step == 3
     assert lr_scheduler.last_epoch == 3
-    assert len(history) == 2
+    assert len(trainer.history) == 2
 
 
 def test_trainer_allows_unbounded_epochs_with_max_steps(capsys):
@@ -287,7 +285,7 @@ def test_trainer_allows_unbounded_epochs_with_max_steps(capsys):
         verbose=True,
     )
 
-    history = trainer.fit(
+    trainer.fit(
         model,
         make_regression_loader(),
         loss_fn=nn.MSELoss(),
@@ -296,36 +294,9 @@ def test_trainer_allows_unbounded_epochs_with_max_steps(capsys):
 
     captured = capsys.readouterr()
     assert trainer.global_step == 3
-    assert len(history) == 2
+    assert len(trainer.history) == 2
     assert 'Epoch [1]' in captured.out
     assert '/None' not in captured.out
-
-
-def test_trainer_stops_at_max_time_and_skips_late_validation(monkeypatch):
-    clock = iter([0.0, 0.0, 2.0, 2.0])
-    monkeypatch.setattr(
-        'dnnlpy.trainingtools.time.monotonic',
-        lambda: next(clock),
-    )
-    model = nn.Linear(1, 1)
-    trainer = Trainer(
-        max_epochs=5,
-        max_time=1.0,
-        device='cpu',
-        verbose=False,
-    )
-
-    history = trainer.fit(
-        model,
-        make_regression_loader(),
-        val_dataloader=make_regression_loader(),
-        loss_fn=nn.MSELoss(),
-        optimizer=optim.SGD(model.parameters(), lr=0.1),
-    )
-
-    assert trainer.global_step == 1
-    assert len(history) == 1
-    assert set(history[0]) == {'train_loss'}
 
 
 @pytest.mark.parametrize(
@@ -333,8 +304,6 @@ def test_trainer_stops_at_max_time_and_skips_late_validation(monkeypatch):
     [
         {'max_epochs': 0},
         {'max_steps': 0},
-        {'max_time': 0.0},
-        {'max_time': timedelta(0)},
     ],
 )
 def test_trainer_rejects_non_positive_training_limits(options):

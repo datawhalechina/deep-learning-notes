@@ -1,7 +1,5 @@
-import time
 import warnings
 from collections.abc import Mapping, Sequence
-from datetime import timedelta
 from itertools import count
 from os import PathLike
 from pathlib import Path
@@ -15,6 +13,7 @@ import torch.utils.data as utils
 from torch import Tensor
 from torch.types import Device
 from torchmetrics import Metric
+from torchmetrics.aggregation import MeanMetric
 
 from .configtools import get_default_device, set_seed
 
@@ -26,7 +25,7 @@ __all__ = ['Trainer']
 class Trainer:
     """A lightweight trainer for common PyTorch training loops."""
 
-    history: list[dict[str, float]]
+    history: list[dict[str, int | float]]
 
     def __init__(
         self,
@@ -40,7 +39,6 @@ class Trainer:
         gradient_clip_algorithm: Literal['norm', 'value'] = 'norm',
         max_epochs: int | None = None,
         max_steps: int | None = None,
-        max_time: float | timedelta | None = None,
         checkpoint_path: str | PathLike[str] | None = None,
         checkpoint_every_n_epochs: int = 1,
         verbose: bool = True,
@@ -67,8 +65,6 @@ class Trainer:
                 disables this limit.
             max_steps (int | None, default: None): Maximum number of optimizer steps. `None`
                 disables this limit.
-            max_time (float | timedelta | None, default: None): Maximum duration of each `fit`
-                call. Floats are interpreted as seconds, and `None` disables this limit.
             checkpoint_path (str | PathLike[str] | None, default: None): Checkpoint file or
                 directory path. `None` disables automatic checkpointing.
             checkpoint_every_n_epochs (int, default: 1): Frequency for automatic checkpoint saves.
@@ -83,14 +79,6 @@ class Trainer:
         self.gradient_clip_algorithm = gradient_clip_algorithm
         self.max_epochs = max_epochs
         self.max_steps = max_steps
-        self.max_time = max_time
-
-        if isinstance(max_time, timedelta):
-            self._max_time_seconds = max_time.total_seconds()
-        elif max_time is not None:
-            self._max_time_seconds = float(max_time)
-        else:
-            self._max_time_seconds = None
 
         if checkpoint_path is not None:
             self.checkpoint_path = Path(checkpoint_path)
@@ -107,8 +95,6 @@ class Trainer:
             raise AssertionError('`max_epochs` must be at least 1.')
         if self.max_steps is not None and self.max_steps < 1:
             raise AssertionError('`max_steps` must be at least 1.')
-        if self._max_time_seconds is not None and self._max_time_seconds <= 0:
-            raise AssertionError('`max_time` must be positive.')
         if self.gradient_clip_val is not None and self.gradient_clip_val < 0:
             raise AssertionError('`gradient_clip_val` must be non-negative.')
         if self.gradient_clip_algorithm not in {'norm', 'value'}:
@@ -152,7 +138,7 @@ class Trainer:
         train_metrics: MetricCollection = None,
         val_metrics: MetricCollection = None,
         resume_from_checkpoint: str | PathLike[str] | None = None,
-    ) -> list[dict[str, float]]:
+    ) -> None:
         """Train a model and return one dictionary of logs per epoch.
 
         Args:
@@ -208,8 +194,6 @@ class Trainer:
             self.history.clear()
             self.global_step = 0
 
-        start_time = time.monotonic()
-
         if self.verbose:
             print(f'Training on {self.device}...')
 
@@ -219,8 +203,13 @@ class Trainer:
             epochs = range(start_epoch, self.max_epochs + 1)
 
         for epoch in epochs:
-            if self._training_limit_reached(start_time):
+            if self._training_limit_reached():
                 break
+
+            logs: dict[str, int | float] = {
+                'epoch': epoch,
+                'global_step': self.global_step,
+            }
 
             train_logs, limit_reached = self._train_epoch(
                 model=model,
@@ -230,11 +219,10 @@ class Trainer:
                 lr_scheduler=lr_scheduler,
                 lr_scheduler_interval=lr_scheduler_interval,
                 metrics=train_metrics,
-                start_time=start_time,
             )
-            logs = {f'train_{name}': value for name, value in train_logs.items()}
+            logs.update({f'{name}': value for name, value in train_logs.items()})
 
-            if val_dataloader is not None and not self._time_limit_reached(start_time):
+            if val_dataloader is not None:
                 val_logs = self._validate_epoch(
                     model=model,
                     dataloader=val_dataloader,
@@ -249,14 +237,12 @@ class Trainer:
                 self._step_lr_scheduler(lr_scheduler, logs, lr_scheduler_monitor)
 
             if self.verbose:
-                self._print_epoch(epoch, logs)
+                self._print_epoch(logs)
 
             self._save_checkpoint_if_needed(epoch, model, optimizer, lr_scheduler)
 
             if limit_reached:
                 break
-
-        return self.history
 
     def validate(
         self,
@@ -383,13 +369,11 @@ class Trainer:
         lr_scheduler: lr.LRScheduler | None,
         lr_scheduler_interval: Literal['epoch', 'step'],
         metrics: dict[str, Metric],
-        start_time: float,
     ) -> tuple[dict[str, float], bool]:
         """Run one training epoch and report whether a training limit was reached."""
         model.train()
         self._reset_metrics(metrics)
-        total_loss = 0.0
-        num_batches = 0
+        loss_metric = MeanMetric().to(self.device)
         limit_reached = False
 
         for batch in dataloader:
@@ -404,15 +388,15 @@ class Trainer:
             if lr_scheduler_interval == 'step':
                 self._step_lr_scheduler(lr_scheduler)
 
-            total_loss += loss.detach().item()
-            num_batches += 1
+            loss_metric.update(loss.detach())
             self._update_metrics(metrics, preds, targets)
 
-            if self._training_limit_reached(start_time):
+            if self._training_limit_reached():
                 limit_reached = True
                 break
 
-        return self._build_logs(total_loss, num_batches, metrics), limit_reached
+        logs = self._build_logs(loss_metric, metrics)
+        return logs, limit_reached
 
     def _validate_epoch(
         self,
@@ -424,7 +408,7 @@ class Trainer:
         """Run one validation epoch and return aggregate logs."""
         model.eval()
         self._reset_metrics(metrics)
-        total_loss = 0.0
+        loss_metric = MeanMetric().to(self.device)
 
         with torch.inference_mode():
             for batch in dataloader:
@@ -432,11 +416,12 @@ class Trainer:
 
                 with self._autocast_context():
                     loss, preds, targets = self._default_step(model, batch, loss_fn)
-                total_loss += loss.detach().item()
+                loss_metric.update(loss.detach())
 
                 self._update_metrics(metrics, preds, targets)
 
-        return self._build_logs(total_loss, len(dataloader), metrics)
+        logs = self._build_logs(loss_metric, metrics)
+        return logs
 
     def _default_step(
         self,
@@ -521,14 +506,9 @@ class Trainer:
         for metric in metrics.values():
             metric.update(preds.detach(), targets)
 
-    def _build_logs(
-        self,
-        total_loss: float,
-        num_batches: int,
-        metrics: dict[str, Metric],
-    ) -> dict[str, float]:
+    def _build_logs(self, loss: Metric, metrics: dict[str, Metric]) -> dict[str, float]:
         """Build scalar loss and metric logs for an epoch."""
-        logs = {'loss': total_loss / num_batches}
+        logs = {'loss': self._to_float(loss.compute())}
         for name, metric in metrics.items():
             logs[name] = self._to_float(metric.compute())
         return logs
@@ -594,7 +574,6 @@ class Trainer:
             'gradient_clip_algorithm': self.gradient_clip_algorithm,
             'max_epochs': self.max_epochs,
             'max_steps': self.max_steps,
-            'max_time': self.max_time,
             'checkpoint_path': checkpoint_path,
             'checkpoint_every_n_epochs': self.checkpoint_every_n_epochs,
         }
@@ -627,11 +606,11 @@ class Trainer:
         if isinstance(batch, Tensor):
             return batch.to(self.device)
         if isinstance(batch, Mapping):
-            return dict((k, self._move_batch(v)) for k, v in batch.items())
+            return {k: self._move_batch(v) for k, v in batch.items()}
         if isinstance(batch, tuple):
             return tuple(self._move_batch(v) for v in batch)
         if isinstance(batch, list):
-            return list(self._move_batch(v) for v in batch)
+            return [self._move_batch(v) for v in batch]
         return batch
 
     def _autocast_context(self) -> torch.autocast:
@@ -656,21 +635,18 @@ class Trainer:
             return value.item()
         return float(value)
 
-    def _time_limit_reached(self, start_time: float) -> bool:
-        """Return whether the configured wall-clock limit has elapsed."""
-        if self._max_time_seconds is None:
-            return False
-        return time.monotonic() - start_time >= self._max_time_seconds
+    def _training_limit_reached(self) -> bool:
+        """Return whether the optimizer-step limit was reached."""
+        return self.max_steps is not None and self.global_step >= self.max_steps
 
-    def _training_limit_reached(self, start_time: float) -> bool:
-        """Return whether the step or wall-clock training limit was reached."""
-        if self.max_steps is not None and self.global_step >= self.max_steps:
-            return True
-        return self._time_limit_reached(start_time)
-
-    def _print_epoch(self, epoch: int, logs: dict[str, float]) -> None:
+    def _print_epoch(self, logs: dict[str, float]) -> None:
         """Print one formatted epoch log line."""
-        metrics = ' | '.join(f'{name}: {value:.4f}' for name, value in logs.items())
+        epoch = int(logs.get('epoch', 0))
+        metrics = ' | '.join(
+            f'{name}: {value:.4f}'
+            for name, value in logs.items()
+            if name not in {'epoch', 'global_step'}
+        )
         if self.max_epochs is None:
             print(f'Epoch [{epoch}] | {metrics}')
             return
@@ -692,7 +668,6 @@ class Trainer:
             f'gradient_clip_algorithm={self.gradient_clip_algorithm!r}, '
             f'max_epochs={self.max_epochs!r}, '
             f'max_steps={self.max_steps!r}, '
-            f'max_time={self.max_time!r}, '
             f'checkpoint_path={self.checkpoint_path!r}, '
             f'checkpoint_every_n_epochs={self.checkpoint_every_n_epochs!r}, '
             f'verbose={self.verbose!r}'
