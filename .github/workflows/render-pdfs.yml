@@ -56,6 +56,9 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
+      - name: Install Chrome for Quarto
+        run: quarto install chrome-headless-shell
+
       - name: Compile zh qmd to pdf
         shell: bash
         run: quarto render --profile typst-zh
@@ -99,6 +102,9 @@ jobs:
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install Chrome for Quarto
+        run: quarto install chrome-headless-shell
 
       - name: Convert en qmd to PDF
         shell: bash

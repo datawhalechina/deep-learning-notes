@@ -59,6 +59,9 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
+      - name: Install Chrome for Quarto
+        run: quarto install chrome-headless-shell
+
       - name: Use Quarto freeze cache
         uses: actions/cache@v6
         with:
