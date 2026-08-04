@@ -3,6 +3,7 @@ name: Publish Docker Image
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,14 +28,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate build timestamp
+        if: github.event_name == 'workflow_dispatch'
+        id: build-timestamp
+        run: echo "tag=build-$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+
       - name: Generate Docker metadata
         id: metadata
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ github.event.release.tag_name }}
-            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+            type=raw,value=${{ github.event.release.tag_name }},enable=${{ github.event_name == 'release' }}
+            type=raw,value=${{ steps.build-timestamp.outputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
       - name: Build and publish Docker image
         uses: docker/build-push-action@v7
