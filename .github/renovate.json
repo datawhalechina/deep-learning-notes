@@ -11,11 +11,20 @@
       "matchPackageNames": ["torch", "torchvision", "torchaudio"]
     },
     {
+      "description": "Ignore patch updates for the Quarto Docker image",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/quarto-dev/quarto"],
+      "matchUpdateTypes": ["patch"],
+      "enabled": false
+    },
+    {
+      "description": "Ignore patch updates for the Python packages",
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["patch"],
       "enabled": false
     },
     {
+      "description": "Ignore patch and minor updates for GitHub Actions",
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["patch", "minor"],
       "enabled": false
