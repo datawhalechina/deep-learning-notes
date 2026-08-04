@@ -1,4 +1,4 @@
-# Type of change
+## Type of change
 
 <!-- Check all that apply. -->
 
