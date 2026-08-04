@@ -37,7 +37,7 @@ pip install dnnlpy
 If you need the latest package code directly from this repository, use:
 
 ```bash
-uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirectory=dnnlpy"
+uv pip install "git+https://github.com/datawhalechina/deep-learning-notes.git#subdirectory=dnnlpy"
 ```
 
 Some notebooks and examples rely on utilities and custom implementations provided by `dnnlpy`, so skipping this step may cause rendering or execution issues.
