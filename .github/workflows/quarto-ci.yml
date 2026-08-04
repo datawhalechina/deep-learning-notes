@@ -92,6 +92,8 @@ jobs:
 
       - name: Download datasets for notebooks
         shell: bash
+        env:
+          UV_NO_SYNC: "1"
         run: |
           set -euo pipefail
 
