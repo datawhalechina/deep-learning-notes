@@ -15,8 +15,8 @@
         "QUARTO_PYTHON": "${containerWorkspaceFolder}/.venv/bin/python",
         "UV_LINK_MODE": "copy"
     },
-    "updateContentCommand": "uv sync --python 3.14 --all-packages",
-    "waitFor": "updateContentCommand",
+    "postCreateCommand": "uv sync --python 3.14 --all-packages --group cpu",
+    "waitFor": "postCreateCommand",
     "customizations": {
         "vscode": {
             "extensions": [
