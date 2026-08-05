@@ -15,26 +15,13 @@ PDF_NAMES = {
 def move_pdf(language: str, target_name: str) -> None:
     language_dir = TYPST_DIR / language
     target = TYPST_DIR / target_name
+
     if not language_dir.exists():
         path = language_dir.relative_to(ROOT)
         print(f'Skipped missing directory: {path}.', flush=True)
         return
 
-    candidates = [
-        language_dir / 'deep-learning-notes.pdf',
-        language_dir / target_name,
-    ]
-
-    source = next((path for path in candidates if path.exists()), None)
-    if source is None:
-        if target.exists():
-            path = target.relative_to(ROOT)
-            print(f'Target already exists: {path}.', flush=True)
-            return
-
-        path = ', '.join(str(path.relative_to(ROOT)) for path in candidates)
-        raise FileNotFoundError(f'Expected one of: {path}')
-
+    source = language_dir / 'deep-learning-notes.pdf'
     target.unlink(missing_ok=True)
     source.replace(target)
 
