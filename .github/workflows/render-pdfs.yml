@@ -36,8 +36,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  render-zh-pdf:
-    name: Typst PDF Rendering for Chinese Notebooks
+  render-pdfs:
+    name: Typst PDF Rendering
     runs-on: ubuntu-latest
 
     steps:
@@ -132,68 +132,6 @@ jobs:
           gh release upload "${{ github.event.release.tag_name }}" \
             _typst/deep-learning-notes-zh.pdf \
             --clobber
-
-  render-en-pdf:
-    name: Typst PDF Rendering for English Notebooks
-    needs: render-zh-pdf
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Install PDF fonts
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-jetbrains-mono fonts-noto-cjk fonts-noto-cjk-extra
-          fc-cache -fv
-          fc-list | grep -i "JetBrains Mono" | head || true
-          fc-list | grep -i "Noto Serif CJK" | head || true
-
-      - name: Set up Quarto
-        uses: quarto-dev/quarto-actions/setup@v2
-
-      - name: Install Chrome for Quarto
-        run: quarto install chrome-headless-shell
-
-      - name: Use Quarto freeze cache
-        uses: actions/cache@v6
-        with:
-          path: _freeze
-          key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            quarto-freeze-${{ runner.os }}-
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            pyproject.toml
-            dnnlpy/pyproject.toml
-
-      - name: Install Python dependencies
-        run: |
-          uv python install 3.14
-          uv sync --python 3.14 --all-packages --group cpu
-
-      - name: Download datasets for notebooks
-        shell: bash
-        env:
-          UV_NO_SYNC: "1"
-        run: |
-          set -euo pipefail
-
-          mkdir -p "$DNNL_DATA_ROOT/caltech101"
-          uv run gdown 19qo4t_YR0RGILU_nmpXHbo1mMGOvn3iH \
-            -O "$DNNL_DATA_ROOT/caltech101/caltech-101.zip"
-
-          mkdir -p "$DNNL_DATA_ROOT/MNIST"
-          uv run gdown 1Aph8a8r7_uFN-IsVu5oFmZ4_zJKckk4X \
-            -O "$DNNL_DATA_ROOT/MNIST/mnist.zip"
-          unzip -q "$DNNL_DATA_ROOT/MNIST/mnist.zip" -d "$DNNL_DATA_ROOT/MNIST"
-
-          uv run python utils/download_datasets.py
 
       - name: Compile en qmd to PDF
         shell: bash
