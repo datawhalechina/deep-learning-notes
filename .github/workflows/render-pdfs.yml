@@ -20,6 +20,12 @@ on:
     types: [published]
   workflow_dispatch:
 
+env:
+  DNNL_DATA_ROOT: ${{ github.workspace }}/datasets
+  HF_HOME: ~/.cache/huggingface
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  UV_TORCH_BACKEND: cpu
+
 permissions:
   contents: write
   id-token: write
