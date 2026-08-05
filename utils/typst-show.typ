@@ -14,7 +14,7 @@ $if(lang)$
 $endif$
   main-color: brand-color.at("primary", default: blue),
   logo: none,
-  cover: image("assets/book-cover.jpg"),
+  cover: image("assets/book-cover.png"),
   cover-background: none,
 $if(toc-depth)$
   outline-depth: $toc-depth$,
