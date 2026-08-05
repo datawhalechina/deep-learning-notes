@@ -1,9 +1,6 @@
 project:
   type: default
 
-filters:
-  - utils/mermaid-defaults.lua
-
 author: jshn9515
 date: today
 date-format: iso

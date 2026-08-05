@@ -3,9 +3,11 @@ project:
   output-dir: _site
   render:
     - "*.qmd"
+  resources:
+    - "utils/html_mermaid_defaults.js"
   post-render:
     - "utils/clean_checkpoints.py"
-    - "utils/generate_toc.py"
+    - "utils/html_generate_toc.py"
 
 execute:
   jupyter: python3
@@ -26,6 +28,9 @@ format:
     syntax-highlighting: github
     code-annotations: hover
     license: CC BY-NC
+    include-in-header:
+      - text: |
+          <script src="/utils/html_mermaid_defaults.js"></script>
 
 website:
   title: deep-learning-notes

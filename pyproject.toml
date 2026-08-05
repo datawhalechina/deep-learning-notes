@@ -5,7 +5,7 @@ keywords = ["deep learning tutorials", "PyTorch", "Quarto"]
 description = "A collection of notes and code examples for deep learning concepts and techniques."
 authors = [{ name = "jshn9515", email = "jshn9510@gmail.com" }]
 readme = "README.md"
-license = "CC BY-NC 4.0"
+license = "CC-BY-NC-4.0"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     # Deep learning core libraries

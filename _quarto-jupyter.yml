@@ -4,8 +4,8 @@ project:
   render:
     - "*.qmd"
   post-render:
-    - "utils/clean_attachments.py"
-    - "utils/add_image_attrs.py"
+    - "utils/ipynb_clean_attachments.py"
+    - "utils/ipynb_add_image_attrs.py"
 
 execute:
   enabled: false

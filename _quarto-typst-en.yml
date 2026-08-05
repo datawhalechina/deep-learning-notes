@@ -2,12 +2,15 @@ project:
   type: book
   output-dir: "_typst/en"
   render:
-    - "*.qmd"
+    - "en/*.qmd"
   post-render:
-    - "utils/rename_pdfs.py"
+    - "utils/typst_clean_cache.py"
+    - "utils/typst_rename_pdfs.py"
 
 execute:
-  enabled: false
+  jupyter: python3
+  freeze: auto
+  cache: true
 
 format:
   typst:
@@ -26,7 +29,7 @@ format:
     citation-location: document
     syntax-highlighting: idiomatic
     include-before-body:
-      - "utils/typst-header-en.typ"
+      - "utils/typst_header_en.typ"
 
 book:
   chapters:
