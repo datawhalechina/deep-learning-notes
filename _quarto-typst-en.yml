@@ -4,6 +4,7 @@ project:
   render:
     - "en/*.qmd"
   post-render:
+    - "utils/clean_checkpoints.py"
     - "utils/clean_cache.py"
     - "utils/typst_rename_pdfs.py"
 
