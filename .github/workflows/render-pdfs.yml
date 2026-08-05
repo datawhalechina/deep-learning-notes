@@ -6,7 +6,7 @@ on:
     paths:
       - "zh/**"
       - "en/**"
-      - "assets/**"
+      - "assets/book-cover.png"
       - "index.qmd"
       - "refs-*.bib"
       - "_quarto.yml"
@@ -59,16 +59,49 @@ jobs:
       - name: Install Chrome for Quarto
         run: quarto install chrome-headless-shell
 
-      - name: Restore Quarto freeze cache
-        uses: actions/cache/restore@v6
+      - name: Use Quarto freeze cache
+        uses: actions/cache@v6
         with:
           path: _freeze
           key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             quarto-freeze-${{ runner.os }}-
 
-      - name: Compile zh qmd to pdf
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            dnnlpy/pyproject.toml
+
+      - name: Install Python dependencies
+        run: |
+          uv python install 3.14
+          uv sync --python 3.14 --all-packages --group cpu
+
+      - name: Download datasets for notebooks
         shell: bash
+        env:
+          UV_NO_SYNC: "1"
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$DNNL_DATA_ROOT/caltech101"
+          uv run gdown 19qo4t_YR0RGILU_nmpXHbo1mMGOvn3iH \
+            -O "$DNNL_DATA_ROOT/caltech101/caltech-101.zip"
+
+          mkdir -p "$DNNL_DATA_ROOT/MNIST"
+          uv run gdown 1Aph8a8r7_uFN-IsVu5oFmZ4_zJKckk4X \
+            -O "$DNNL_DATA_ROOT/MNIST/mnist.zip"
+          unzip -q "$DNNL_DATA_ROOT/MNIST/mnist.zip" -d "$DNNL_DATA_ROOT/MNIST"
+
+          uv run python utils/download_datasets.py
+
+      - name: Compile zh qmd to PDF
+        shell: bash
+        env:
+          QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: quarto render --profile typst-zh
 
       - name: Generate zh PDF attestation
@@ -115,16 +148,49 @@ jobs:
       - name: Install Chrome for Quarto
         run: quarto install chrome-headless-shell
 
-      - name: Restore Quarto freeze cache
-        uses: actions/cache/restore@v6
+      - name: Use Quarto freeze cache
+        uses: actions/cache@v6
         with:
           path: _freeze
           key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             quarto-freeze-${{ runner.os }}-
 
-      - name: Convert en qmd to PDF
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            dnnlpy/pyproject.toml
+
+      - name: Install Python dependencies
+        run: |
+          uv python install 3.14
+          uv sync --python 3.14 --all-packages --group cpu
+
+      - name: Download datasets for notebooks
         shell: bash
+        env:
+          UV_NO_SYNC: "1"
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$DNNL_DATA_ROOT/caltech101"
+          uv run gdown 19qo4t_YR0RGILU_nmpXHbo1mMGOvn3iH \
+            -O "$DNNL_DATA_ROOT/caltech101/caltech-101.zip"
+
+          mkdir -p "$DNNL_DATA_ROOT/MNIST"
+          uv run gdown 1Aph8a8r7_uFN-IsVu5oFmZ4_zJKckk4X \
+            -O "$DNNL_DATA_ROOT/MNIST/mnist.zip"
+          unzip -q "$DNNL_DATA_ROOT/MNIST/mnist.zip" -d "$DNNL_DATA_ROOT/MNIST"
+
+          uv run python utils/download_datasets.py
+
+      - name: Compile en qmd to PDF
+        shell: bash
+        env:
+          QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: quarto render --profile typst-en
 
       - name: Generate en PDF attestation
