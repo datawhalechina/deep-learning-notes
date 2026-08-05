@@ -7,7 +7,7 @@ on:
       - "zh/**"
       - "en/**"
       - "_quarto-jupyter.yml"
-      - "utils/ipynb_*"
+      - "utils/ipynb*"
       - ".github/workflows/render-notebooks.yml"
   release:
     types: [published]

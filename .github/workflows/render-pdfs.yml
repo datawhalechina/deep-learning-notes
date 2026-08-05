@@ -11,7 +11,9 @@ on:
       - "refs-*.bib"
       - "_quarto.yml"
       - "_quarto-typst-*.yml"
-      - "utils/typst_*"
+      - "utils/clean_cache.py"
+      - "utils/clean_checkpoints.py"
+      - "utils/typst*"
       - ".github/workflows/render-pdfs.yml"
   release:
     types: [published]
