@@ -13,6 +13,7 @@ PDF_NAMES = {
 
 
 def move_pdf(language: str, target_name: str) -> None:
+    """Move the rendered PDF for a given language to the top-level _typst directory."""
     language_dir = TYPST_DIR / language
     target = TYPST_DIR / target_name
 
@@ -31,6 +32,7 @@ def move_pdf(language: str, target_name: str) -> None:
 
 
 def remove_language_dirs() -> None:
+    """Remove the language directories after moving the PDFs."""
     for language in PDF_NAMES:
         language_dir = TYPST_DIR / language
         if language_dir.exists():
@@ -38,9 +40,10 @@ def remove_language_dirs() -> None:
             print(f'Deleted {language_dir.relative_to(ROOT)}.', flush=True)
 
 
-def main() -> None:
-    for language, target_name in PDF_NAMES.items():
-        move_pdf(language, target_name)
+def main():
+    """Move rendered Typst PDFs into the top-level _typst directory."""
+    for language, target in PDF_NAMES.items():
+        move_pdf(language, target)
     remove_language_dirs()
 
 
