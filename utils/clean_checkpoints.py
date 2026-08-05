@@ -1,21 +1,21 @@
-import os
+"""Delete PyTorch checkpoints outside model directories."""
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_DIRS = {'models'}
+CHECKPOINT_SUFFIXES = {'.pt', '.pth'}
 
 
-def main():
-    for dirpath, dirnames, filenames in os.walk(ROOT):
+def main() -> None:
+    for directory, dirnames, filenames in ROOT.walk():
         dirnames[:] = [dirname for dirname in dirnames if dirname not in EXCLUDED_DIRS]
-        directory = Path(dirpath)
 
         for filename in filenames:
-            p = directory / filename
-
-            if p.suffix.lower() in {'.pt', '.pth'}:
-                print(f'Deleting: {p.name}', flush=True)
-                p.unlink()
+            path = directory / filename
+            if path.suffix.lower() in CHECKPOINT_SUFFIXES:
+                print(f'Deleting: {path.name}', flush=True)
+                path.unlink()
 
 
 if __name__ == '__main__':

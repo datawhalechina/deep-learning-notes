@@ -6,14 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TYPST_DIR = ROOT / '_typst'
 
-PDFS = {
+PDF_NAMES = {
     'zh': 'deep-learning-notes-zh.pdf',
     'en': 'deep-learning-notes-en.pdf',
 }
 
 
 def move_pdf(language: str, target_name: str) -> None:
-    """Move one language PDF to _typst with its final filename."""
     language_dir = TYPST_DIR / language
     target = TYPST_DIR / target_name
     if not language_dir.exists():
@@ -36,8 +35,7 @@ def move_pdf(language: str, target_name: str) -> None:
         path = ', '.join(str(path.relative_to(ROOT)) for path in candidates)
         raise FileNotFoundError(f'Expected one of: {path}')
 
-    if target.exists():
-        target.unlink()
+    target.unlink(missing_ok=True)
     source.replace(target)
 
     src_path = source.relative_to(ROOT)
@@ -46,8 +44,7 @@ def move_pdf(language: str, target_name: str) -> None:
 
 
 def remove_language_dirs() -> None:
-    """Remove Typst language directories after PDFs are moved."""
-    for language in PDFS:
+    for language in PDF_NAMES:
         language_dir = TYPST_DIR / language
         if language_dir.exists():
             shutil.rmtree(language_dir)
@@ -55,7 +52,7 @@ def remove_language_dirs() -> None:
 
 
 def main() -> None:
-    for language, target_name in PDFS.items():
+    for language, target_name in PDF_NAMES.items():
         move_pdf(language, target_name)
     remove_language_dirs()
 
