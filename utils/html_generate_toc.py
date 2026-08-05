@@ -14,14 +14,16 @@ FRONT_MATTER_TITLE_RE = re.compile(r'^title:\s*(?P<title>.+?)\s*$')
 NUMBER_RE = re.compile(r'ch(?P<chapter>\d+)\.(?P<section>\d+)')
 
 
-def sort_key(path: Path) -> tuple[int, int, str]:
+def sort_key(path: Path) -> tuple[int, int, int, str]:
+    """Sort QMD files by chapter and section numbers."""
     match = NUMBER_RE.search(path.stem)
     if match:
-        return (int(match['chapter']), int(match['section']), path.name)
-    return (10**9, 10**9, path.name)
+        return (0, int(match['chapter']), int(match['section']), path.name)
+    return (1, 0, 0, path.name)
 
 
 def read_qmd_title(path: Path) -> str:
+    """Read the title from the front-matter of a QMD file."""
     in_front_matter = False
 
     for line in path.read_text(encoding='utf-8').splitlines():
@@ -36,27 +38,29 @@ def read_qmd_title(path: Path) -> str:
             if match:
                 return match['title'].strip().strip('"\'')
 
-    raise ValueError(f'No front-matter title found in {path}')
+    raise RuntimeError(f'No front-matter title found in {path}.')
 
 
 def read_chapters(language: str) -> list[tuple[str, list[Path]]]:
+    """Read chapters and their QMD files from the Quarto sidebar configuration."""
     config = yaml.safe_load(QUARTO_CONFIG.read_text(encoding='utf-8'))
-    chapters: list[tuple[str, list[Path]]] = []
+    chapters = []
 
     sidebars = config['website']['sidebar']
     sidebar = next(item for item in sidebars if item.get('id') == language)
 
     for part in sidebar['contents']:
         for chapter in part.get('contents', []):
-            chapter_title = chapter['section']
+            title = chapter['section']
             pattern = chapter['contents']
             files = sorted(ROOT.glob(pattern), key=sort_key)
-            chapters.append((chapter_title, files))
+            chapters.append((title, files))
 
     return chapters
 
 
 def build_toc(chapters: list[tuple[str, list[Path]]]) -> str:
+    """Build a Markdown TOC from chapters and their QMD files."""
     lines = [f'# {TITLE}', '']
 
     for chapter_title, files in chapters:
@@ -71,10 +75,14 @@ def build_toc(chapters: list[tuple[str, list[Path]]]) -> str:
     return '\n'.join(lines).rstrip() + '\n'
 
 
-def main() -> None:
+def main():
+    """Generate TOC files for English and Chinese."""
     for language in LANGUAGES:
-        output = ROOT / language / 'README.md'
-        output.write_text(build_toc(read_chapters(language)), encoding='utf-8')
+        chapters = read_chapters(language)
+        book_toc = build_toc(chapters)
+
+        markdown = ROOT / language / 'README.md'
+        markdown.write_text(book_toc, encoding='utf-8')
 
     print('TOC files generated successfully.', flush=True)
 
