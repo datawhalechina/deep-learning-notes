@@ -227,13 +227,13 @@ On the surface, this seems sufficient. So why does PyTorch also provide `torch.i
 
 The reason is that the semantics of `no_grad()` are still relatively conservative. It only says that this block temporarily does not record gradients. But PyTorch still maintains some internal Autograd-related information, such as version counters and view tracking. These mechanisms are important during training because they help PyTorch check whether in-place operations, shared storage, and similar situations might break gradient computation. But if we not only know that gradients are not needed now, but also know that the results of this block will never participate in backpropagation later, then the framework can be more aggressive: it can remove all gradient-related overhead.
 
-This is the motivation behind `inference_mode()`[^1]:
+This is the motivation behind `inference_mode()`[^2.2.4]:
 
 > **This block not only does not need gradients now; the results it produces are also not intended to re-enter the automatic differentiation system later.**
 
 So it is usually faster and uses less memory than `no_grad()`, but it also has stronger restrictions.
 
-[^1]: `torch.inference_mode()` was introduced in PyTorch 1.9 specifically as a performance optimization for inference. For implementation details, see [RFC-0011-InferenceMode](https://github.com/pytorch/rfcs/blob/master/RFC-0011-InferenceMode.md).
+[^2.2.4]: `torch.inference_mode()` was introduced in PyTorch 1.9 specifically as a performance optimization for inference. For implementation details, see [RFC-0011-InferenceMode](https://github.com/pytorch/rfcs/blob/master/RFC-0011-InferenceMode.md).
 
 First, look at ordinary `no_grad()`:
 
