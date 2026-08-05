@@ -7,85 +7,72 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED_ROOT = ROOT / '_jupyter'
 NOTEBOOK_DIRS = [GENERATED_ROOT / 'zh', GENERATED_ROOT / 'en']
+
 ATTACHMENT_PREFIX = 'attachment:figures/'
 FIGURE_PREFIX = 'figures/'
 
 
-def clean_text(text: str) -> tuple[str, int]:
-    replacements = text.count(ATTACHMENT_PREFIX)
-    return text.replace(ATTACHMENT_PREFIX, FIGURE_PREFIX), replacements
+def clean_text(text: str) -> tuple[str, bool]:
+    """Remove attachment references from a string and replace them with figure links."""
+    cleaned = text.replace(ATTACHMENT_PREFIX, FIGURE_PREFIX)
+    changed = cleaned != text
+    return cleaned, changed
 
 
-def clean_source(source: Any) -> tuple[Any, int]:
+def clean_source(source: Any) -> tuple[Any, bool]:
+    """Clean the source of a notebook cell, which can be a string or a list of strings."""
     if isinstance(source, str):
         return clean_text(source)
 
     if not isinstance(source, list):
-        return source, 0
+        return source, False
 
     cleaned = []
-    replacements = 0
-    for item in source:
-        if isinstance(item, str):
-            item, count = clean_text(item)
-            replacements += count
-        cleaned.append(item)
+    changed = False
 
-    return cleaned, replacements
+    for src in source:
+        if isinstance(src, str):
+            src, src_changed = clean_text(src)
+            changed = changed or src_changed
+        cleaned.append(src)
+
+    return cleaned, changed
 
 
-def clean_notebook(path: Path) -> tuple[bool, int, int]:
+def clean_notebook(path: Path) -> bool:
     notebook = json.loads(path.read_text(encoding='utf-8'))
-    removed_attachments = 0
-    replaced_references = 0
+    changed = False
 
     for cell in notebook.get('cells', []):
         if not isinstance(cell, dict):
             continue
 
         if 'attachments' in cell:
-            removed_attachments += 1
             del cell['attachments']
+            changed = True
 
-        source, replacements = clean_source(cell.get('source'))
-        if replacements:
-            cell['source'] = source
-            replaced_references += replacements
+        src, src_changed = clean_source(cell.get('source'))
 
-    changed = bool(removed_attachments or replaced_references)
+        if src_changed:
+            cell['source'] = src
+            changed = True
+
     if not changed:
-        return False, 0, 0
+        return False
 
     path.write_text(
         json.dumps(notebook, ensure_ascii=False, indent=2) + '\n',
         encoding='utf-8',
     )
-    return True, removed_attachments, replaced_references
+    return True
 
 
-def main() -> None:
-    changed_files = 0
-    removed_attachments = 0
-    replaced_references = 0
-
-    notebooks = sorted(
-        path for directory in NOTEBOOK_DIRS for path in directory.rglob('*.ipynb')
-    )
-
+def main():
+    """Clean all notebooks in the specified directories."""
+    notebooks = sorted(path for dir in NOTEBOOK_DIRS for path in dir.rglob('*.ipynb'))
     for notebook in notebooks:
-        changed, attachments, references = clean_notebook(notebook)
-        if changed:
-            changed_files += 1
-            removed_attachments += attachments
-            replaced_references += references
-            print(f'Cleaning {notebook.name}', flush=True)
-
-    print(
-        'Cleaned '
-        f'{changed_files} file(s), removed {removed_attachments} attachment block(s), '
-        f'and rewrote {replaced_references} figure reference(s).',
-        flush=True,
-    )
+        if clean_notebook(notebook):
+            print(f'Cleaned {notebook.relative_to(ROOT).name}.', flush=True)
 
 
 if __name__ == '__main__':
