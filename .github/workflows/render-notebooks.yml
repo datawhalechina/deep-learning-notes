@@ -6,7 +6,11 @@ on:
     paths:
       - "zh/**"
       - "en/**"
+      - "index.qmd"
+      - "_quarto.yml"
       - "_quarto-jupyter.yml"
+      - "refs-*.bib"
+      - "utils/clean_cache.py"
       - "utils/ipynb*"
       - ".github/workflows/render-notebooks.yml"
   release:
