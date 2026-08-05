@@ -4,7 +4,7 @@ project:
   render:
     - "en/*.qmd"
   post-render:
-    - "utils/typst_clean_cache.py"
+    - "utils/clean_cache.py"
     - "utils/typst_rename_pdfs.py"
 
 execute:
@@ -28,8 +28,10 @@ format:
     bibliographystyle: ieee
     citation-location: document
     syntax-highlighting: idiomatic
+    template-partials:
+      - "utils/typst-show.typ"
     include-before-body:
-      - "utils/typst_header_en.typ"
+      - "utils/typst-header-en.typ"
 
 book:
   chapters:
