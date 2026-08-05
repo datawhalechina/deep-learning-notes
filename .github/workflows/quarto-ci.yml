@@ -6,6 +6,8 @@ on:
     paths:
       - "zh/**"
       - "en/**"
+      - "cs336/**"
+      - "index.qmd"
       - "pyproject.toml"
       - "_quarto.yml"
       - "_quarto-html.yml"
@@ -13,7 +15,7 @@ on:
       - "refs-*.bib"
       - "utils/download_datasets.py"
       - "utils/clean_checkpoints.py"
-      - "utils/generate_toc.py"
+      - "utils/html_*"
       - ".github/workflows/quarto-ci.yml"
 
 env:

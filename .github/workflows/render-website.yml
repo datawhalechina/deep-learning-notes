@@ -7,17 +7,15 @@ on:
       - "zh/**"
       - "en/**"
       - "cs336/**"
-      - "assets/**"
       - "index.qmd"
       - "pyproject.toml"
       - "_quarto.yml"
       - "_quarto-html.yml"
       - "styles.css"
       - "refs-*.bib"
-      - "utils/mermaid-defaults.lua"
       - "utils/download_datasets.py"
       - "utils/clean_checkpoints.py"
-      - "utils/generate_toc.py"
+      - "utils/html_*"
       - ".github/workflows/render-website.yml"
   release:
     types: [published]

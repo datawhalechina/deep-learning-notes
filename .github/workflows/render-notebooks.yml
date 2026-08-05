@@ -7,8 +7,7 @@ on:
       - "zh/**"
       - "en/**"
       - "_quarto-jupyter.yml"
-      - "utils/clean_attachments.py"
-      - "utils/add_image_attrs.py"
+      - "utils/ipynb_*"
       - ".github/workflows/render-notebooks.yml"
   release:
     types: [published]
