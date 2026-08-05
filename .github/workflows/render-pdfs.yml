@@ -135,6 +135,7 @@ jobs:
 
   render-en-pdf:
     name: Typst PDF Rendering for English Notebooks
+    needs: render-zh-pdf
     runs-on: ubuntu-latest
 
     steps:
