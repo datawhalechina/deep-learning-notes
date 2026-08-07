@@ -11,7 +11,7 @@ order: 1
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch2-pytorch-introduction/ch2.1-automatic-differentiation.ipynb){fig-align="left"}
 
-在 1.3 节里，我们已经从计算图的角度理解了反向传播：一个损失值之所以会变化，是因为它依赖了前面的一系列计算；沿着这条依赖链往回走，就能知道每个参数应该承担多少责任。
+在 1.3 节里，我们已经从计算图的角度理解了反向传播：一个损失函数的值之所以会变化，是因为它依赖了前面的一系列计算；沿着这条依赖链往回走，就能知道每个参数应该承担多少责任。
 
 这一节，我们把这个问题放到 PyTorch 里重新看一遍。
 
