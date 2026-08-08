@@ -1,0 +1,13 @@
+{
+    "vocab_size": 10000,
+    "context_length": 16,
+    "d_model": 64,
+    "num_layers": 3,
+    "num_heads": 4,
+    "d_ff": 128,
+    "remove_rmsnorm": false,
+    "use_post_norm": false,
+    "remove_rope": false,
+    "rope_theta": 10000.0,
+    "ffn_type": null
+}
