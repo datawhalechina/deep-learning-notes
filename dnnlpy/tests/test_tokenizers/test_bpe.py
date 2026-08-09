@@ -3,8 +3,42 @@ from typing import cast
 
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
+from tokenizers.trainers import BpeTrainer
 
 import dnnlpy.tokenizers as dltk
+
+
+def test_bpe_training_tie_break_matches_hf_tokenizers():
+    texts = ['ab', 'ac']
+
+    hf_tokenizer = Tokenizer(BPE(unk_token='<unk>'))
+    hf_tokenizer.train_from_iterator(
+        texts,
+        BpeTrainer(
+            vocab_size=5,
+            min_frequency=1,
+            show_progress=False,
+            special_tokens=['<unk>'],
+        ),
+    )
+
+    tokenizer = dltk.Tokenizer(dltk.BPE(), num_workers=1)
+    tokenizer.train_from_iterator(texts, vocab_size=5, min_frequency=1)
+
+    hf_merges = json.loads(hf_tokenizer.to_str())['model']['merges']
+    model = cast(dltk.BPE, tokenizer.model)
+    assert [list(pair) for pair in model.merges] == hf_merges
+
+
+def test_bpe_training_refreshes_token_id_lookups():
+    tokenizer = dltk.Tokenizer(dltk.BPE(), num_workers=1)
+
+    tokenizer.train_from_iterator(['ab'], vocab_size=4, min_frequency=1)
+
+    encoding = tokenizer.encode('ab')
+    assert encoding.tokens == ['ab']
+    assert encoding.ids == [tokenizer.token_to_id('ab')]
+    assert tokenizer.id_to_token(encoding.ids[0]) == 'ab'
 
 
 def test_bpe_encode_matches_hf_tokenizers():
@@ -179,6 +213,21 @@ def test_bpe_add_special_tokens_after_training_preserves_existing_ids():
     for token in vocab:
         if token not in special_tokens:
             assert '<' not in token and '>' not in token
+
+
+def test_bpe_encode_keeps_longest_special_tokens_atomic():
+    tokenizer = dltk.Tokenizer(
+        dltk.BPE(vocab={'<unk>': 0, 'a': 1, 'b': 2, '<eos>': 3, '<eos><eos>': 4}),
+        num_workers=1,
+    )
+    tokenizer.add_special_tokens(['<eos>', '<eos><eos>'])
+
+    encoding = tokenizer.encode('a<eos><eos>b')
+
+    assert encoding.tokens == ['a', '<eos><eos>', 'b']
+    assert encoding.ids == [1, 4, 2]
+    assert encoding.offsets == [(0, 1), (1, 11), (11, 12)]
+    assert encoding.special_tokens_mask == [0, 1, 0]
 
 
 def test_bpe_training_ignores_empty_texts():

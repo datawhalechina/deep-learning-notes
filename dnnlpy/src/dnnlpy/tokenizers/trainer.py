@@ -133,6 +133,9 @@ class BPETrainer(Trainer):
         # by unique characters from the input texts.
         vocab_tokens, known_tokens = self._init_vocab(word_counts)
 
+        # token_ids: mapping from each token to its index in the vocabulary.
+        token_ids = {token: index for index, token in enumerate(vocab_tokens)}
+
         # pair_counts: word pair -> frequency.
         # pair_word_indices: mapping from each pair to the indices of words that contain that pair.
         # This allows us to efficiently update pair counts when a pair is merged in a word.
@@ -150,6 +153,7 @@ class BPETrainer(Trainer):
                 pair_counts,
                 pair_freq_buckets,
                 freq_heap,
+                token_ids,
             )
 
             # If no eligible pair is found, we have reached the end of the training process.
@@ -159,6 +163,7 @@ class BPETrainer(Trainer):
             new_token = ''.join(best_pair)
 
             if new_token not in known_tokens:
+                token_ids[new_token] = len(vocab_tokens)
                 vocab_tokens.append(new_token)
                 known_tokens.add(new_token)
 
@@ -363,6 +368,7 @@ class BPETrainer(Trainer):
         pair_counts: Counter[Pair],
         pair_freq_buckets: PairFreqBuckets | None = None,
         freq_heap: list[int] | None = None,
+        token_ids: dict[str, int] | None = None,
     ) -> Pair | None:
         """Select the most frequent adjacent symbol pair that meets the minimum frequency
         requirement.
@@ -376,6 +382,9 @@ class BPETrainer(Trainer):
             freq_heap (list[int] | None, optional): A max-heap of frequencies, allowing
                 efficient retrieval of the highest frequency. If None, the function will
                 compute the most frequent pair directly from `pair_counts`.
+            token_ids (dict[str, int] | None, optional): The training vocabulary IDs used
+                to match Hugging Face's ascending pair-ID tie-break. If None, token strings
+                are used as the ordering keys.
 
         Returns:
             Pair | None: The most frequent adjacent symbol pair that meets the minimum frequency requirement, or None if no such pair exists.
@@ -392,13 +401,19 @@ class BPETrainer(Trainer):
             >>> _select_best_pair(pair_counts, pair_freq_buckets, freq_heap)
             ('l', 'o')
         """
+
+        def pair_key(pair: Pair) -> tuple[int, int] | Pair:
+            if token_ids is None:
+                return pair
+            return token_ids[pair[0]], token_ids[pair[1]]
+
         if pair_freq_buckets is None or freq_heap is None:
-            eligible_pairs = (
-                (count, pair)
-                for pair, count in pair_counts.items()
-                if count >= self.min_frequency
-            )
-            return max(eligible_pairs, default=(0, None))[1]
+            best_count = max(pair_counts.values(), default=0)
+            if best_count < self.min_frequency:
+                return None
+
+            pairs = (pair for pair, count in pair_counts.items() if count == best_count)
+            return min(pairs, key=pair_key)
 
         while freq_heap:
             if sys.version_info >= (3, 14):
@@ -417,7 +432,7 @@ class BPETrainer(Trainer):
             if best_count < self.min_frequency:
                 return None
 
-            return max(pairs)
+            return min(pairs, key=pair_key)
 
         return None
 
@@ -582,5 +597,5 @@ class BPETrainer(Trainer):
             used_ids.add(next_id)
             next_id += 1
 
-        self.tokenizer.vocab = vocab
+        self.tokenizer.set_vocab(vocab)
         self.tokenizer.special_tokens = list(self.special_tokens)

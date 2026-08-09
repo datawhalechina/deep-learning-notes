@@ -57,6 +57,7 @@ class Model(ABC):
 
     unk_token: str
     vocab: dict[str, int]
+    merges: list[tuple[str, str]]
 
     @abstractmethod
     def encode(
@@ -428,7 +429,6 @@ class Tokenizer:
         self.unk_token = model.unk_token
         self.special_tokens = [self.unk_token]
 
-        self._vocab = model.vocab
         self._refresh_id_lookup()
 
     @property
@@ -475,14 +475,14 @@ class Tokenizer:
         return f'{self.__class__.__name__}()'
 
     def get_vocab(self) -> dict[str, int]:
-        return self._vocab
+        return self.model.vocab
 
     def set_vocab(self, vocab: dict[str, int]) -> None:
-        self._vocab = vocab
+        self.model.vocab = vocab
         self._refresh_id_lookup()
 
     def get_vocab_size(self) -> int:
-        return len(self._vocab)
+        return len(self.model.vocab)
 
     def token_to_id(self, token: str) -> int | None:
         return self._token_to_id.get(token)
@@ -543,13 +543,12 @@ class Tokenizer:
             count (int): The number of new tokens added to the vocabulary.
         """
         count = 0
-        next_id = max(self._vocab.values(), default=-1) + 1
+        next_id = max(self.model.vocab.values(), default=-1) + 1
 
         for token in tokens:
-            if token not in self._vocab:
-                self._vocab[token] = next_id
-                next_id += 1
-                count += 1
+            if token not in self.model.vocab:
+                self.model.vocab[token] = next_id
+                next_id, count = next_id + 1, count + 1
 
         if count:
             self._refresh_id_lookup()
@@ -612,7 +611,9 @@ class Tokenizer:
 
         return list(parallel_map(self.encode, batches, self.num_workers))
 
-    def decode(self, ids: list[int], skip_special_tokens: bool = True) -> str:
+    def decode(
+        self, ids: Encoding | list[int], skip_special_tokens: bool = True
+    ) -> str:
         """Decode token IDs back into text.
 
         Args:
@@ -628,6 +629,9 @@ class Tokenizer:
             >>> text = tokenizer.decode([1, 2, 3])
             >>> print(text)
         """
+        if isinstance(ids, Encoding):
+            ids = ids.ids
+
         return self.model.decode(self, ids, skip_special_tokens)
 
     def decode_batch(
@@ -694,8 +698,37 @@ class Tokenizer:
 
     def _refresh_id_lookup(self) -> None:
         """Refresh the reverse mapping from IDs to tokens."""
-        self._token_to_id = self._vocab
-        self._id_to_token = {idx: token for token, idx in self._vocab.items()}
+        self._token_to_id = self.model.vocab
+        self._id_to_token = {idx: token for token, idx in self.model.vocab.items()}
+
+    def _split_special_tokens(
+        self,
+        text: str,
+    ) -> Iterator[tuple[str, bool, Offset]]:
+        """Split text into ordinary spans and atomic registered special tokens."""
+        special_tokens = dict.fromkeys(token for token in self.special_tokens if token)
+        special_tokens = tuple(special_tokens)
+
+        cursor = 0
+        while cursor < len(text):
+            matches = (
+                (index, -len(token), token)
+                for token in special_tokens
+                if (index := text.find(token, cursor)) >= 0
+            )
+            match = min(matches, default=None)
+
+            if match is None:
+                yield (text[cursor:], False, (cursor, len(text)))
+                return
+
+            start, _, token = match
+            if start > cursor:
+                yield (text[cursor:start], False, (cursor, start))
+
+            end = start + len(token)
+            yield (token, True, (start, end))
+            cursor = end
 
     def _normalize(self, text: str) -> str:
         """Normalize a string with the registered normalizer."""

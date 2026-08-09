@@ -99,7 +99,7 @@ class BPE(Model):
             raise RuntimeError('Special tokens must be a list of strings.')
 
         if unk_token not in special_tokens:
-            raise ValueError('[UNK] token must be marked as special.')
+            raise RuntimeError('[UNK] token must be marked as special.')
 
         self.vocab = vocab
         self.merges = merges
@@ -125,29 +125,47 @@ class BPE(Model):
         Returns:
             Encoding: An Encoding object containing token IDs, tokens, and offsets.
         """
-        tokens, offsets = self._prepare_input(tokenizer, text)
-
         ids = []
         output_tokens = []
         output_offsets = []
+        special_tokens_mask = []
 
-        for token, token_offset in zip(tokens, offsets, strict=True):
-            for model_token, start, end in self._encode_token(token):
-                output_token = model_token
-                token_id = tokenizer.token_to_id(output_token)
-
+        for piece, is_special, piece_offset in tokenizer._split_special_tokens(text):
+            if is_special:
+                token_id = tokenizer.token_to_id(piece)
                 if token_id is None:
-                    token_id = tokenizer.unk_id
-                    output_token = self.unk_token
+                    raise KeyError(f'Special token {piece!r} is not in the vocabulary.')
 
                 ids.append(token_id)
-                output_tokens.append(output_token)
-                output_offsets.append((token_offset[0] + start, token_offset[0] + end))
+                output_tokens.append(piece)
+                output_offsets.append(piece_offset)
+                special_tokens_mask.append(1)
+                continue
+
+            tokens, offsets = self._prepare_input(tokenizer, piece)
+            for token, token_offset in zip(tokens, offsets, strict=True):
+                for model_token, start, end in self._encode_token(token):
+                    token_id = tokenizer.token_to_id(model_token)
+
+                    if token_id is None:
+                        token_id = tokenizer.unk_id
+                        model_token = self.unk_token
+
+                    ids.append(token_id)
+                    output_tokens.append(model_token)
+                    output_offsets.append(
+                        (
+                            piece_offset[0] + token_offset[0] + start,
+                            piece_offset[0] + token_offset[0] + end,
+                        )
+                    )
+                    special_tokens_mask.append(0)
 
         encoding = Encoding(
             ids=ids,
             tokens=output_tokens,
             offsets=output_offsets,
+            special_tokens_mask=special_tokens_mask,
         )
 
         if tokenizer.post_processor is not None:
