@@ -86,3 +86,7 @@ This project website is built with [Quarto](https://quarto.org/).
 
 - The notes in this repository are licensed under **CC BY-NC 4.0**.
 - The `dnnlpy` library is licensed under **MIT**.
+
+## ⭐ Star History
+
+[![Star History Chart](https://star-history.dera.page/svg?repos=datawhalechina/deep-learning-notes&type=date&legend=top-left)](https://star-history.dera.page/#datawhalechina/deep-learning-notes&type=date&legend=top-left)
