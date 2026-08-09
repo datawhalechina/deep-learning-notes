@@ -2,12 +2,16 @@ project:
   type: book
   output-dir: "_typst/zh"
   render:
-    - "*.qmd"
+    - "zh/*.qmd"
   post-render:
-    - "utils/rename_pdfs.py"
+    - "utils/clean_checkpoints.py"
+    - "utils/clean_cache.py"
+    - "utils/typst_rename_pdfs.py"
 
 execute:
-  enabled: false
+  jupyter: python3
+  freeze: auto
+  cache: true
 
 format:
   typst:
@@ -18,13 +22,17 @@ format:
     wrap: none
     engine: jupyter
     papersize: a4
+    fig-align: center
     fig-cap-location: bottom
     tbl-cap-location: top
-    code-annotations: below
+    mermaid-format: png
+    code-annotations: false
     citeproc: true
     bibliographystyle: ieee
     citation-location: document
     syntax-highlighting: idiomatic
+    template-partials:
+      - "utils/typst-show.typ"
     include-before-body:
       - "utils/typst-header-zh.typ"
 

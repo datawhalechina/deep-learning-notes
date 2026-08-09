@@ -5,18 +5,20 @@ import torchvision.datasets as datasets
 import dnnlpy
 
 ROOT = dnnlpy.get_data_root()
+DATASETS = [
+    datasets.MNIST,
+    datasets.Caltech101,
+]
 
 
-class DatasetDownloadError(RuntimeError):
-    pass
+def main():
+    for dataset in DATASETS:
+        try:
+            dataset(ROOT, download=True)
+        except Exception as err:
+            message = f'Error downloading {dataset.__name__} dataset.'
+            raise RuntimeError(message) from err
 
 
-try:
-    ds = datasets.MNIST(ROOT, download=True)
-except Exception as err:
-    raise DatasetDownloadError('Error downloading MNIST dataset.') from err
-
-try:
-    ds = datasets.Caltech101(ROOT, download=True)
-except Exception as err:
-    raise DatasetDownloadError('Error downloading Caltech101 dataset.') from err
+if __name__ == '__main__':
+    main()

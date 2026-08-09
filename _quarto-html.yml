@@ -3,9 +3,12 @@ project:
   output-dir: _site
   render:
     - "*.qmd"
+  resources:
+    - "utils/html_mermaid_defaults.js"
   post-render:
     - "utils/clean_checkpoints.py"
-    - "utils/generate_toc.py"
+    - "utils/clean_cache.py"
+    - "utils/html_generate_toc.py"
 
 execute:
   jupyter: python3
@@ -26,6 +29,9 @@ format:
     syntax-highlighting: github
     code-annotations: hover
     license: CC BY-NC
+    include-in-header:
+      - text: |
+          <script src="/utils/html_mermaid_defaults.js"></script>
 
 website:
   title: deep-learning-notes
@@ -40,9 +46,9 @@ website:
   comments:
     giscus:
       repo: jshn9515/deep-learning-notes
-      repo-id: R_kgDOSIPXtQ
+      repo-id: R_kgDOTslIoQ
       category: Announcements
-      category-id: DIC_kwDOSIPXtc4C7Uuj
+      category-id: DIC_kwDOTslIoc4DClBj
       mapping: og:title
       loading: lazy
       input-position: top

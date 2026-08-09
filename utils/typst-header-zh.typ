@@ -23,7 +23,7 @@
     top-edge: "bounds",
     bottom-edge: "bounds",
     lang: "en",
-    region: "us",
+    region: "cn",
 )
 #set par(
     first-line-indent: (amount: 2em, all: true),
@@ -40,6 +40,21 @@
 
 #show heading: set par(first-line-indent: (amount: 0pt, all: false))
 #show outline: set text(font: NotoSerif, fallback: false)
+#let fit-image(it) = layout(size => {
+    let image-width = measure(it).width
+    let fitted = if image-width > size.width {
+        scale(
+            size.width / image-width * 100%,
+            origin: top + left,
+            reflow: true,
+            it,
+        )
+    } else {
+        it
+    }
+    align(center, fitted)
+})
+#show image: fit-image
 #show figure: set align(center)
 #show figure: set block(breakable: true)
 #show figure.where(kind: table): set figure.caption(position: top)
@@ -49,20 +64,20 @@
 #show math.equation: set block(breakable: true)
 
 #show quote.where(block: true): it => block(
-  above: 1em,
-  below: 1em,
+    above: 1em,
+    below: 1em,
 )[
-  #showybox(
-    frame: (
-      border-color: gray,
-      thickness: 0.6pt,
-      radius: 4pt,
-    ),
-    body-style: (
-      fill: luma(248),
-      inset: 1em,
-    ),
-  )[
-    #it.body
-  ]
+    #showybox(
+        frame: (
+            border-color: gray,
+            thickness: 0.6pt,
+            radius: 4pt,
+        ),
+        body-style: (
+            fill: luma(248),
+            inset: 1em,
+        ),
+    )[
+        #it.body
+    ]
 ]
