@@ -52,6 +52,7 @@
     } else {
         it
     }
+    align(center, fitted)
 })
 #show image: fit-image
 #show figure: set align(center)
