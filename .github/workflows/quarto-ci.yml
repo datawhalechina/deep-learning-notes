@@ -6,20 +6,24 @@ on:
     paths:
       - "zh/**"
       - "en/**"
+      - "cs336/**"
+      - "index.qmd"
       - "pyproject.toml"
       - "_quarto.yml"
       - "_quarto-html.yml"
       - "styles.css"
       - "refs-*.bib"
       - "utils/download_datasets.py"
+      - "utils/clean_cache.py"
       - "utils/clean_checkpoints.py"
-      - "utils/generate_toc.py"
+      - "utils/html*"
       - ".github/workflows/quarto-ci.yml"
 
 env:
   DNNL_DATA_ROOT: ${{ github.workspace }}/datasets
   HF_HOME: ~/.cache/huggingface
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  UV_TORCH_BACKEND: cpu
 
 permissions:
   contents: read
@@ -87,10 +91,12 @@ jobs:
       - name: Install Python dependencies
         run: |
           uv python install 3.14
-          uv sync --python 3.14 --all-packages
+          uv sync --python 3.14 --all-packages --group cpu
 
       - name: Download datasets for notebooks
         shell: bash
+        env:
+          UV_NO_SYNC: "1"
         run: |
           set -euo pipefail
 

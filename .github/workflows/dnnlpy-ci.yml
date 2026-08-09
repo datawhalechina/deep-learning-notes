@@ -21,6 +21,9 @@ permissions:
   id-token: write
   attestations: write
 
+env:
+  UV_TORCH_BACKEND: cpu
+
 concurrency:
   group: dnnlpy-ci-${{ github.ref }}
   cancel-in-progress: true
@@ -66,7 +69,7 @@ jobs:
         run: |
           uv python install ${{ matrix.python-version }}
           uv venv --python ${{ matrix.python-version }} .venv
-          uv pip install --python .venv --torch-backend cpu -e "dnnlpy[test]"
+          uv pip install --python .venv -e "dnnlpy[test]"
 
       - name: Test dnnlpy package
         run: .venv/bin/python -m pytest dnnlpy/tests
