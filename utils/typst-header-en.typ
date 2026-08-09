@@ -50,20 +50,9 @@
     align(center, fitted)
 })
 #show image: fit-image
-#show link: it => {
-    if type(it.dest) == str and it.dest.contains("colab.research.google.com") {
-        block(width: 100%, align(left, it))
-    } else {
-        it
-    }
-}
 #show figure: set align(center)
 #show figure: set block(breakable: true)
 #show figure.where(kind: table): set figure.caption(position: top)
-#show figure.caption: it => block(
-    width: 100%,
-    align(center, it),
-)
 #show raw: set text(font: ("JetBrains Mono", "Noto Serif CJK SC"), fallback: false)
 #show raw.where(block: true): set text(size: 8pt)
 #show table: it => align(center, it)
