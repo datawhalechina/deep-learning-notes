@@ -32,7 +32,9 @@ $$
 \log p_\theta(x_0)
 $$
 
-Here, $x_0$ denotes the real sample, and $\theta$ denotes the model parameters[^1].
+Here, $x_0$ denotes the real sample, and $\theta$ denotes the model parameters[^14.5.1].
+
+[^14.5.1]: For why this can be written as maximizing log-likelihood rather than minimizing KL divergence, you can refer to the derivation in Section 13.2.2.
 
 The problem is that, in DDPM, we do not directly define a simple $p_\theta(x_0)$. Instead, we introduce a whole sequence of latent variables:
 
@@ -59,8 +61,6 @@ You can see that the problem suddenly becomes harder: because we need to integra
 > **Since directly maximizing $\log p_\theta(x_0)$ is difficult, optimize a lower bound of it instead.**
 
 Does this look very similar to the idea behind VAE? And this lower bound is the ELBO.
-
-[^1]: For why this can be written as maximizing log-likelihood rather than minimizing KL divergence, you can refer to the derivation in Section 13.2.2.
 
 ## 14.5.2 What Is the Variational Distribution in DDPM?
 

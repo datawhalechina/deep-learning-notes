@@ -30,7 +30,7 @@ In short, this package serves as the code companion to the tutorial.
 ## Requirements
 
 - Python 3.12 or newer
-- PyTorch 2.12 or newer
+- PyTorch 2.13 or newer
 
 ## Installation
 
@@ -43,13 +43,13 @@ uv pip install dnnlpy
 To install the latest version directly from this repository, use:
 
 ```bash
-uv pip install "git+https://github.com/datawhalechina/deep-learning-notes.git#subdirectory=dnnlpy"
+uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirectory=dnnlpy"
 ```
 
 This project uses [uv](https://docs.astral.sh/uv/) for local package development.
 
 ```bash
-git clone https://github.com/datawhalechina/deep-learning-notes.git
+git clone https://github.com/jshn9515/deep-learning-notes.git
 cd dnnlpy
 uv pip install .
 ```

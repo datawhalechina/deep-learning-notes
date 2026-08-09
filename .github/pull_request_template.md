@@ -1,4 +1,4 @@
-# Type of change
+## Type of change
 
 <!-- Check all that apply. -->
 
@@ -17,13 +17,7 @@
 
 <!-- Check the items that apply, and add commands or notes where useful. -->
 
-- [ ] I edited the source `.qmd` files rather than generated outputs only
-- [ ] I ran `quarto render` or rendered the affected page(s)
-- [ ] I checked links, formulas, figures, and code-block output in the rendered result
-- [ ] I updated related `_freeze` or `.jupyter_cache` outputs when executable examples changed
-- [ ] I ran relevant Python tests or checks for `dnnlpy` changes
-- [ ] I formatted changed Python files with ruff
-- [ ] I confirmed my commits are signed and show as verified on GitHub
+- [ ] I've read the [Contributing Guidelines](https://github.com/jshn9515/deep-learning-notes/blob/main/CONTRIBUTING.md).
 
 ## Related issue
 

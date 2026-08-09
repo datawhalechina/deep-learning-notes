@@ -1,7 +1,7 @@
 # Deep Learning Notes
 
-[![publish](https://github.com/datawhalechina/deep-learning-notes/actions/workflows/quarto-ci.yml/badge.svg)](https://github.com/jshn9515/deep-learning-notes/actions/workflows/quarto-ci.yml)
-[![build](https://github.com/datawhalechina/deep-learning-notes/actions/workflows/dnnlpy-ci.yml/badge.svg)](https://github.com/jshn9515/deep-learning-notes/actions/workflows/dnnlpy-ci.yml)
+[![publish](https://github.com/jshn9515/deep-learning-notes/actions/workflows/quarto-ci.yml/badge.svg)](https://github.com/jshn9515/deep-learning-notes/actions/workflows/quarto-ci.yml)
+[![build](https://github.com/jshn9515/deep-learning-notes/actions/workflows/dnnlpy-ci.yml/badge.svg)](https://github.com/jshn9515/deep-learning-notes/actions/workflows/dnnlpy-ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.14-blue)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.13.0-ee4c2c?logo=pytorch)](https://pytorch.org/)
 [![Transformers](https://img.shields.io/badge/Transformers-5.14.0-ffcc00?logo=huggingface)](https://huggingface.co/docs/transformers/index)
@@ -55,7 +55,7 @@ uv pip install dnnlpy
 To install the latest version directly from this repository, use:
 
 ```bash
-uv pip install "git+https://github.com/datawhalechina/deep-learning-notes.git#subdirectory=dnnlpy"
+uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirectory=dnnlpy"
 ```
 
 > [!NOTE]
