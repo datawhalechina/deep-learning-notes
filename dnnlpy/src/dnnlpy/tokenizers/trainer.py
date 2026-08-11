@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import heapq
 import itertools as it
-import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, override
@@ -18,11 +17,6 @@ type Pair = tuple[str, str]
 type WordSymbols = tuple[str, ...]
 type PairIndices = dict[Pair, set[int]]
 type PairFreqBuckets = dict[int, set[Pair]]
-
-if sys.version_info < (3, 14):
-    for attr in dir(heapq):
-        if attr.startswith('_heap') and attr.endswith('_max'):
-            setattr(heapq, attr[1:], getattr(heapq, attr))
 
 __all__ = ['BPETrainer']
 
