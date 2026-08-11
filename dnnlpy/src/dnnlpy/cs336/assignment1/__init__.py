@@ -5,3 +5,4 @@ from .model import (
     TransformerBlock as TransformerBlock,
     TransformerLM as TransformerLM,
 )
+from .utils import get_batch as get_batch
