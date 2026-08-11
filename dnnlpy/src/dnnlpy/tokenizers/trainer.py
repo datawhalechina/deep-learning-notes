@@ -19,6 +19,11 @@ type WordSymbols = tuple[str, ...]
 type PairIndices = dict[Pair, set[int]]
 type PairFreqBuckets = dict[int, set[Pair]]
 
+if sys.version_info < (3, 14):
+    for attr in dir(heapq):
+        if attr.startswith('_heap') and attr.endswith('_max'):
+            setattr(heapq, attr[1:], getattr(heapq, attr))
+
 __all__ = ['BPETrainer']
 
 
@@ -354,12 +359,8 @@ class BPETrainer(Trainer):
         for pair, count in pair_counts.items():
             pair_freq_buckets[count].add(pair)
 
-        if sys.version_info >= (3, 14):
-            freq_heap = [count for count in pair_freq_buckets]
-            heapq.heapify_max(freq_heap)
-        else:
-            freq_heap = [-count for count in pair_freq_buckets]
-            heapq.heapify(freq_heap)
+        freq_heap = [count for count in pair_freq_buckets]
+        heapq.heapify_max(freq_heap)
 
         return dict(pair_freq_buckets), freq_heap
 
@@ -416,18 +417,12 @@ class BPETrainer(Trainer):
             return min(pairs, key=pair_key)
 
         while freq_heap:
-            if sys.version_info >= (3, 14):
-                best_count = freq_heap[0]
-                pairs = pair_freq_buckets.get(best_count)  # lazy delete check
-                if pairs is None:
-                    heapq.heappop_max(freq_heap)
-                    continue
-            else:
-                best_count = -freq_heap[0]
-                pairs = pair_freq_buckets.get(best_count)  # lazy delete check
-                if pairs is None:
-                    heapq.heappop(freq_heap)
-                    continue
+            best_count = freq_heap[0]
+            pairs = pair_freq_buckets.get(best_count)  # lazy delete check
+
+            if pairs is None:
+                heapq.heappop_max(freq_heap)
+                continue
 
             if best_count < self.min_frequency:
                 return None
@@ -556,15 +551,12 @@ class BPETrainer(Trainer):
         pair_counts[pair] = new_count
         new_bucket = pair_freq_buckets.get(new_count)
 
-        # If the new bucket does not exist, create it and add the new count to the frequency heap.
+        # If the new bucket does not exist, create it and add the new count to the
+        # frequency heap.
         if new_bucket is None:
             new_bucket = set()
             pair_freq_buckets[new_count] = new_bucket
-
-            if sys.version_info >= (3, 14):
-                heapq.heappush_max(freq_heap, new_count)
-            else:
-                heapq.heappush(freq_heap, -new_count)
+            heapq.heappush_max(freq_heap, new_count)
 
         new_bucket.add(pair)
 
