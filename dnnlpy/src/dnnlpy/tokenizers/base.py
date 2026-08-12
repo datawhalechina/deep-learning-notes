@@ -167,10 +167,10 @@ class Encoding:
 class TraditionalTokenizer(ABC):
     """Base class for traditional tokenizers that split text into words or characters.
 
-    A tokenizer owns a vocabulary mapping string tokens to integer IDs and
-    defines the common encode/decode interface. Subclasses decide how text is
-    split into tokens, while this base class provides vocabulary lookup,
-    special-token bookkeeping, and batch helpers.
+    A tokenizer owns a vocabulary mapping string tokens to integer IDs and defines the
+    common encode/decode interface. Subclasses decide how text is split into tokens,
+    while this base class provides vocabulary lookup, special-token bookkeeping, and
+    batch helpers.
     """
 
     def __init__(
@@ -188,10 +188,10 @@ class TraditionalTokenizer(ABC):
         Raises:
             KeyError: If `unk_token` is not present in `vocab`.
         """
-        self._vocab = dict(vocab)
+        self._token_to_id = dict(vocab)
         self._refresh_id_lookup()
 
-        if unk_token not in self._vocab:
+        if unk_token not in vocab:
             raise KeyError(f'Unknown token {unk_token!r} is not in vocab.')
 
         self.unk_token = unk_token
@@ -201,13 +201,17 @@ class TraditionalTokenizer(ABC):
     def vocab(self) -> dict[str, int]:
         return self.get_vocab()
 
+    @vocab.setter
+    def vocab(self, vocab: dict[str, int]) -> None:
+        self.set_vocab(vocab)
+
     @property
     def vocab_size(self) -> int:
         return len(self.vocab)
 
     @property
     def unk_id(self) -> int:
-        unk_id = self._vocab.get(self.unk_token)
+        unk_id = self.vocab.get(self.unk_token)
         if unk_id is None:
             raise KeyError('Missing [UNK] token from the vocabulary.')
         return unk_id
@@ -217,7 +221,7 @@ class TraditionalTokenizer(ABC):
         return {
             token_id
             for token in self.special_tokens
-            if (token_id := self._vocab.get(token)) is not None
+            if (token_id := self.vocab.get(token)) is not None
         }
 
     def __len__(self) -> int:
@@ -237,14 +241,14 @@ class TraditionalTokenizer(ABC):
         return f'{self.__class__.__name__}()'
 
     def get_vocab(self) -> dict[str, int]:
-        return self._vocab
+        return self._token_to_id
 
     def set_vocab(self, vocab: dict[str, int]) -> None:
-        self._vocab = vocab
+        self._token_to_id = vocab
         self._refresh_id_lookup()
 
     def get_vocab_size(self) -> int:
-        return len(self._vocab)
+        return len(self.vocab)
 
     def token_to_id(self, token: str) -> int:
         return self._token_to_id.get(token, self.unk_id)
@@ -282,8 +286,8 @@ class TraditionalTokenizer(ABC):
         count = 0
 
         for token in tokens:
-            if token not in self._vocab:
-                self._vocab[token] = self._next_token_id()
+            if token not in self.vocab:
+                self.vocab[token] = self._next_token_id()
                 count += 1
 
         if count:
@@ -312,12 +316,12 @@ class TraditionalTokenizer(ABC):
         return count
 
     def _next_token_id(self) -> int:
-        return max(self._vocab.values(), default=-1) + 1
+        """Get the next available token ID for a new vocabulary entry."""
+        return max(self.vocab.values(), default=-1) + 1
 
     def _refresh_id_lookup(self) -> None:
         """Refresh the token-to-ID and ID-to-token mappings."""
-        self._token_to_id = self._vocab
-        self._id_to_token = {index: token for token, index in self._vocab.items()}
+        self._id_to_token = {idx: token for token, idx in self._token_to_id.items()}
 
     @classmethod
     @abstractmethod
