@@ -9,7 +9,6 @@ from torch import Tensor
 from torch.types import Device
 
 import dnnlpy.cs336.assignment1 as assignment1
-import dnnlpy.cs336.utils as utils
 import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
 import dnnlpy.optim as dopt
@@ -411,7 +410,7 @@ def run_get_batch(
             context_length). The first item is the sampled input sequences, and the
             second item is the corresponding language modeling labels.
     """
-    output = utils.get_batch(dataset, context_length, batch_size, device=device)
+    output = assignment1.get_batch(dataset, context_length, batch_size, device=device)
     return output
 
 
