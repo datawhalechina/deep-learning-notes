@@ -11,9 +11,7 @@ CHECKPOINT_SUFFIXES = {'.pt', '.pth'}
 def main():
     for checkpoint_root in CHECKPOINT_ROOTS:
         for dir, dirnames, filenames in checkpoint_root.walk():
-            dirnames[:] = [
-                dirname for dirname in dirnames if dirname not in EXCLUDED_DIRS
-            ]
+            dirnames[:] = [name for name in dirnames if name not in EXCLUDED_DIRS]
 
             for filename in filenames:
                 path = dir / filename
