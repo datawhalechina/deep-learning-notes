@@ -175,19 +175,23 @@ class TraditionalTokenizer(ABC):
 
     def __init__(
         self,
-        vocab: dict[str, int],
+        vocab: dict[str, int] | None = None,
         unk_token: str = '<unk>',
     ):
         """Create a tokenizer from an existing vocabulary.
 
         Args:
-            vocab (dict[str, int]): Mapping from token strings to integer IDs.
+            vocab (dict[str, int] | None, optional): Mapping from token strings to
+                integer IDs. If None, initialize the vocabulary with `unk_token`.
             unk_token (str, default: '<unk>'): Token used when encoding unknown
                 input tokens.
 
         Raises:
             KeyError: If `unk_token` is not present in `vocab`.
         """
+        if vocab is None:
+            vocab = {unk_token: 0}
+
         self._token_to_id = dict(vocab)
         self._refresh_id_lookup()
 
@@ -323,9 +327,8 @@ class TraditionalTokenizer(ABC):
         """Refresh the token-to-ID and ID-to-token mappings."""
         self._id_to_token = {idx: token for token, idx in self._token_to_id.items()}
 
-    @classmethod
     @abstractmethod
-    def train(cls, text: str | list[str], *args, **kwargs) -> Self:
+    def train(self, text: str | list[str], *args, **kwargs) -> Self:
         """Build a tokenizer from one text string or a list of text strings.
 
         Args:
