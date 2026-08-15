@@ -125,19 +125,27 @@ MiniGPT -> generated token ids -> tokenizer.decode -> text
 class CharacterTokenizer(dltk.TraditionalTokenizer):
     """A simple character-level tokenizer."""
 
-    def __init__(self, vocab: dict[str, int], unk_token: str = '<unk>'):
-        super().__init__(vocab, unk_token=unk_token)
+    def __init__(
+        self,
+        vocab: dict[str, int] | None = None,
+        unk_token: str = '<unk>',
+    ):
+        super().__init__(vocab, unk_token)
 
     @override
-    @classmethod
-    def train(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
+    def train(self, text: str | list[str], unk_token: str = '<unk>') -> Self:
         if isinstance(text, str):
             text = [text]
 
         vocab_tokens = {ch for line in text for ch in line}
         vocab_tokens = [unk_token] + sorted(vocab_tokens - {unk_token})
         vocab = {token: idx for idx, token in enumerate(vocab_tokens)}
-        return cls(vocab, unk_token)
+
+        self.vocab = vocab
+        self.unk_token = unk_token
+        self.special_tokens = [unk_token]
+
+        return self
 
     @override
     def encode(self, text: str) -> list[int]:
@@ -163,7 +171,8 @@ class CharacterTokenizer(dltk.TraditionalTokenizer):
 
 ```{python}
 text = 'hello world'
-tokenizer = CharacterTokenizer.train(text)
+tokenizer = CharacterTokenizer()
+tokenizer.train(text)
 
 ids = tokenizer.encode('hello')
 recovered = tokenizer.decode(ids)
@@ -212,19 +221,27 @@ learners
 class WordTokenizer(dltk.TraditionalTokenizer):
     """A simple word-level tokenizer."""
 
-    def __init__(self, vocab: dict[str, int], unk_token: str = '<unk>'):
-        super().__init__(vocab, unk_token=unk_token)
+    def __init__(
+        self,
+        vocab: dict[str, int] | None = None,
+        unk_token: str = '<unk>',
+    ):
+        super().__init__(vocab, unk_token)
 
     @override
-    @classmethod
-    def train(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
+    def train(self, text: str | list[str], unk_token: str = '<unk>') -> Self:
         if isinstance(text, str):
             text = [text]
 
         vocab_tokens = {word for line in text for word in line.split()}
         vocab_tokens = [unk_token] + sorted(vocab_tokens - {unk_token})
         vocab = {token: idx for idx, token in enumerate(vocab_tokens)}
-        return cls(vocab, unk_token)
+
+        self.vocab = vocab
+        self.unk_token = unk_token
+        self.special_tokens = [unk_token]
+
+        return self
 
     @override
     def encode(self, text: str) -> list[int]:
@@ -248,7 +265,8 @@ class WordTokenizer(dltk.TraditionalTokenizer):
 
 ```{python}
 text = 'deep learning is fun deep learning is useful'
-tokenizer = WordTokenizer.train(text)
+tokenizer = WordTokenizer()
+tokenizer.train(text)
 
 print('Vocab:', tokenizer.vocab)
 print('Encode known words:', tokenizer.encode('deep learning is fun'))
@@ -541,17 +559,16 @@ class BPETokenizer(dltk.TraditionalTokenizer):
 
     def __init__(
         self,
-        vocab: dict[str, int],
-        merges: list[Pair],
+        vocab: dict[str, int] | None = None,
+        merges: list[Pair] | None = None,
         unk_token: str = '<unk>',
     ):
-        self.merges = merges
-        super().__init__(vocab, unk_token=unk_token)
+        self.merges = merges or []
+        super().__init__(vocab, unk_token)
 
     @override
-    @classmethod
     def train(
-        cls,
+        self,
         text: str | list[str],
         vocab_size: int = 100,
         min_frequency: int = 2,
@@ -568,7 +585,13 @@ class BPETokenizer(dltk.TraditionalTokenizer):
         merges = train_bpe(corpus, num_merges, min_frequency)
 
         vocab = build_bpe_vocab(alphabet, merges, [unk_token])
-        return cls(vocab, merges, unk_token)
+
+        self.vocab = vocab
+        self.merges = merges
+        self.unk_token = unk_token
+        self.special_tokens = [unk_token]
+
+        return self
 
     @override
     def encode(self, text: str) -> list[int]:
@@ -600,7 +623,8 @@ class BPETokenizer(dltk.TraditionalTokenizer):
 
 ```{python}
 text = 'low lower lowest low lower newest deep learning deep learner'
-tokenizer = BPETokenizer.train(text, vocab_size=20)
+tokenizer = BPETokenizer()
+tokenizer.train(text, vocab_size=20)
 
 sample = 'lower newest learner'
 ids = tokenizer.encode(sample)
@@ -659,9 +683,15 @@ Tokenizer 是一个十分重要的预处理步骤。它会直接影响语言模�
 
 ```{python}
 text = 'Here is a simple example of tokenization.'
-char_tokenizer = CharacterTokenizer.train(text)
-word_tokenizer = WordTokenizer.train(text)
-bpe_tokenizer = BPETokenizer.train(text, vocab_size=20)
+
+char_tokenizer = CharacterTokenizer()
+char_tokenizer.train(text)
+
+word_tokenizer = WordTokenizer()
+word_tokenizer.train(text)
+
+bpe_tokenizer = BPETokenizer()
+bpe_tokenizer.train(text, vocab_size=20)
 ```
 
 #### **1. 影响序列长度**
@@ -720,7 +750,8 @@ smaller units. Some tokenizers use characters, some use complete words, and mode
 language models often use subword tokens to balance vocabulary size and sequence length.
 """
 text = text.replace('\n', ' ').strip()
-tokenizer = BPETokenizer.train(text, vocab_size=100)
+tokenizer = BPETokenizer()
+tokenizer.train(text, vocab_size=100)
 
 token_ids = tokenizer.encode(text)
 print('Token ids:', token_ids[:10], '...')
