@@ -1,0 +1,4 @@
+- source: project
+  netlify:
+    - id: b203e15b-583f-4a37-92f7-e46e90cc5f48
+      url: https://deep-learning-notes.netlify.app
