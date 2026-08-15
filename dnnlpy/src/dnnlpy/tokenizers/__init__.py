@@ -1,4 +1,3 @@
-import heapq
 import sys
 
 from .base import (
@@ -39,6 +38,8 @@ if sys.version_info < (3, 14):
 
     def patch_heapq_for_max_heap():
         """Patch the `heapq` module to add support for max heaps in Python < 3.14."""
+
+        import heapq
 
         def _heappush_max[T](heap: list[T], item: T) -> None:
             heap.append(item)
