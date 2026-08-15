@@ -30,17 +30,19 @@ import dnnlpy.tokenizers as dltk
     ],
 )
 def test_train_builds_sorted_vocab_from_multiple_texts(
-    tokenizer_cls: dltk.TraditionalTokenizer,
+    tokenizer_cls: type[dltk.TraditionalTokenizer],
     text: str | list[str],
     expected_vocab: dict[str, int],
 ):
-    tokenizer = tokenizer_cls.train(text)
+    tokenizer = tokenizer_cls()
+    result = tokenizer.train(text)
 
+    assert result is tokenizer
     assert tokenizer.vocab == expected_vocab
 
 
 def test_character_tokenizer_encodes_and_decodes_characters():
-    tokenizer = dltk.CharacterTokenizer.train('deep')
+    tokenizer = dltk.CharacterTokenizer().train('deep')
 
     ids = tokenizer.encode('peed')
 
@@ -49,7 +51,7 @@ def test_character_tokenizer_encodes_and_decodes_characters():
 
 
 def test_word_tokenizer_encodes_and_decodes_whitespace_separated_words():
-    tokenizer = dltk.WordTokenizer.train('deep learning')
+    tokenizer = dltk.WordTokenizer().train('deep learning')
 
     ids = tokenizer.encode('  deep\tlearning  ')
 
@@ -60,8 +62,8 @@ def test_word_tokenizer_encodes_and_decodes_whitespace_separated_words():
 @pytest.mark.parametrize(
     ('tokenizer', 'text', 'expected'),
     [
-        (dltk.CharacterTokenizer.train('deep'), 'x', ''),
-        (dltk.WordTokenizer.train('deep learning'), 'unknown', ''),
+        (dltk.CharacterTokenizer().train('deep'), 'x', ''),
+        (dltk.WordTokenizer().train('deep learning'), 'unknown', ''),
     ],
 )
 def test_unknown_tokens_use_unk_token(
@@ -77,9 +79,9 @@ def test_unknown_tokens_use_unk_token(
 @pytest.mark.parametrize(
     ('tokenizer', 'text', 'expected_without_special', 'expected_with_special'),
     [
-        (dltk.CharacterTokenizer.train('ab'), 'a^b', 'ab', 'a^b'),
+        (dltk.CharacterTokenizer().train('ab'), 'a^b', 'ab', 'a^b'),
         (
-            dltk.WordTokenizer.train('deep learning'),
+            dltk.WordTokenizer().train('deep learning'),
             'deep <eos>',
             'deep',
             'deep <eos>',
@@ -103,8 +105,8 @@ def test_decode_can_include_or_skip_added_special_tokens(
 @pytest.mark.parametrize(
     ('tokenizer', 'tokens'),
     [
-        (dltk.CharacterTokenizer.train('ab'), ['^', '$']),
-        (dltk.WordTokenizer.train('deep learning'), ['<mask>', '<eos>']),
+        (dltk.CharacterTokenizer().train('ab'), ['^', '$']),
+        (dltk.WordTokenizer().train('deep learning'), ['<mask>', '<eos>']),
     ],
 )
 def test_add_tokens_extends_vocab_without_marking_tokens_as_special(

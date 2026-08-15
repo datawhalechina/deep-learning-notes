@@ -11,18 +11,22 @@ __all__ = [
 class CharacterTokenizer(TraditionalTokenizer):
     """Tokenizer that treats each character as one token."""
 
-    def __init__(self, vocab: dict[str, int], unk_token: str = '<unk>'):
+    def __init__(
+        self,
+        vocab: dict[str, int] | None = None,
+        unk_token: str = '<unk>',
+    ):
         """Create a character tokenizer from an existing vocabulary.
 
         Args:
-            vocab (dict[str, int]): Mapping from character tokens to IDs.
+            vocab (dict[str, int] | None, optional): Mapping from character tokens to
+                IDs. If None, initialize the vocabulary with `unk_token`.
             unk_token (str, default: '<unk>'): Token used for unknown characters.
         """
-        super().__init__(vocab, unk_token=unk_token)
+        super().__init__(vocab, unk_token)
 
     @override
-    @classmethod
-    def train(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
+    def train(self, text: str | list[str], unk_token: str = '<unk>') -> Self:
         """Build a character vocabulary from text.
 
         Args:
@@ -36,7 +40,12 @@ class CharacterTokenizer(TraditionalTokenizer):
         vocab_tokens = {ch for line in text for ch in line}
         vocab_tokens = [unk_token] + sorted(vocab_tokens - {unk_token})
         vocab = {token: idx for idx, token in enumerate(vocab_tokens)}
-        return cls(vocab, unk_token)
+
+        self.vocab = vocab
+        self.unk_token = unk_token
+        self.special_tokens = [unk_token]
+
+        return self
 
     @override
     def encode(self, text: str) -> list[int]:
@@ -80,18 +89,22 @@ class CharacterTokenizer(TraditionalTokenizer):
 class WordTokenizer(TraditionalTokenizer):
     """Tokenizer that splits text on whitespace-separated words."""
 
-    def __init__(self, vocab: dict[str, int], unk_token: str = '<unk>'):
+    def __init__(
+        self,
+        vocab: dict[str, int] | None = None,
+        unk_token: str = '<unk>',
+    ):
         """Create a word tokenizer from an existing vocabulary.
 
         Args:
-            vocab (dict[str, int]): Mapping from word tokens to IDs.
+            vocab (dict[str, int] | None, optional): Mapping from word tokens to IDs.
+                If None, initialize the vocabulary with `unk_token`.
             unk_token (str, default: '<unk>'): Token used for unknown words.
         """
-        super().__init__(vocab, unk_token=unk_token)
+        super().__init__(vocab, unk_token)
 
     @override
-    @classmethod
-    def train(cls, text: str | list[str], unk_token: str = '<unk>') -> Self:
+    def train(self, text: str | list[str], unk_token: str = '<unk>') -> Self:
         """Build a word vocabulary from text.
 
         Args:
@@ -105,7 +118,12 @@ class WordTokenizer(TraditionalTokenizer):
         vocab_tokens = {word for line in text for word in line.split()}
         vocab_tokens = [unk_token] + sorted(vocab_tokens - {unk_token})
         vocab = {token: idx for idx, token in enumerate(vocab_tokens)}
-        return cls(vocab, unk_token)
+
+        self.vocab = vocab
+        self.unk_token = unk_token
+        self.special_tokens = [unk_token]
+
+        return self
 
     @override
     def encode(self, text: str) -> list[int]:
