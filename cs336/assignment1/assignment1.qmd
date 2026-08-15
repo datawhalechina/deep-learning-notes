@@ -41,15 +41,16 @@ Assignment 1 涉及的主要组件已经实现于 **dnnlpy** 中，包括：
 
 这是 CS336 五份作业中的第一份。后续作业会在此基础上继续讨论 LLM 训练工程、数据处理、scaling law、推理优化以及 post-training 等主题。
 
-::: {.callout-tip}
+::: {.callout-warning}
 1. CS336 的整体难度较高，本部分更适合已经熟练掌握 Python，并具备一定深度学习基础的读者。建议在阅读之前先掌握 PyTorch 基础、Transformer 架构、BPE Tokenizer 以及语言模型训练的基本原理。相关内容可以参考前面的章节，也可以直接阅读 CS336 的课程资料。
 2. 本部分代码建议使用 Python 3.14 或更高版本运行。实现中会使用较多现代 Python 语法和标准库特性，因此较新的 Python 版本可以简化部分代码实现。对于后续涉及性能优化的内容，Python 3.15 还提供了新的 profiling 模块，可以用于更加方便地进行性能分析。
 :::
 
 ```{python}
+import itertools as it
 from collections import Counter, defaultdict
-from collections.abc import Sequence
-from typing import Self
+from collections.abc import Iterable, Sequence
+from typing import Self, override
 
 import dnnlpy
 import dnnlpy.cs336.assignment1 as cs336
@@ -60,8 +61,21 @@ import dnnlpy.optim as dopt
 import dnnlpy.tokenizers as dltk
 import IPython.display as ipy
 import pandas as pd
+import regex as re
 import torch
 import torch.nn as nn
+
+type Pair = tuple[str, str]
+type WordSymbols = tuple[str, ...]
+
+GPT2PATTERN = re.compile(
+    r"'(?:[sdmt]|ll|ve|re)"
+    r'| ?\p{L}+'
+    r'| ?\p{N}+'
+    r'| ?[^\s\p{L}\p{N}]+'
+    r'|\s+(?!\S)'
+    r'|\s+'
+)
 
 print('PyTorch version:', torch.__version__)
 ```
@@ -111,35 +125,30 @@ BPE 的作用，就是从语料中自动学习这套词表和 merge rules。训�
 
 因此，`train_bpe` 是整个语言模型训练流程中非常靠前的一步：
 
-```text
-Raw Text
-   ↓
-Train BPE Tokenizer
-   ↓
-Token IDs
-   ↓
-Large Language Models
+```{mermaid}
+%%| fig-width: 7.5
+
+flowchart LR
+    A[Raw Text] --> B[Train BPE Tokenizer]
+    B --> C[Token IDs]
+    C --> D[Large Language Models]
 ```
 
 本题的目标就是从训练语料中学习 BPE vocabulary 和 merge rules，为后面的语言模型训练准备 tokenizer。
 
 ### 预备：BPE 算法回顾
 
-BPE（Byte Pair Encoding）的核心思路很简单：在每个 pre-token 内部，反复找到语料中出现频率最高的相邻 token pair，并把它们合并成一个新的 token。每进行一次合并，就会得到一条新的 merge rule，同时将合并得到的新 token 加入词表。按照训练顺序保存这些 merge rule 和词表，就得到了训练后的 BPE 模型。
+在第 19 章，我们已经介绍过 BPE（Byte Pair Encoding）的基本原理。这里简单回顾一下后面实现会用到的训练流程。
 
-对于原始的 byte-level BPE，初始 token 不是 Unicode 字符，而是 byte。文本首先经过 pre-tokenizer，被划分成若干彼此独立的 pre-token，然后再将每个 pre-token 转换为 UTF-8 bytes。这样，初始 alphabet 最多只需要 256 个 byte，就可以表示任意 Unicode 文本。此外，special token 会被单独处理。它们会在普通文本进入 pre-tokenizer 之前被识别出来，并作为完整 token 保留，不参与后续的 BPE 拆分和合并。在训练 BPE 时，我们首先统计每个 pre-token 在语料中出现了多少次。对于重复出现的 pre-token，没有必要保存多份相同的 token 序列，只需要保存一份序列以及对应的 frequency。
-
-设一个 pre-token 当前被表示为 token 序列 $w$，它在语料中出现 $f(w)$ 次。对于相邻 pair $p$，如果它在 $w$ 中出现了 $n_w(p)$ 次，那么这个 pre-token 对 pair 全局频率的贡献就是：
-
-$$
-f(w)n_w(p)
-$$
-
-因此，pair $p$ 在整个语料中的频率为：
+BPE 首先将语料划分成若干 pre-token，并统计每个 pre-token 的出现频率。随后，在每个 pre-token 内部统计相邻 token pair 的加权频率：
 
 $$
 c(p)=\sum_w f(w)n_w(p)
 $$
+
+其中，$f(w)$ 表示 pre-token $w$ 在语料中的出现次数，$n_w(p)$ 表示 pair $p$ 在 $w$ 中出现的次数。
+
+BPE 在每一轮训练选择频率最高的 pair，将它合并成一个新的 token，加入 vocabulary，并保存对应的 merge rule，然后更新受到这次 merge 影响的 token 序列和 pair frequency。不断重复这一过程，直到达到目标 `vocab_size`，或者已经没有满足 `min_frequency` 的 pair。
 
 例如，假设 pre-token `banana` 在语料中出现了 2 次，初始 token 序列为：
 
@@ -147,7 +156,7 @@ $$
 (b, a, n, a, n, a), frequency = 2
 ```
 
-其中，`(a, n)` 在一个 `banana` 中出现两次，因此它对 `(a, n)` 全局频率的贡献为：
+可以看到，`(a, n)` 在一个 `banana` 中出现两次，因此它对 `(a, n)` 全局频率的贡献为：
 
 $$
 2 \times 2 = 4
@@ -167,16 +176,34 @@ $$
 
 接下来重新统计受到影响的 pair，再继续选择下一组需要合并的 pair。
 
-因此，整个 BPE 训练过程可以概括为：
+后面的几个不同版本的 BPE 实现都会遵循这一套基本流程。它们之间的区别主要在于如何统计 pair frequency、如何更新受到 merge 影响的 pair，以及如何减少重复扫描。
 
-1. 识别 special token，并对普通文本执行 pre-tokenization；
-2. 将 pre-token 转换为 byte-level token，并统计每个 pre-token 的 frequency；
-3. 统计所有相邻 pair 的加权 frequency；
-4. 找到频率最高的 pair，将它合并成一个新的 token；
-5. 更新受到这次 merge 影响的 token 序列和 pair frequency；
-6. 重复以上过程，直到达到 `vocab_size`，或者已经没有满足 `min_frequency` 的 pair。
+不过，在开始实现 BPE 之前，需要先说明两个本文和 CS336 Assignment 1 不完全相同的地方。
 
-对于 Hugging Face 的 ByteLevel BPE，实现上会多做一步 byte-to-Unicode 映射。每个 pre-token 首先被编码为 UTF-8 bytes，然后再将每个 byte 映射为一个对应的 Unicode 代理字符。由于这个映射是一一对应且可逆的，因此 BPE 后续可以直接在普通字符串上完成 pair 统计和 merge，而不需要在实现中直接操作 bytes。解码时，再通过相反的映射把这些代理字符还原为原始 bytes，最后使用 UTF-8 解码得到文本。
+#### **1. Byte 的表示方式**
+
+CS336 直接使用 raw bytes 表示 BPE token。文本经过 pre-tokenization 之后会被编码成 UTF-8 bytes，后续的 pair 统计和 merge 也直接作用在 bytes 上：
+
+```{mermaid}
+%%| fig-width: 5.85
+
+flowchart LR
+    A[Text] --> B[Pre-tokenization]
+    B --> C[UTF-8 Bytes]
+    C --> D[BPE]
+```
+
+本文则采用与 GPT-2 / HF Tokenizers 库一致的表示方式。在得到 UTF-8 bytes 之后，会额外进行一次 **byte-to-Unicode mapping**，将 256 个 byte 一一映射成对应的 Unicode 代理字符：
+
+```{mermaid}
+%%| fig-width: 7.5
+
+flowchart LR
+    A[Text] --> B[Pre-tokenization]
+    B --> C[UTF-8 Bytes]
+    C --> D[Byte-to-Unicode Mapping]
+    D --> E[BPE]
+```
 
 例如，对于一个 byte `<space>`，在 Hugging Face / GPT-2 风格的 byte-level tokenizer 中，并不直接以 `<space>` 参与 BPE，而是先被映射为 Unicode 字符 `Ġ`。这样，所有 byte 都可以用普通 Unicode 字符表示，后续的 pair 统计和 merge 就可以直接使用字符串完成，而不需要额外处理 bytes。因此，在 GPT-2 一类 tokenizer 的词表里经常可以看到：
 
@@ -184,30 +211,200 @@ $$
 Ġthe, Ġhello, Ġworld
 ```
 
-这里的 `Ġ` 并不是原始文本中的字符，而是空格在 byte-level 映射之后的表示。
+这里的 `Ġ` 并不是原始文本中的字符，而只是空格 byte 的代理表示。
 
-训练过程中还有一个容易忽略的问题：如果多个 pair 的出现频率相同，需要规定一个确定的 tie-break 规则。否则相同的语料可能产生不同的合并顺序，最终得到不同的 vocabulary 和 token ID。不同实现对此的约定并不完全相同。CS336 Assignment 1 要求优先选择字典序更大的 pair。也就是说，如果 `(a, b)` 和 `(c, d)` 的频率相同，那么我们应该优先选择 `(c, d)` 进行合并。而 Hugging Face 的实现则是在频率相同时，比较 pair 中两个 token 对应的 token ID，并优先选择字典序更小的 token ID pair。例如，如果两个候选 pair 对应的 token ID 分别是 `(3, 7)` 和 `(4, 1)`，那么 Hugging Face 会优先选择 `(3, 7)`，因为它在 token ID 的字典序中更小。需要注意，这里比较的是 token ID，而不是 token 字符串本身。
+这个映射是一一对应且可逆的，因此它不会改变 byte-level BPE 的核心算法。两种实现本质上处理的是相同的 byte 信息，只是代码中的 token 表示不同：
 
-训练结束后，我们会得到一个按顺序排列的 `merges` 列表。越早学到的 merge rule，优先级越高。编码新文本时，同样先处理 special token，再执行 pre-tokenization 和 byte-level 转换。然后按照训练时得到的 merge 顺序不断合并 token，最后通过 vocabulary 将 token 转换为 token ID。解码则执行相反的过程：先根据 token ID 找回 token，再恢复原始 bytes，最后解码成文本。需要注意，BPE merge 只会发生在同一个 pre-token 内部，不会跨越 pre-tokenizer 划定的边界。
+- CS336 使用 raw bytes；
+- 本文使用 byte-to-Unicode 映射后的 str。
 
-后面实现的几个 BPE 版本都遵循这一套基本流程。它们之间的区别主要在于：如何统计 pair、如何更新 pair frequency，以及如何减少重复扫描。BPE 本身的核心逻辑并没有改变。
+这样做的好处是，后面的 vocabulary、pair 和 merge rule 都可以直接使用 Python 字符串表示，而不用来回 encode 和 decode bytes。对于大多数 Python 代码来说，直接操作字符串比操作 bytes 更加方便，也更方便打印和调试。
+
+#### **2. Tie-break 规则**
+
+另一个区别是 pair frequency 相同时的 tie-break 规则。
+
+CS336 Assignment 1 要求：如果多个 pair 的 frequency 相同，**优先选择字典序更大的 pair**。例如：
+
+```text
+(a, b), (c, d), frequency = 5
+```
+
+当两者 frequency 相同时，会优先选择 `(c, d)` 进行 merge。
+
+而本文的 BPE 实现更接近 Hugging Face 的行为：当 frequency 相同时，会比较 pair 中两个 token 对应的 token ID，并优先选择字典序更小的 token ID pair。
+
+例如，假设 vocabulary 是：
+
+```text
+{'a': 3, 'b': 7, 'c': 4, 'd': 1}
+```
+
+当前有两个 pair，频率都是 10：
+
+```text
+(a, b), (c, d), frequency = 10
+```
+
+那么会优先选择 `(3, 7)` 进行合并，因为 `(3, 7)` 在排序中小于 `(4, 1)`。需要注意，这里比较的是 token ID，而不是 token 字符串本身。
+
+因此，后面虽然会沿着 CS336 的思路一步一步实现并优化 BPE trainer，但本文并不是对 Assignment 1 的严格实现。BPE 的训练逻辑保持一致，但 byte 的内部表示和 tie-break 规则采用了更接近 GPT-2 / Hugging Face 的设计。
+
+下一节我们先实现这套 byte-level 表示所需要的 `ByteLevelPreTokenizer` 和 `ByteLevelDecoder`。
+
+### 预备：Pre-Tokenizer 和 Decoder
+
+前面我们已经确定了本文采用的 byte-level 表示方式。接下来，在真正实现 BPE trainer 之前，还需要先准备两个组件：`PreTokenizer` 和 `Decoder`。
+
+Pre-tokenizer 的作用是**在 BPE 之前先给文本划定边界**。如果直接把整段文本作为一个连续序列交给 BPE，那么 merge 可以发生在任意相邻位置，包括不同单词、标点甚至不同文本结构之间（例如文字和代码）。Pre-tokenizer 会先按照一定规则把文本划分成若干 pre-token，后续的 BPE 只在每个 pre-token 内部进行，不会跨越这些边界。
+
+最简单的做法是按照空格和标点符号进行切分，但这种规则比较粗糙，也很难统一处理缩写、数字、连续标点以及不同语言的文本。这里我们采用 GPT-2 使用的正则表达式进行 pre-tokenization。原始文本首先会被划分成若干 pre-token，然后每个 pre-token 再转换成前面介绍的 byte-level Unicode 表示，交给后续的 BPE 处理。
+
+因此，这里的 `ByteLevelPreTokenizer` 主要完成两件事情：
+
+1. 使用 GPT-2 的正则表达式划分 pre-token；
+2. 将每个 pre-token 转换成 byte-level Unicode 表示。
+
+实现如下：
 
 ```{python}
-tokenizer = dltk.Tokenizer(
-    dltk.BPE(),
-    pre_tokenizer=dltk.ByteLevelPreTokenizer(add_prefix_space=False),
-    decoder=dltk.ByteLevelDecoder(),
-    num_workers=1,
-)
-tokenizer.add_special_tokens(['[UNK]', '[PAD]', '[CLS]', '[SEP]'])
-tokenizer.train_from_iterator(
-    ['low lower lowest', 'newer wider'],
-    vocab_size=300,
-    initial_alphabet=dltk.ByteLevelPreTokenizer.alphabet(),
-)
-print('Vocab size:', tokenizer.vocab_size)
-print('First five merges:', tokenizer.model.merges[:5])
+class ByteLevelPreTokenizer(dltk.PreTokenizer):
+    """A simple byte-level pre-tokenizer for BPE training."""
+
+    @override
+    def pre_tokenize(self, text: str) -> Iterable[str]:
+        """Pre-tokenize the input text into byte-level Unicode tokens.
+
+        Args:
+            text (str): The input text to be pre-tokenized.
+
+        Yields:
+            toekn (str): Byte-level Unicode tokens extracted from the input text.
+
+        Examples:
+            >>> pre_tokenizer = ByteLevelPreTokenizer()
+            >>> list(pre_tokenizer.pre_tokenize('Hello, 世界!'))
+            ['Hello', ',', 'Ġä¸ĸçķĮ', '!']
+        """
+        for token in GPT2PATTERN.findall(text):
+            yield dltk.bytes_to_unicode(token)
+
+    @staticmethod
+    def alphabet() -> list[str]:
+        """Return the list of all possible byte-level Unicode characters.
+
+        Returns:
+            alphabet (list[str]): A list of all 256 byte-level Unicode characters.
+
+        Examples:
+            >>> alphabet = ByteLevelPreTokenizer.alphabet()
+            >>> len(alphabet)
+            256
+            >>> alphabet[:5]
+            ['!', '"', '#', '$', '%']
+        """
+        return list(dltk.BYTES_TO_UNICODE.values())
 ```
+
+`pre_tokenize()` 首先通过 `GPT2PATTERN` 找到所有 pre-token，然后调用：
+
+```python
+dltk.bytes_to_unicode(token)
+```
+
+将每个 pre-token 转换成 byte-level Unicode 表示。这样，从这一层开始，后面的 BPE trainer 就只需要处理普通的 Python `str`，不需要再关心 UTF-8 编码和 byte-to-Unicode 映射的细节。
+
+`alphabet()` 则返回所有 256 个 byte 对应的 Unicode 代理字符：
+
+```python
+@staticmethod
+def alphabet() -> list[str]:
+    return list(dltk.BYTES_TO_UNICODE.values())
+```
+
+这些字符会作为 BPE 的初始 alphabet。在训练 tokenizer 时，可以通过：
+
+```python
+initial_alphabet=dltk.ByteLevelPreTokenizer.alphabet()
+```
+
+将它们加入初始 vocabulary。
+
+与 pre-tokenizer 相对应，我们还需要一个 `Decoder`。
+
+BPE 最终得到的 token 使用的是 byte-level Unicode 表示，因此不能直接把这些 token 当作最终文本返回。Decoder 需要把这个过程反过来：先把 token 拼接起来，再将 Unicode 代理字符恢复成原始 bytes，最后通过 UTF-8 解码得到普通字符串。
+
+实现如下：
+
+```{python}
+class ByteLevelDecoder(dltk.Decoder):
+    """A simple byte-level decoder for BPE training."""
+
+    @override
+    def decode(self, tokens: list[str]) -> str:
+        """Decode a list of byte-level Unicode tokens back into a string.
+
+        Args:
+            tokens (list[str]): A list of byte-level Unicode tokens to be decoded.
+
+        Returns:
+            text (str): The decoded string obtained from the input tokens.
+
+        Examples:
+            >>> decoder = ByteLevelDecoder()
+            >>> tokens = ['Hello', ',', 'Ġä¸ĸçķĮ', '!']
+            >>> decoder.decode(tokens)
+            'Hello, 世界!'
+        """
+        text = ''.join(tokens)
+        text = dltk.unicode_to_bytes(text)
+        return text.decode('utf-8', errors='replace')
+```
+
+这里首先通过：
+
+```python
+''.join(tokens)
+```
+
+将多个 token 拼接回完整的 byte-level Unicode 字符串，然后：
+
+```python
+dltk.unicode_to_bytes(text)
+```
+
+执行前面 byte-to-Unicode 映射的逆过程，恢复原始 bytes。最后使用 UTF-8 解码，就可以得到普通文本。
+
+下面用一个简单的例子验证 pre-tokenizer 和 decoder：
+
+```{python}
+pre_tokenizer = ByteLevelPreTokenizer()
+decoder = ByteLevelDecoder()
+
+pre_tokens = list(pre_tokenizer.pre_tokenize('Hello, 世界!'))
+print('Pre-tokens:', pre_tokens)
+print('Decoded:', decoder.decode(pre_tokens))
+```
+
+这里还没有执行任何 BPE merge，只是在验证 byte-level 表示能否正确完成 round trip：
+
+```{mermaid}
+%%| fig-width: 7.8
+
+flowchart LR
+    A[Text] --> B[Pre-tokenization]
+    B --> C[Byte-level Unicode]
+    C --> D[Decoder]
+    D --> E[Text]
+```
+
+如果实现正确，最终解码结果应该重新得到原始的：
+
+```text
+Hello, 世界!
+```
+
+有了这两个组件之后，后面的 BPE trainer 就可以专注于 pair frequency 和 merge 本身，而不需要再处理文本划分、UTF-8 编码以及最终的文本恢复。
 
 ### 预备：如何阅读 profile 报告
 
@@ -231,13 +428,15 @@ print('First five merges:', tokenizer.model.merges[:5])
 
 通常我们可以重点关注下面几个指标：
 
-- **self time**：函数自身执行所消耗的时间，不包含它调用的其他函数。在 `cProfile` 中通常对应 `tottime`。如果一个函数的 self time 很高，说明主要时间就花在这个函数内部，例如循环、查找、计算等操作。
-- **total time**：函数自身以及它调用的其他函数一共消耗的时间。在 `cProfile` 中通常对应 `cumtime`。如果一个函数的 total time 很高，但 self time 很低，说明它本身可能只是一个入口，真正耗时的操作发生在它调用的函数中。
-- **ncalls**：函数被调用的次数。这个指标可以帮助我们区分一个函数究竟是每次调用都很慢，还是单次调用很快，但调用次数太多。我们也可以看看 `ncalls` 与 `cumtime` 的比值，来判断平均每次调用的耗时。
+- **nsamples**：采样次数，表示在 profiling 过程中，程序有多少次被采样到与这个函数相关。通常会区分 direct nsamples 和 cumulative nsamples：前者表示采样时程序正在直接执行这个函数本身，后者表示采样时这个函数出现在当前调用栈中，也就是包括它自身以及它调用下去的函数。如果一个函数的 cumulative nsamples 很高，说明程序在运行过程中有很大一部分时间都经过这条调用路径。
+- **tottime**：函数自身执行所消耗的时间，不包含它调用的其他函数。如果一个函数的 `tottime` 很高，说明主要时间直接花在这个函数内部，例如循环、查找、对象创建或数值计算等操作。
+- **cumtime**：函数自身以及它调用的其他函数一共消耗的累计时间。如果一个函数的 `cumtime` 很高，但 `tottime` 很低，说明它本身可能只是一个上层入口，真正耗时的操作主要发生在它调用的其他函数中。
+- **direct/cumulative ratio**：direct samples 与 cumulative samples 的比值，也可以近似理解为 `tottime / cumtime`。如果这个比值接近 1.0，说明累计耗时几乎都发生在函数自身，瓶颈主要就在这个函数内部；如果这个比值接近 0.0，说明函数自身并不耗时，主要时间花在它调用的下层函数中。
+- **call magnification**：表示一个上层调用在向下执行时，会放大出多少下层调用或栈活动。这个值越大，说明一次函数调用会进一步触发大量重复工作，通常意味着内部存在循环、递归或批量调用。例如一个函数每执行一次都会在循环中调用另一个函数 100 次，那么对应的 call magnification 就会比较大。它主要反映的是调用结构的放大程度，而不是函数本身消耗了多少时间。
 
-因此，看 profile 结果时可以先按照 self time (tottime) 或 total time (cumtime) 排序找到热点，然后再顺着调用关系继续向下看。
+因此，看 profile 结果时可以先按照 `tottime` 或 `cumtime` 排序找到热点，然后再顺着调用关系继续向下看。
 
-例如，在 Python 3.15 及以上版本，我们可以生成火焰图：
+在 Python 3.15 及以上版本，我们可以生成火焰图：
 
 ```bash
 python -m profiling.sampling run --flamegraph -o profile.html train_bpe.py
@@ -268,6 +467,505 @@ python -m cProfile -s cumulative train_bpe.py
 需要注意的是，profile 中的时间不一定等于程序实际运行的 wall-clock time。尤其是在多线程或多进程程序中，不同线程或 worker 消耗的 CPU 时间可能会被分别统计，因此累计时间甚至可能超过程序实际运行时间。阅读这类报告时，需要结合 profiler 的统计方式一起判断。
 
 理解完怎么看 profile 之后，我们就可以开始分析 BPE Tokenizer 的训练过程了。
+
+### BPE Version 1：原始 BPE 实现
+
+首先，我们实现一个最原始的 BPE，作为后续优化版本的 baseline。代码继承自 `TraditionalTokenizer` 基类，它负责 vocab、unknown token、special token 以及 token 和 ID 之间的查询，因此我们只需要关注 BPE 本身的训练和编码逻辑。
+
+这个版本采用最直接的实现方式：每完成一次 merge，都重新扫描所有 pre-token 并重新统计所有 pair，不使用 heap、倒排索引、增量更新、并行处理或缓存。虽然效率不高，但算法流程最清晰，也方便后面逐步分析每一种优化到底解决了什么问题。`TraditionalTokenizer` 的具体实现可以在 `dnnlpy` 中找到。
+
+```{python}
+#| code-fold: true
+#| code-summary: "BPE Tokenizer v1"
+
+class BPETokenizerV1(dltk.TraditionalTokenizer):
+    """A naive byte-pair encoding tokenizer for teaching the BPE algorithm."""
+
+    def __init__(
+        self,
+        vocab: dict[str, int] | None = None,
+        merges: list[Pair] | None = None,
+        unk_token: str = '<unk>',
+        special_tokens: list[str] | None = None,
+    ):
+        """Initialize the BPE tokenizer with vocabulary and merge rules.
+
+        Args:
+            vocab (dict[str, int], optional): A dictionary mapping tokens to their
+                corresponding IDs.
+            merges (list[Pair], optional): A list of token pairs to be merged.
+            unk_token (str, default: '\\<unk>'): The token to use for unknown tokens.
+            special_tokens (list[str], optional): A list of special tokens to be added to
+                the vocabulary.
+        """
+        super().__init__(vocab, unk_token)
+        self.merges = merges or []
+        self.merge_ranks = {pair: rank for rank, pair in enumerate(self.merges)}
+
+        self.pre_tokenizer = ByteLevelPreTokenizer()
+        self.decoder = ByteLevelDecoder()
+
+        if special_tokens is not None:
+            self.add_special_tokens(special_tokens)
+
+    @override
+    def train(
+        self,
+        text: str | list[str],
+        vocab_size: int = 100,
+        min_frequency: int = 0,
+        initial_alphabet: list[str] | None = None,
+        unk_token: str = '<unk>',
+        special_tokens: list[str] | None = None,
+    ) -> Self:
+        """Train BPE by recounting every pair after every merge.
+
+        Args:
+            text (str | list[str]): The input text or a list of documents to train on.
+            vocab_size (int, default: 100): The maximum size of the vocabulary.
+            min_frequency (int, default: 0): The minimum frequency for a pair to be merged.
+            initial_alphabet (list[str], optional): A list of initial alphabet characters
+                to include in the vocabulary.
+            unk_token (str, default: '\\<unk>'): The token to use for unknown tokens.
+            special_tokens (list[str], optional): A list of special tokens to be added to
+                the vocabulary.
+
+        Returns:
+            self (BPETokenizerV1): The trained tokenizer instance.
+
+        Raises:
+            AssertionError: If `vocab_size` is less than 1.
+            AssertionError: If `min_frequency` is negative.
+
+        Examples:
+            >>> tokenizer = BPETokenizerV1()
+            >>> tokenizer.train(['Hello world!'], vocab_size=10)
+            >>> print(tokenizer)
+            BPETokenizerV1(
+                vocab_size=10,
+                unk_token='<unk>',
+                special_tokens=['<unk>'],
+            )
+        """
+        if vocab_size < 1:
+            raise AssertionError('`vocab_size` must be at least 1.')
+        if min_frequency < 0:
+            raise AssertionError('`min_frequency` must be non-negative.')
+
+        if isinstance(text, str):
+            text = [text]
+
+        special_tokens = special_tokens or []
+        special_tokens = list(dict.fromkeys([unk_token, *special_tokens]))
+        word_counts = Counter()
+
+        for story in text:
+            for piece, is_special in self._split_special_tokens(story, special_tokens):
+                if is_special:
+                    continue
+
+                for token in self.pre_tokenizer.pre_tokenize(piece):
+                    word_counts[token] += 1
+
+        sorted_word_counts = sorted(word_counts.items())
+        word_symbols = [tuple(word) for word, _ in sorted_word_counts]
+        word_freqs = [frequency for _, frequency in sorted_word_counts]
+
+        alphabet = {char for word in word_counts for char in word}
+        alphabet.update(self._prepare_initial_alphabet(initial_alphabet))
+
+        vocab_tokens = list(special_tokens)
+        for token in sorted(alphabet):
+            if token not in vocab_tokens:
+                vocab_tokens.append(token)
+
+        merges = []
+        while len(vocab_tokens) < vocab_size:
+            pair_counts = self._count_pairs(word_symbols, word_freqs)
+            best_pair = self._select_best_pair(pair_counts, min_frequency)
+            if best_pair is None:
+                break
+
+            new_token = ''.join(best_pair)
+            if new_token not in vocab_tokens:
+                vocab_tokens.append(new_token)
+
+            merges.append(best_pair)
+            word_symbols = [
+                self._merge_pair(symbols, best_pair) for symbols in word_symbols
+            ]
+
+        self.vocab = {token: idx for idx, token in enumerate(vocab_tokens)}
+        self.merges = merges
+        self.merge_ranks = {pair: rank for rank, pair in enumerate(self.merges)}
+        self.unk_token = unk_token
+        self.special_tokens = special_tokens
+
+        return self
+
+    @override
+    def encode(self, text: str) -> list[int]:
+        """Encode text into BPE token IDs without computing offsets.
+
+        Args:
+            text (str): The input text to be encoded.
+
+        Returns:
+            ids (list[int]): A list of token IDs corresponding to the input text.
+
+        Raises:
+            ValueError: If any of the tokens generated during encoding are not found in
+                the vocabulary.
+
+        Examples:
+            >>> tokenizer = BPETokenizerV1()
+            >>> tokenizer.train(['Hello world!'], vocab_size=10)
+            >>> ids = tokenizer.encode('Hello world!')
+            >>> print(ids)
+            [0, 1, 2, 3]
+        """
+        ids = []
+
+        for piece, is_special in self._split_special_tokens(text, self.special_tokens):
+            if is_special:
+                ids.append(self.token_to_id(piece))
+                continue
+
+            for token in self.pre_tokenizer.pre_tokenize(piece):
+                symbols = tuple(token)
+
+                while len(symbols) > 1:
+                    pairs = [
+                        pair
+                        for pair in it.pairwise(symbols)
+                        if pair in self.merge_ranks
+                    ]
+                    if not pairs:
+                        break
+
+                    best_pair = min(pairs, key=self.merge_ranks.__getitem__)
+                    symbols = self._merge_pair(symbols, best_pair)
+
+                ids.extend(self.token_to_id(symbol) for symbol in symbols)
+
+        return ids
+
+    @override
+    def decode(self, ids: list[int], skip_special_tokens: bool = True) -> str:
+        """Decode BPE token IDs back into text.
+
+        Args:
+            ids (list[int]): A list of token IDs to decode.
+            skip_special_tokens (bool, default: True): Whether to skip special tokens
+                during decoding. If True, special tokens will be ignored in the output.
+
+        Returns:
+            text (str): The decoded text string.
+
+        Raises:
+            ValueError: If any of the provided token IDs are invalid or not found in the
+                vocabulary.
+
+        Examples:
+            >>> tokenizer = BPETokenizerV1()
+            >>> tokenizer.train(['Hello world!'], vocab_size=10)
+            >>> ids = tokenizer.encode('Hello world!')
+            >>> print(ids)
+            [0, 1, 2, 3]
+            >>> decoded_text = tokenizer.decode(ids)
+            >>> print(decoded_text)
+            'Hello world!'
+        """
+        if skip_special_tokens:
+            special_ids = self.special_token_ids
+        else:
+            special_ids = set()
+
+        tokens = [self.id_to_token(idx) for idx in ids if idx not in special_ids]
+        return self.decoder.decode(tokens)
+
+    def _prepare_initial_alphabet(
+        self,
+        initial_alphabet: list[str] | None,
+    ) -> list[str]:
+        """Keep the first character of every unique alphabet entry.
+
+        Args:
+            initial_alphabet (list[str] | None): A list of initial alphabet characters
+                to include in the vocabulary.
+
+        Returns:
+            alphabet (list[str]): A list of unique first characters from the initial
+                alphabet entries.
+
+        Examples:
+            >>> initial_alphabet = ['a', 'b', 'c', 'a', 'd']
+            >>> alphabet = self._prepare_initial_alphabet(initial_alphabet)
+            >>> print(alphabet)
+            ['a', 'b', 'c', 'd']
+        """
+        if initial_alphabet is None:
+            return []
+
+        alphabet = []
+        for token in initial_alphabet:
+            if token and token[0] not in alphabet:
+                alphabet.append(token[0])
+
+        return alphabet
+
+    def _split_special_tokens(
+        self,
+        text: str,
+        special_tokens: list[str],
+    ) -> list[tuple[str, bool]]:
+        """Split text into ordinary pieces and atomic special tokens.
+
+        Args:
+            text (str): The input text to be split.
+            special_tokens (list[str]): A list of special tokens to be treated as atomic.
+
+        Returns:
+            pieces: (list[tuple[str, bool]]): A list of tuples where each tuple contains
+                a piece of text and a boolean indicating whether it is a special token.
+
+        Examples:
+            >>> text = 'Hello <unk> world!'
+            >>> special_tokens = ['<unk>']
+            >>> pieces = self._split_special_tokens(text, special_tokens)
+            >>> print(pieces)
+            [('Hello ', False), ('<unk>', True), (' world!', False)]
+        """
+        pieces = []
+        cursor = 0
+
+        while cursor < len(text):
+            matches = (
+                (index, -len(token), token)
+                for token in special_tokens
+                if token and (index := text.find(token, cursor)) >= 0
+            )
+            match = min(matches, default=None)
+
+            if match is None:
+                pieces.append((text[cursor:], False))
+                break
+
+            start, _, token = match
+            if start > cursor:
+                pieces.append((text[cursor:start], False))
+
+            pieces.append((token, True))
+            cursor = start + len(token)
+
+        return pieces
+
+    def _count_pairs(
+        self,
+        word_symbols: list[WordSymbols],
+        word_freqs: list[int],
+    ) -> Counter[Pair]:
+        """Count all adjacent pairs by scanning every word.
+
+        Args:
+            word_symbols (list[WordSymbols]): A list of words represented as tuples of
+                symbols.
+            word_freqs (list[int]): A list of frequencies corresponding to each word.
+
+        Returns:
+            counter (Counter[Pair]): A counter mapping each pair of symbols to its frequency.
+
+        Examples:
+            >>> word_symbols = [
+            ...     ('l', 'o', 'w'),
+            ...     ('l', 'o', 'w'),
+            ...     ('l', 'o', 'w', 'e', 'r'),
+            ... ]
+            >>> word_freqs = [5, 3, 2]
+            >>> pair_counts = self._count_pairs(word_symbols, word_freqs)
+            >>> print(pair_counts)
+            Counter({
+                ('l', 'o'): 10,
+                ('o', 'w'): 10,
+                ('w', 'e'): 2,
+                ('e', 'r'): 2
+            })
+        """
+        pair_counts = Counter()
+
+        for symbols, freq in zip(word_symbols, word_freqs, strict=True):
+            for pair in it.pairwise(symbols):
+                pair_counts[pair] += freq
+
+        return pair_counts
+
+    def _select_best_pair(
+        self,
+        pair_counts: Counter[Pair],
+        min_frequency: int,
+    ) -> Pair | None:
+        """Select the most frequent pair with a direct `max()` scan.
+
+        Args:
+            pair_counts (Counter[Pair]): A counter mapping each pair of symbols to
+                its frequency.
+            min_frequency (int): The minimum frequency for a pair to be considered.
+
+        Returns:
+            best_pair (Pair | None): The most frequent pair of symbols, or None if
+                no pair meets the minimum frequency requirement.
+
+        Examples:
+            >>> pair_counts = Counter({
+                ('l', 'o'): 10,
+                ('o', 'w'): 10,
+                ('w', 'e'): 2,
+                ('e', 'r'): 2
+            })
+            >>> min_frequency = 3
+            >>> best_pair = self._select_best_pair(pair_counts, min_frequency)
+            >>> print(best_pair)
+            ('l', 'o')
+        """
+        if not pair_counts:
+            return None
+
+        freq, pair = max((freq, pair) for pair, freq in pair_counts.items())
+        if freq < min_frequency:
+            return None
+
+        return pair
+
+    def _merge_pair(self, symbols: WordSymbols, pair: Pair) -> WordSymbols:
+        """Merge every non-overlapping occurrence of one pair in a word.
+
+        Args:
+            symbols (WordSymbols): A tuple of symbols representing a word.
+            pair (Pair): A tuple of two symbols to be merged.
+
+        Returns:
+            merged (WordSymbols): A new tuple of symbols with the specified pair merged.
+
+        Examples:
+            >>> symbols = ('l', 'o', 'w', 'e', 'r')
+            >>> pair = ('l', 'o')
+            >>> merged = self._merge_pair(symbols, pair)
+            >>> print(merged)
+            ('lo', 'w', 'e', 'r')
+        """
+        index = 0
+        merged = []
+
+        while index < len(symbols):
+            if index + 1 < len(symbols) and symbols[index : index + 2] == pair:
+                merged.append(''.join(pair))
+                index += 2
+            else:
+                merged.append(symbols[index])
+                index += 1
+
+        return tuple(merged)
+```
+
+用一个小语料检查训练、编码和解码的完整流程：
+
+```{python}
+tokenizer_v1 = BPETokenizerV1()
+tokenizer_v1.train(
+    ['low lower lowest', 'newer wider'],
+    vocab_size=300,
+    initial_alphabet=ByteLevelPreTokenizer.alphabet(),
+    special_tokens=['<|endoftext|>'],
+)
+
+ids = tokenizer_v1.encode('lowest')
+print('Vocab size:', tokenizer_v1.vocab_size)
+print('First five merges:', tokenizer_v1.merges[:5])
+print('Token IDs:', ids)
+print('Decoded:', tokenizer_v1.decode(ids))
+```
+
+然后，我们可以使用 `profiling` 模块对训练过程进行性能分析：
+
+```bash
+python -m profiling.sampling run bpe_v1.py
+```
+
+得到结果如下：
+
+```{python}
+df = pd.read_csv('tokenizers/bpe_v1.csv')
+df.index = list(range(1, len(df) + 1))
+ipy.display(df.head(10))
+```
+
+从 profiling 结果可以看到，训练时间主要集中在 `_count_pairs()` 和 `_merge_pair()` 两个函数上。其中，`_count_pairs()` 内部几行代码分别占据了约 27.8%、16.8% 和 4.0% 的采样时间，而 `_merge_pair()` 中几个主要操作也分别占据了约 9.7%、6.8% 和 6.7%。相比之下，负责选择最高频 pair 的 `_select_best_pair()` 所占时间明显更少。
+
+这和当前的实现方式是一致的。每一轮 merge 开始时，`_count_pairs()` 都需要遍历所有 pre-token，并扫描其中所有相邻的 symbol：
+
+```python
+for symbols, freq in zip(word_symbols, word_freqs, strict=True):
+    for pair in it.pairwise(symbols):
+        pair_counts[pair] += freq
+```
+
+因此，不管上一轮 merge 实际修改了多少 pre-token，这一轮都会重新统计整个语料中的所有 pair。
+
+找到最高频的 `best_pair` 之后，程序又会把所有 pre-token 依次传入 `_merge_pair()`：
+
+```python
+word_symbols = [
+    self._merge_pair(symbols, best_pair) for symbols in word_symbols
+]
+```
+
+而 `_merge_pair()` 会从头到尾扫描一个 pre-token 的 symbol 序列，检查目标 pair 是否出现。即使某个 pre-token 根本不包含当前的 `best_pair`，它仍然需要被完整扫描一次。
+
+因此，一轮 merge 实际上包含了两次大范围扫描：
+
+```{mermaid}
+%%| fig-width: 3
+%%| fig-height: 4.5
+
+flowchart TD
+    A["所有 pre-token"]
+    --> B["扫描所有相邻 symbol"]
+    --> C["重新统计所有 pair"]
+    --> D["选择 best_pair"]
+    --> E["再次扫描所有 pre-token"]
+    --> F["查找并合并 best_pair"]
+```
+
+真正的问题并不是 BPE 必须做这些工作，而是当前实现**没有保存上一轮已经得到的信息**。
+
+例如，假设这一轮选择：
+
+```text
+('l', 'o') -> 'lo'
+```
+
+实际上只有包含 `('l', 'o')` 的少数 pre-token 会发生变化。但是当前实现并不知道 `('l', 'o')` 出现在哪些 pre-token 中，因此 `_merge_pair()` 只能扫描全部 pre-token。
+
+同样，完成这次 merge 后，也并不是所有 pair 的频率都会发生变化。只有被修改位置附近的 pair 会受到影响。但是当前实现会直接丢弃上一轮的 `pair_counts`，然后调用 `_count_pairs()` 从头重新统计全部 pair。
+
+因此，这一版最主要的问题可以概括为两个方面：
+
+1. 每轮都重新统计所有 pair：已经计算过的大部分 pair frequency 会被重复计算。
+2. 每轮都扫描所有 pre-token：即使一个 pre-token 不包含当前需要 merge 的 pair，也必须经过 `_merge_pair()` 检查。
+
+下一版可以针对这两个问题进行优化。
+
+首先，我们可以保存每个 pair 当前的出现频率，而不是每轮重新调用 `_count_pairs()`。当某个 pair 被 merge 后，只更新受到这次 merge 影响的局部 pair。
+
+其次，可以额外维护一个 pair 到 pre-token 的**倒排索引**，记录每个 pair 出现在哪些 pre-token 中。例如：
+
+```text
+('l', 'o') -> {word3, word17, word52}
+```
+
+这样，当 `('l', 'o')` 被选为 `best_pair` 时，就不需要再次扫描全部 pre-token，而是可以直接找到包含它的那些 pre-token，只对这些位置执行 merge。
+
+这样做的核心思想就是把 V1 的**全量重算**改成**增量更新**。后续的优化版本可以围绕这个思路逐步加入 pair frequency 缓存、倒排索引以及更高效的最高频 pair 查询结构。
 
 ### Problem (train_bpe_tinystories)
 
@@ -300,14 +998,6 @@ print(f'Longest token: {longest_token!r} (length: {len(longest_token)})')
 `dnnlpy` 实现支持 iterator 训练、单条和批量编码、解码、special-token 注册，以及单文件 JSON 加载和保存。相比直接返回 token id 列表，`encode()` 返回一个 `Encoding` 对象，其中包含 `ids`、`tokens` 和 `offsets`，方便同时获取 token 信息和原始文本位置。
 
 与 CS336 提供的 tokenizer 接口相比，当前实现存在一些差异。当前版本没有实现 `from_files(...)` 和 `encode_iterable(...)`，而是通过单个 JSON 文件保存完整 tokenizer 状态，并在加载时将 BPE vocabulary、merge rules 和 special tokens 恢复到现有 tokenizer 对象中。
-
-```{python}
-encoding = tokenizer.encode('lowest')
-
-print('ids:', encoding.ids)
-print('tokens:', encoding.tokens)
-print('decoded:', tokenizer.decode(encoding.ids))
-```
 
 ## 2.7 Tokenizer Experiments
 
