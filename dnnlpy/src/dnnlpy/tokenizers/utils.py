@@ -1,8 +1,10 @@
+import multiprocessing as mp
 import sys
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from functools import lru_cache, partial
+from multiprocessing.context import BaseContext
 
 from ..configtools import get_num_workers, has_gil
 
@@ -48,7 +50,16 @@ def unicode_to_bytes(text: str) -> bytes:
 
 
 def _batch_map[T, R](func: Callable[[T], R], values: Iterable[T]) -> list[R]:
+    """Map a function over a batch of values and return the results as a list."""
     return [func(value) for value in values]
+
+
+def _get_context() -> BaseContext:
+    """Get a multiprocessing context with Python 3.14 behavior."""
+    if sys.platform in ('win32', 'darwin'):
+        return mp.get_context('spawn')
+    else:
+        return mp.get_context('forkserver')
 
 
 def parallel_map[T, R](
@@ -79,7 +90,7 @@ def parallel_map[T, R](
                 yield func(value)
     else:
         if has_gil():
-            executor = ProcessPoolExecutor(num_workers)
+            executor = ProcessPoolExecutor(num_workers, mp_context=_get_context())
         else:
             executor = ThreadPoolExecutor(num_workers)
 
