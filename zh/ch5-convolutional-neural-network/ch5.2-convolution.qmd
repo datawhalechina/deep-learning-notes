@@ -340,7 +340,10 @@ for stride, padding in [(1, 0), (1, 1), (2, 1)]:
     )
     expected = F.conv2d(x, weight, stride=stride, padding=padding)
 
-    print(f'stride={stride}, padding={padding}: actual={actual}, expected={y.size(-1)}')
+    print(
+        f'stride={stride}, padding={padding}: '
+        f'actual={actual}, expected={expected.size(-1)}'
+    )
 ```
 
 输出尺寸公式是理解 CNN 结构时最常用的公式之一。读网络结构图时，只要知道输入大小、kernel、padding 和 stride，就可以逐层计算特征图尺寸。
