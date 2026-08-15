@@ -325,7 +325,7 @@ def alphabet() -> list[str]:
 这些字符会作为 BPE 的初始 alphabet。在训练 tokenizer 时，可以通过：
 
 ```python
-initial_alphabet=dltk.ByteLevelPreTokenizer.alphabet()
+initial_alphabet = dltk.ByteLevelPreTokenizer.alphabet()
 ```
 
 将它们加入初始 vocabulary。
@@ -477,6 +477,7 @@ python -m cProfile -s cumulative train_bpe.py
 ```{python}
 #| code-fold: true
 #| code-summary: "BPE Tokenizer v1"
+
 
 class BPETokenizerV1(dltk.TraditionalTokenizer):
     """A naive byte-pair encoding tokenizer for teaching the BPE algorithm."""
@@ -914,9 +915,7 @@ for symbols, freq in zip(word_symbols, word_freqs, strict=True):
 找到最高频的 `best_pair` 之后，程序又会把所有 pre-token 依次传入 `_merge_pair()`：
 
 ```python
-word_symbols = [
-    self._merge_pair(symbols, best_pair) for symbols in word_symbols
-]
+word_symbols = [self._merge_pair(symbols, best_pair) for symbols in word_symbols]
 ```
 
 而 `_merge_pair()` 会从头到尾扫描一个 pre-token 的 symbol 序列，检查目标 pair 是否出现。即使某个 pre-token 根本不包含当前的 `best_pair`，它仍然需要被完整扫描一次。
