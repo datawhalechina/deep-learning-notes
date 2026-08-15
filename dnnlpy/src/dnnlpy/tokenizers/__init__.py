@@ -29,6 +29,8 @@ from .traditional import (
 )
 from .trainer import BPETrainer as BPETrainer
 from .utils import (
+    BYTES_TO_UNICODE as BYTES_TO_UNICODE,
+    UNICODE_TO_BYTES as UNICODE_TO_BYTES,
     bytes_to_unicode as bytes_to_unicode,
     parallel_map as parallel_map,
     unicode_to_bytes as unicode_to_bytes,
