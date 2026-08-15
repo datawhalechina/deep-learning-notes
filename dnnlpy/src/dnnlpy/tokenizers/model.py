@@ -106,7 +106,7 @@ class BPE(Model):
         self.unk_token = unk_token
         self._refresh_merge_ranks()
 
-        tokenizer.vocab = vocab
+        tokenizer._refresh_id_lookup()
         tokenizer.unk_token = unk_token
         tokenizer.special_tokens = list(special_tokens)
 
