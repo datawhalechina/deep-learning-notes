@@ -42,6 +42,7 @@ book:
     - part: "Chapter 1: 深度学习简介"
       chapters:
         - "zh/ch1-introduction/ch1.1-neural-network.qmd"
+        - "zh/ch1-introduction/ch1.2-loss-function.qmd"
         - "zh/ch1-introduction/ch1.3-computation-graph.qmd"
     - part: "Chapter 2: PyTorch 入门"
       chapters:
