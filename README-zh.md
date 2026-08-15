@@ -86,3 +86,7 @@ uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirec
 
 - 本仓库中的笔记内容采用 **CC BY-NC 4.0 协议**。
 - `dnnlpy` 库采用 **MIT 协议**。
+
+## ⭐ Star History
+
+[![Star History Chart](https://star-history.dera.page/svg?repos=datawhalechina/deep-learning-notes&type=date&legend=top-left)](https://star-history.dera.page/#datawhalechina/deep-learning-notes&type=date&legend=top-left)
