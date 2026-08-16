@@ -1,0 +1,114 @@
+name: Render Quarto Website Manually
+
+on:
+  workflow_dispatch:
+    inputs:
+      use-cache:
+        description: Whether to restore the latest Quarto freeze cache before rendering
+        required: true
+        default: true
+        type: boolean
+
+env:
+  DNNL_DATA_ROOT: ${{ github.workspace }}/datasets
+  HF_HOME: ~/.cache/huggingface
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  UV_TORCH_BACKEND: cpu
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: render-website-manually
+  cancel-in-progress: false
+
+jobs:
+  render-website-manually:
+    name: render-website-manually
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
+          src: >-
+            zh/
+            en/
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install Chrome for Quarto
+        run: quarto install chrome-headless-shell
+
+      - name: Restore Quarto freeze cache
+        if: inputs.use-cache == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: _freeze
+          key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            quarto-freeze-${{ runner.os }}-
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            dnnlpy/pyproject.toml
+
+      - name: Install Python dependencies
+        run: |
+          uv python install 3.14
+          uv sync --python 3.14 --all-packages --group cpu
+
+      - name: Download datasets for notebooks
+        shell: bash
+        env:
+          UV_NO_SYNC: "1"
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$DNNL_DATA_ROOT/caltech101"
+          uv run gdown 19qo4t_YR0RGILU_nmpXHbo1mMGOvn3iH \
+            -O "$DNNL_DATA_ROOT/caltech101/caltech-101.zip"
+
+          mkdir -p "$DNNL_DATA_ROOT/MNIST"
+          uv run gdown 1Aph8a8r7_uFN-IsVu5oFmZ4_zJKckk4X \
+            -O "$DNNL_DATA_ROOT/MNIST/mnist.zip"
+          unzip -q "$DNNL_DATA_ROOT/MNIST/mnist.zip" -d "$DNNL_DATA_ROOT/MNIST"
+
+          uv run python utils/download_datasets.py
+
+      - name: Render Quarto website
+        env:
+          QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: quarto render --profile html
+
+      - name: Save Quarto freeze cache
+        if: ${{ always() && hashFiles('_freeze/**') != '' }}
+        uses: actions/cache/save@v6
+        with:
+          path: _freeze
+          key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
+
+      - name: Set up GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
