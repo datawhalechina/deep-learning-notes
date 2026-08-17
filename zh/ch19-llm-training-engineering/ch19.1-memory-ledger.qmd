@@ -9,6 +9,8 @@ title: "19.1 训练一个 LLM 到底花在哪里：模型状态、激活与运�
 order: 1
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.1-memory-ledger.ipynb){fig-align="left"}
+
 第 18 章里，我们已经从零搭出了一个 MiniGPT，并完整走过了 next-token prediction、batch、loss、反向传播和参数更新。
 
 当模型从几百万参数扩大到几十亿甚至上百亿参数以后，模型的基本训练流程其实并没有发生根本变化。真正发生变化的是每一步背后的资源规模。
