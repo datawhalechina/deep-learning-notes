@@ -1,0 +1,141 @@
+name: Render Quarto PDFs Manually
+
+on:
+  workflow_dispatch:
+    inputs:
+      use-cache:
+        description: Whether to restore the latest Quarto freeze cache before rendering
+        required: true
+        default: false
+        type: boolean
+
+env:
+  DNNL_DATA_ROOT: ${{ github.workspace }}/datasets
+  HF_HOME: ~/.cache/huggingface
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  UV_TORCH_BACKEND: cpu
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: render-pdfs-manually
+  cancel-in-progress: false
+
+jobs:
+  render-pdfs-manually:
+    name: render-pdfs-manually
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
+          src: >-
+            zh/
+            en/
+
+      - name: Install PDF fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-jetbrains-mono fonts-noto-cjk fonts-noto-cjk-extra
+          fc-cache -fv
+          fc-list | grep -i "JetBrains Mono" | head || true
+          fc-list | grep -i "Noto Serif CJK" | head || true
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install Chrome for Quarto
+        run: quarto install chrome-headless-shell
+
+      - name: Restore Quarto freeze cache
+        if: inputs.use-cache == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: _freeze
+          key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            quarto-freeze-${{ runner.os }}-
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            dnnlpy/pyproject.toml
+
+      - name: Install Python dependencies
+        run: |
+          uv python install 3.14
+          uv sync --python 3.14 --all-packages --group cpu
+
+      - name: Download datasets for notebooks
+        shell: bash
+        env:
+          UV_NO_SYNC: "1"
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$DNNL_DATA_ROOT/caltech101"
+          uv run gdown 19qo4t_YR0RGILU_nmpXHbo1mMGOvn3iH \
+            -O "$DNNL_DATA_ROOT/caltech101/caltech-101.zip"
+
+          mkdir -p "$DNNL_DATA_ROOT/MNIST"
+          uv run gdown 1Aph8a8r7_uFN-IsVu5oFmZ4_zJKckk4X \
+            -O "$DNNL_DATA_ROOT/MNIST/mnist.zip"
+          unzip -q "$DNNL_DATA_ROOT/MNIST/mnist.zip" -d "$DNNL_DATA_ROOT/MNIST"
+
+          uv run python utils/download_datasets.py
+
+      - name: Compile zh qmd to PDF
+        shell: bash
+        env:
+          QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: quarto render --profile typst-zh
+
+      - name: Generate zh PDF attestation
+        if: ${{ hashFiles('_typst/deep-learning-notes-zh.pdf') != '' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: _typst/deep-learning-notes-zh.pdf
+
+      - name: Upload zh artifact
+        if: ${{ hashFiles('_typst/deep-learning-notes-zh.pdf') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: _typst/deep-learning-notes-zh.pdf
+          archive: false
+
+      - name: Compile en qmd to PDF
+        shell: bash
+        env:
+          QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: quarto render --profile typst-en
+
+      - name: Generate en PDF attestation
+        if: ${{ hashFiles('_typst/deep-learning-notes-en.pdf') != '' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: _typst/deep-learning-notes-en.pdf
+
+      - name: Upload en artifact
+        if: ${{ hashFiles('_typst/deep-learning-notes-en.pdf') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: _typst/deep-learning-notes-en.pdf
+          archive: false
+
+      - name: Save Quarto freeze cache
+        if: ${{ always() && hashFiles('_freeze/**') != '' }}
+        uses: actions/cache/save@v6
+        with:
+          path: _freeze
+          key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
