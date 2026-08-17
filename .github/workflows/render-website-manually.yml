@@ -6,7 +6,7 @@ on:
       use-cache:
         description: Whether to restore the latest Quarto freeze cache before rendering
         required: true
-        default: true
+        default: false
         type: boolean
 
 env:
