@@ -115,3 +115,9 @@ jobs:
         env:
           QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: quarto render --profile html
+      
+      - name: Upload rendered website artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dnnl-website-pr-${{ github.event.pull_request.number }}
+          path: _site
