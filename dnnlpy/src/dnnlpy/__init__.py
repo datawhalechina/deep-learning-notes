@@ -1,4 +1,10 @@
-from . import models as models, nn as nn, optim as optim, tokenizers as tokenizers
+from . import (
+    cs336 as cs336,
+    models as models,
+    nn as nn,
+    optim as optim,
+    tokenizers as tokenizers,
+)
 from .configtools import (
     get_data_root as get_data_root,
     get_default_device as get_default_device,
