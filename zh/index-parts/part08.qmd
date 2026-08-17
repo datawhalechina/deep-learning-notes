@@ -9,6 +9,7 @@ comments: false
 listing:
   contents:
     - "../ch18-gpt2-from-scratch/*.qmd"
+    - "../ch19-llm-training-engineering/*.qmd"
   sort: title asc
   type: table
   fields: [title, author, date]

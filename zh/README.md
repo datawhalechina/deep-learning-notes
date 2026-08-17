@@ -111,3 +111,7 @@
 - 18.5 在 TinyStories 上训练 MiniGPT
 - 18.6 从训练到生成：Temperature、Top-k、Top-p
 - 18.7 GPT-2：从 MiniGPT 到预训练语言模型
+
+## Chapter 19: LLM 训练工程：显存、计算与并行训练
+
+- 19.1 训练一个 LLM 到底花在哪里：模型状态、激活与运行时开销
