@@ -139,3 +139,6 @@ book:
         - "zh/ch18-gpt2-from-scratch/ch18.5-train-minigpt.qmd"
         - "zh/ch18-gpt2-from-scratch/ch18.6-generation.qmd"
         - "zh/ch18-gpt2-from-scratch/ch18.7-gpt2-vs-minigpt.qmd"
+    - part: "Chapter 19: LLM 训练工程：显存、计算与并行训练"
+      chapters:
+        - "zh/ch19-llm-training-engineering/ch19.1-memory-ledger.qmd"

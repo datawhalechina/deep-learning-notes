@@ -109,6 +109,8 @@ website:
           contents:
             - section: "Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构"
               contents: "zh/ch18-gpt2-from-scratch/*.qmd"
+            - section: "Chapter 19: LLM 训练工程：显存、计算与并行训练"
+              contents: "zh/ch19-llm-training-engineering/*.qmd"
     - id: en
       style: floating
       contents:
