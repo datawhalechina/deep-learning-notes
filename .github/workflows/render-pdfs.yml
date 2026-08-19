@@ -1,4 +1,4 @@
-name: Compile Notebooks and Render PDFs
+name: Render Quarto PDFs
 
 on:
   push:
