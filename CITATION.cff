@@ -12,10 +12,10 @@ abstract: >-
   core concepts, classic models, PyTorch implementation details, efficient deep
   learning systems, modern computer vision models, and natural language processing.
 keywords:
-  - deep learning
-  - machine learning
-  - PyTorch
+  - deep learning tutorial
+  - pytorch
   - computer vision
   - natural language processing
+  - large language models
 license: CC-BY-NC-4.0
 date-released: 2026-03-15
