@@ -3,8 +3,6 @@ project:
   output-dir: _site
   render:
     - "*.qmd"
-  resources:
-    - "utils/html_mermaid_defaults.js"
   post-render:
     - "utils/clean_checkpoints.py"
     - "utils/clean_cache.py"
