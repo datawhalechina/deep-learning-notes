@@ -12,12 +12,11 @@ body:
     attributes:
       label: Request type
       description: What kind of improvement are you suggesting?
-      multiple: true
       options:
         - New topic, section, or chapter
         - New code example or notebook
         - Website or documentation improvement
-        - "`dnnlpy` package feature"
+        - New feature in dnnlpy package
         - Build, CI, or repository tooling improvement
         - Other
     validations:
@@ -42,13 +41,6 @@ body:
         Describe the topic, explanation, feature, code example, or implementation you would like to see.
     validations:
       required: true
-
-  - type: input
-    id: related-content
-    attributes:
-      label: Related content
-      description: If applicable, specify the related chapter, section, page, package, or file.
-      placeholder: "e.g. Chapter 9, 9.3 Self-Attention, dnnlpy.tokenizers"
 
   - type: textarea
     id: additional-context
