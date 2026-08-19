@@ -38,7 +38,6 @@ import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
 
 print('PyTorch version:', torch.__version__)

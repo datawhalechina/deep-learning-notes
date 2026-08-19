@@ -31,7 +31,6 @@ order: 4
 
 ```{python}
 import dnnlpy.nn as dnn
-import dnnlpy.nn.functional as dF
 import dnnlpy.models.gpt as gpt
 import torch
 import torch.nn as nn
