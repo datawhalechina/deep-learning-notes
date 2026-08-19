@@ -125,14 +125,7 @@ BPE 的作用，就是从语料中自动学习这套词表和 merge rules。训�
 
 因此，`train_bpe` 是整个语言模型训练流程中非常靠前的一步：
 
-```{mermaid}
-%%| fig-width: 7.5
-
-flowchart LR
-    A[Raw Text] --> B[Train BPE Tokenizer]
-    B --> C[Token IDs]
-    C --> D[Large Language Models]
-```
+![图 2.4.1 BPE 在语言模型训练流程中的位置](figures/bpe-tokenizer-training.svg){width=85%}
 
 本题的目标就是从训练语料中学习 BPE vocabulary 和 merge rules，为后面的语言模型训练准备 tokenizer。
 
@@ -184,26 +177,11 @@ $$
 
 CS336 直接使用 raw bytes 表示 BPE token。文本经过 pre-tokenization 之后会被编码成 UTF-8 bytes，后续的 pair 统计和 merge 也直接作用在 bytes 上：
 
-```{mermaid}
-%%| fig-width: 5.85
-
-flowchart LR
-    A[Text] --> B[Pre-tokenization]
-    B --> C[UTF-8 Bytes]
-    C --> D[BPE]
-```
+![图 2.4.2 BPE 流程](figures/bpe-byte-pipeline.svg){width=65%}
 
 本文则采用与 GPT-2 / HF Tokenizers 库一致的表示方式。在得到 UTF-8 bytes 之后，会额外进行一次 **byte-to-Unicode mapping**，将 256 个 byte 一一映射成对应的 Unicode 代理字符：
 
-```{mermaid}
-%%| fig-width: 7.5
-
-flowchart LR
-    A[Text] --> B[Pre-tokenization]
-    B --> C[UTF-8 Bytes]
-    C --> D[Byte-to-Unicode Mapping]
-    D --> E[BPE]
-```
+![图 2.4.3 BPE bytes-to-Unicode 流程](figures/bpe-byte-to-unicode-pipeline.svg){width=90%}
 
 例如，对于一个 byte `<space>`，在 Hugging Face / GPT-2 风格的 byte-level tokenizer 中，并不直接以 `<space>` 参与 BPE，而是先被映射为 Unicode 字符 `Ġ`。这样，所有 byte 都可以用普通 Unicode 字符表示，后续的 pair 统计和 merge 就可以直接使用字符串完成，而不需要额外处理 bytes。因此，在 GPT-2 一类 tokenizer 的词表里经常可以看到：
 
@@ -388,15 +366,7 @@ print('Decoded:', decoder.decode(pre_tokens))
 
 这里还没有执行任何 BPE merge，只是在验证 byte-level 表示能否正确完成 round trip：
 
-```{mermaid}
-%%| fig-width: 7.8
-
-flowchart LR
-    A[Text] --> B[Pre-tokenization]
-    B --> C[Byte-level Unicode]
-    C --> D[Decoder]
-    D --> E[Text]
-```
+![图 2.4.4 BPE Round Trip](figures/tokenizer-decoder-round-trip.svg){width=85%}
 
 如果实现正确，最终解码结果应该重新得到原始的：
 
@@ -922,18 +892,7 @@ word_symbols = [self._merge_pair(symbols, best_pair) for symbols in word_symbols
 
 因此，一轮 merge 实际上包含了两次大范围扫描：
 
-```{mermaid}
-%%| fig-width: 3
-%%| fig-height: 4.5
-
-flowchart TD
-    A["所有 pre-token"]
-    --> B["扫描所有相邻 symbol"]
-    --> C["重新统计所有 pair"]
-    --> D["选择 best_pair"]
-    --> E["再次扫描所有 pre-token"]
-    --> F["查找并合并 best_pair"]
-```
+![图 2.4.5 BPE v1 流程图](figures/bpe-v1-merge-loop.svg){height=480px}
 
 真正的问题并不是 BPE 必须做这些工作，而是当前实现**没有保存上一轮已经得到的信息**。
 
@@ -1218,7 +1177,7 @@ $$
 - SwiGLU feed-forward projections：$N \times 6T D F$；
 - Output LM head：$2T D V$。
 
-总计约 3.5168e12 FLOPs。在 $T=1024$ 时 feed-forward 占主导；当 $T=16384$ 时，二次方 attention 约占 61.7%，总 forward cost 约为 1.3358e14 FLOPs。
+总计约 $3.5168\times 10^{12}$ FLOPs。在 $T=1024$ 时 feed-forward 占主导；当 $T=16384$ 时，二次方 attention 约占 61.7%，总 forward cost 约为 $1.3358\times 10^{14}$ FLOPs。
 
 ::: {.list-table}
 表 1：GPT-2 系列模型前向传播 FLOPs 分布
