@@ -94,6 +94,7 @@ jobs:
           uv sync --python 3.14 --all-packages --group cpu
 
       - name: Download datasets for notebooks
+        timeout-minutes: 10
         shell: bash
         env:
           UV_NO_SYNC: "1"
