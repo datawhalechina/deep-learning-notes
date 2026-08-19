@@ -18,22 +18,7 @@ eval: false
 
 完整流程是：
 
-```{mermaid}
-%%| eval: true
-%%| fig-height: 550px
-%%| fig-cap: "图 18.5.0 MiniGPT 训练流程"
-
-flowchart TD
-    A[TinyStories documents]
-    B[Train a small BPE tokenizer]
-    C[Encode every story and append EOS]
-    D[Concatenate into token streams]
-    E[Sample input_ids and labels windows]
-    F[MiniGPT and cross-entropy loss]
-    G[Validation loss and text generation]
-
-    A --> B --> C --> D --> E --> F --> G
-```
+![图 18.5.0 MiniGPT 训练流程](figures/ch18.5-training-pipeline.svg){height=650px}
 
 这里的目标是完成一次规模可控、能够真实运行的 MiniGPT 预训练实验。
 
@@ -121,21 +106,7 @@ print(train_texts[idx][:500])
 
 在实际进行模型训练之前，我们需要先把文本转换成 token ids。Hugging Face 的 Tokenizers [@Tokenizers] 库提供了高性能的 tokenizer 实现，支持多种预训练 tokenizer 结构，也允许我们从头训练一个适合当前语料的小型 tokenizer。
 
-```{mermaid}
-%%| eval: true
-%%| fig-height: 550px
-%%| fig-cap: "图 18.5.2 Hugging Face Tokenizers 组件"
-
-flowchart TD
-    A[Raw text] --> B[Normalizer]
-    B --> C[Pre-tokenizer]
-    C --> D[Model<br/>BPE / WordPiece / Unigram]
-    D --> E[Post-processor]
-    E --> F[Encoding<br/>tokens / ids / offsets]
-
-    F --> G[Decoder]
-    G --> H[Decoded text]
-```
+![图 18.5.2 Hugging Face Tokenizers 组件](figures/ch18.5-tokenizer-components.svg){height=550px}
 
 下面分别看这些组件负责什么。
 
