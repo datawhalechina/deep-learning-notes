@@ -1,0 +1,47 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, sans-serif
+  themeVariables:
+    fontSize: 20px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    X[Input]
+
+    X --> MSA[Masked Multi-Head<br/>Self-Attention]
+    X --> SKIP1((+))
+    MSA --> SKIP1
+    SKIP1 --> LN1[LayerNorm]
+
+    LN1 --> CA[Multi-Head<br/>Cross-Attention]
+    EO[Encoder Output] --> CA
+    LN1 --> SKIP2((+))
+    CA --> SKIP2
+    SKIP2 --> LN2[LayerNorm]
+
+    LN2 --> FFN[Feed-Forward<br/>Network]
+    LN2 --> SKIP3((+))
+    FFN --> SKIP3
+    SKIP3 --> LN3[LayerNorm]
+
+    LN3 --> O[Output]
