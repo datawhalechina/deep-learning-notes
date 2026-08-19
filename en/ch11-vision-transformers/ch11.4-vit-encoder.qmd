@@ -126,36 +126,7 @@ This form is called a **Pre-Norm Transformer**, meaning layer norm is applied be
 
 In terms of module order, the computation flow of an encoder block is:
 
-```{mermaid}
-%%| eval: true
-%%| fig-height: 750px
-%%| fig-cap: "Figure 11.4.3: ViT Encoder model structure"
-
----
-config:
-  flowchart:
-    wrappingWidth: 250
----
-
-flowchart TD
-    X[Input]
-
-    X --> LN1[LayerNorm]
-    LN1 --> MSA[Multihead Self-Attention]
-    MSA --> ADD1((+))
-
-    X -. Residual .-> ADD1
-
-    ADD1 --> H[Hidden H]
-
-    H --> LN2[LayerNorm]
-    LN2 --> MLP[MLP]
-    MLP --> ADD2((+))
-
-    H -. Residual .-> ADD2
-
-    ADD2 --> OUT[Output]
-```
+![Figure 11.4.3: ViT Encoder model structure](figures/ch11.4-vit-encoder-block.svg){height=750px}
 
 This is very close to the Transformer Encoder we discussed earlier. The only difference is that the tokens are no longer words, but image patches.
 
