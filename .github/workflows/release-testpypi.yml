@@ -1,0 +1,88 @@
+name: Publish Python Package to TestPyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  UV_TORCH_BACKEND: cpu
+
+jobs:
+  test-dnnlpy:
+    name: Test dnnlpy package (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Lint check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: check --output-format=github
+          src: >-
+            dnnlpy/src
+            dnnlpy/tests
+
+      - name: Format check with Ruff
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: format --check --output-format=github
+          src: >-
+            dnnlpy/src
+            dnnlpy/tests
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            dnnlpy/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          uv python install ${{ matrix.python-version }}
+          uv venv --python ${{ matrix.python-version }} .venv
+          uv pip install --python .venv -e "dnnlpy[test]"
+
+      - name: Test dnnlpy package
+        run: .venv/bin/python -m pytest dnnlpy/tests
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-latest
+    environment: testpypi
+    needs: test-dnnlpy
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            dnnlpy/pyproject.toml
+
+      - name: Install build Python
+        run: uv python install 3.14
+
+      - name: Build dnnlpy package
+        run: uv build dnnlpy --out-dir dist
+
+      - name: Publish to TestPyPI
+        run: uv publish --publish-url https://test.pypi.org/legacy/
