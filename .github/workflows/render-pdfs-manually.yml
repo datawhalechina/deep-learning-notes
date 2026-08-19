@@ -1,4 +1,4 @@
-name: Render Quarto Website Manually
+name: Render Quarto PDFs Manually
 
 on:
   workflow_dispatch:
@@ -17,23 +17,21 @@ env:
 
 permissions:
   contents: write
-  pages: write
   id-token: write
+  attestations: write
 
 concurrency:
-  group: render-website-manually
+  group: render-pdfs-manually
   cancel-in-progress: false
 
 jobs:
-  render-website-manually:
-    name: render-website-manually
+  render-pdfs-manually:
+    name: render-pdfs-manually
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-        with:
-          lfs: true
 
       - name: Format check with Ruff
         uses: astral-sh/ruff-action@v4.0.0
@@ -42,6 +40,15 @@ jobs:
           src: >-
             zh/
             en/
+
+      - name: Install PDF fonts
+        timeout-minutes: 15
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-jetbrains-mono fonts-noto-cjk fonts-noto-cjk-extra
+          fc-cache -fv
+          fc-list | grep -i "JetBrains Mono" | head || true
+          fc-list | grep -i "Noto Serif CJK" | head || true
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
@@ -59,7 +66,7 @@ jobs:
             quarto-freeze-${{ runner.os }}-
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10.0.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
           cache-dependency-glob: |
@@ -90,10 +97,43 @@ jobs:
 
           uv run python utils/download_datasets.py
 
-      - name: Render Quarto website
+      - name: Compile zh qmd to PDF
+        shell: bash
         env:
           QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: quarto render --profile html
+        run: quarto render --profile typst-zh
+
+      - name: Generate zh PDF attestation
+        if: ${{ hashFiles('_typst/deep-learning-notes-zh.pdf') != '' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: _typst/deep-learning-notes-zh.pdf
+
+      - name: Upload zh artifact
+        if: ${{ hashFiles('_typst/deep-learning-notes-zh.pdf') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: _typst/deep-learning-notes-zh.pdf
+          archive: false
+
+      - name: Compile en qmd to PDF
+        shell: bash
+        env:
+          QUARTO_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: quarto render --profile typst-en
+
+      - name: Generate en PDF attestation
+        if: ${{ hashFiles('_typst/deep-learning-notes-en.pdf') != '' }}
+        uses: actions/attest@v4
+        with:
+          subject-path: _typst/deep-learning-notes-en.pdf
+
+      - name: Upload en artifact
+        if: ${{ hashFiles('_typst/deep-learning-notes-en.pdf') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: _typst/deep-learning-notes-en.pdf
+          archive: false
 
       - name: Save Quarto freeze cache
         if: ${{ always() && hashFiles('_freeze/**') != '' }}
@@ -101,15 +141,3 @@ jobs:
         with:
           path: _freeze
           key: quarto-freeze-${{ runner.os }}-${{ github.run_id }}
-
-      - name: Set up GitHub Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: _site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
