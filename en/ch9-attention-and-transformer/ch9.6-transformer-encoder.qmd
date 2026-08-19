@@ -95,36 +95,7 @@ Here, $X$ is the input representation of the current layer, $Y$ is the output re
 
 From the data flow, it looks like this:
 
-```{mermaid}
-%%| fig-height: 600px
-%%| fig-cap: "Figure 9.6.2: Transformer Encoder Block structure diagram"
-
----
-config:
-  flowchart:
-    wrappingWidth: 250
----
-
-flowchart TD
-    X[Input]
-
-    X --> MHA[Multi-Head Self-Attention]
-    X --> Skip1[Identity]
-
-    MHA --> Add1((+))
-    Skip1 --> Add1
-
-    Add1 --> LN1[LayerNorm]
-
-    LN1 --> FFN[Feed-Forward Network]
-    LN1 --> Skip2[Identity]
-
-    FFN --> Add2((+))
-    Skip2 --> Add2
-
-    Add2 --> LN2[LayerNorm]
-    LN2 --> Y[Output]
-```
+![Figure 9.6.2: Transformer Encoder Block structure diagram](figures/ch9.6-transformer-encoder-block.svg){height=600px}
 
 This is the most basic encoder block structure.
 

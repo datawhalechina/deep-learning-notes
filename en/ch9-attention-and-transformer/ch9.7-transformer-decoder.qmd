@@ -257,31 +257,7 @@ $$
 
 Therefore, a decoder block can be written as:
 
-```{mermaid}
-%%| fig-height: 800px
-%%| fig-cap: "Figure 9.7.4: Transformer Decoder Block structure diagram"
-
-flowchart TD
-    X[Input]
-
-    X --> MSA[Masked Multi-Head<br/>Self-Attention]
-    X --> SKIP1((+))
-    MSA --> SKIP1
-    SKIP1 --> LN1[LayerNorm]
-
-    LN1 --> CA[Multi-Head<br/>Cross-Attention]
-    EO[Encoder Output] --> CA
-    LN1 --> SKIP2((+))
-    CA --> SKIP2
-    SKIP2 --> LN2[LayerNorm]
-
-    LN2 --> FFN[Feed-Forward<br/>Network]
-    LN2 --> SKIP3((+))
-    FFN --> SKIP3
-    SKIP3 --> LN3[LayerNorm]
-
-    LN3 --> O[Output]
-```
+![Figure 9.7.4: Transformer Decoder Block structure diagram](figures/ch9.7-transformer-decoder-block.svg){height=800px}
 
 Compared with the encoder block, the decoder block has one more cross-attention module, and its self-attention needs a causal mask.
 

@@ -1,0 +1,33 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, sans-serif
+  themeVariables:
+    fontSize: 14px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A[Input Data] --> B[Model Produces Predictions]
+    B --> C[Compute Loss]
+    C --> D[Adjust Parameters Based on the Loss]
+    D --> E[Make Predictions Again with Updated Parameters]
+    E --> A

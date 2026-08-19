@@ -3,6 +3,7 @@
 ## Chapter 1: Introduction to Deep Learning
 
 - 1.1 Neural Networks: A Learnable Function
+- 1.2 Loss Function: How Does a Model Know How Wrong It Is?
 - 1.3 Forward Propagation, Backpropagation, and Computation Graph
 
 ## Chapter 2: Getting Started with PyTorch
