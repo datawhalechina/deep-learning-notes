@@ -4,13 +4,12 @@ Thank you for helping keep this project safe.
 
 ## Reporting a Vulnerability
 
-If you find a security issue in this repository or in the `dnnlpy` package, please do not open a public issue.
-
-Instead, report it privately through GitHub Security Advisories:
+If you find a security issue in this repository or in the `dnnlpy` package, please do not open a public issue. Instead, report it privately through GitHub Security Advisories:
 
 - Go to the repository's **Security** tab.
 - Choose **Report a vulnerability**.
 - Include the affected file, package version or commit, reproduction steps, and any relevant logs or proof of concept.
+- Send an email to **<jshn9510@gmail.com>**.
 
 I will review valid reports as soon as possible and follow up with any needed fixes or questions.
 
