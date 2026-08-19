@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to this project!
+Thank you for your interest in contributing to this project.
 
 To keep the repository consistent and easy to maintain, please follow the steps below before submitting a Pull Request.
 
@@ -13,6 +13,12 @@ Please install Quarto first from the official website:
 - Quarto: [Quarto Get Started](https://quarto.org/docs/get-started/)
 
 After installation, make sure the `quarto` command is available in your terminal.
+
+### [OPTIONAL]
+
+If you are using Microsoft VS Code, you can also install the Quarto extension for better integration:
+
+- Microsoft VS Code: [Quarto Extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto)
 
 ## 2. Install project dependencies
 
@@ -108,7 +114,7 @@ After configuration, confirm that your commits show the **Verified** badge on Gi
 
 ## 7. Re-render locally before submitting
 
-Before opening a Pull Request, you **must** re-render the modified content locally and confirm that everything works correctly.
+Before opening a Pull Request, you **MUST** re-render the modified content locally and confirm that everything works correctly.
 
 At minimum, please make sure:
 
@@ -129,7 +135,7 @@ If you need to convert a `.qmd` file into a notebook for checking, you can also 
 quarto convert path/to/file.qmd
 ```
 
-Please **do not** submit a PR without verifying the local rendering result first.
+Please **DO NOT** submit a PR without verifying the local rendering result first.
 
 ## 8. Submit a Pull Request
 
@@ -145,4 +151,4 @@ Typical contributions include:
 - Adding better derivations or clearer technical explanations
 - Suggesting or contributing new topics
 
-Thank you for helping improve these notes!
+Thank you for helping improve these notes.
