@@ -13,17 +13,7 @@ order: 4
 
 前面几节里，我们已经把 MiniGPT 的主体搭起来了：
 
-```{mermaid}
-%%| fig-height: 350px
-%%| fig-cap: "图 18.3.0 MiniGPT 的数据流"
-
-flowchart TD
-    A[Given a Prefix] --> B[Run MiniGPT]
-    B --> C[Take the logits at the last position]
-    C --> D[Select the next token]
-    D --> E[Append the new token to the prefix]
-    E --> B
-```
+![图 18.3.0 MiniGPT 的数据流](figures/ch18.3-token-generation-loop.svg){height=450px}
 
 但是这里其实藏着一个很重要的问题：
 
@@ -692,6 +682,10 @@ word_tokenizer.train(text)
 
 bpe_tokenizer = BPETokenizer()
 bpe_tokenizer.train(text, vocab_size=20)
+
+print('Character vocab size:', char_tokenizer.vocab_size)
+print('Word vocab size:', word_tokenizer.vocab_size)
+print('BPE vocab size:', bpe_tokenizer.vocab_size)
 ```
 
 #### **1. 影响序列长度**

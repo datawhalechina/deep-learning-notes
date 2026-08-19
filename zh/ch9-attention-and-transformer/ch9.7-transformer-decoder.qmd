@@ -256,31 +256,7 @@ $$
 
 因此，一个 decoder block 可以写成：
 
-```{mermaid}
-%%| fig-height: 800px
-%%| fig-cap: "图 9.7.4：Transformer Decoder Block 结构图"
-
-flowchart TD
-    X[Input]
-
-    X --> MSA[Masked Multi-Head<br/>Self-Attention]
-    X --> SKIP1((+))
-    MSA --> SKIP1
-    SKIP1 --> LN1[LayerNorm]
-
-    LN1 --> CA[Multi-Head<br/>Cross-Attention]
-    EO[Encoder Output] --> CA
-    LN1 --> SKIP2((+))
-    CA --> SKIP2
-    SKIP2 --> LN2[LayerNorm]
-
-    LN2 --> FFN[Feed-Forward<br/>Network]
-    LN2 --> SKIP3((+))
-    FFN --> SKIP3
-    SKIP3 --> LN3[LayerNorm]
-
-    LN3 --> O[Output]
-```
+![图 9.7.4：Transformer Decoder Block 结构图](figures/ch9.7-transformer-decoder-block.svg){height=800px}
 
 和 encoder block 相比，decoder block 多了一个 cross-attention，并且 self-attention 需要 causal mask。
 

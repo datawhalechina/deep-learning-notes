@@ -28,20 +28,7 @@ order: 2
 
 这一节，我们先来实现一个 GPT-2 的缩小版，MiniGPT [@nanoGPT]。MiniGPT 的整体数据流如下：
 
-```{mermaid}
-%%| fig-height: 400px
-%%| fig-cap: "图 18.2.0 MiniGPT 的数据流"
-
-flowchart TD
-    A[Input token ids]
-    B[Token embedding + positional embedding]
-    C[Causal GPT blocks]
-    D[Final layer norm]
-    E[LM head]
-    F[Logits over vocabulary]
-
-    A --> B --> C --> D --> E --> F
-```
+![图 18.2.0 MiniGPT 的数据流](figures/ch18.2-minigpt-data-flow.svg){height=500px}
 
 ```{python}
 from typing import cast
@@ -51,7 +38,6 @@ import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
 
 print('PyTorch version:', torch.__version__)
@@ -634,17 +620,7 @@ print('Next token:', next_token)
 
 到此，我们已经完成了从 token ids 到 logits 的完整数据流：
 
-```{mermaid}
-%%| fig-height: 350px
-%%| fig-cap: "图 18.2.8 MiniGPT 的数据流"
-
-flowchart TD
-    A[Given a Prefix] --> B[Run MiniGPT]
-    B --> C[Take the logits at the last position]
-    C --> D[Select the next token]
-    D --> E[Append the new token to the prefix]
-    E --> B
-```
+![图 18.2.8 MiniGPT 的数据流](figures/ch18.2-generation-loop.svg){height=500px}
 
 后面讲 generation 时，我们会在这个基础上加入 temperature、top-k 和 top-p sampling。
 

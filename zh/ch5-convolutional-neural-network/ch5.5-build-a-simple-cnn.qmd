@@ -58,13 +58,7 @@ $$
 
 一个最基础的卷积块可以写成：
 
-```{mermaid}
-%% | fig-height: 200px
-
-flowchart TD
-    A[Conv2d] --> B[ReLU]
-    B --> C[MaxPool2d]
-```
+![图 5.5.1 一个最基础的卷积块](figures/ch5.5-convolution-block.svg){height=280px}
 
 其中，卷积负责提取局部模式，ReLU 让模型能够表示非线性关系，池化则降低特征图的空间分辨率。
 

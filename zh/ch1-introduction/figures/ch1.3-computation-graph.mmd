@@ -1,0 +1,38 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 24px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart LR
+    x((x)) --> mul[Mul]
+    w((w)) --> mul
+    mul --> a((a))
+    a --> add[Add]
+    b((b)) --> add
+    add --> yhat((ŷ))
+    yhat --> sub[Sub]
+    y((y)) --> sub
+    sub --> e((e))
+    e --> square[Square]
+    square --> L((L))

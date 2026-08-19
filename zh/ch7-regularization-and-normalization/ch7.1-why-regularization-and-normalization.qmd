@@ -208,7 +208,7 @@ Normalization 通常根据一组激活的统计量重新缩放特征。它更关
 可以把两者粗略总结为：
 
 ::: {.list-table}
-表 1：Dropout 与 Normalization 的核心区别
+表 7.1.5：Dropout 与 Normalization 的核心区别
 
 - - 方法
   - 主要目标
