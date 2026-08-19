@@ -14,11 +14,10 @@ Please install Quarto first from the official website:
 
 After installation, make sure the `quarto` command is available in your terminal.
 
-### [OPTIONAL]
-
-If you are using Microsoft VS Code, you can also install the Quarto extension for better integration:
-
-- Microsoft VS Code: [Quarto Extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto)
+> [!NOTE]
+> If you are using Microsoft VS Code, you can also install the Quarto extension for better integration:
+>
+> - Microsoft VS Code: [Quarto Extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto)
 
 ## 2. Install project dependencies
 
