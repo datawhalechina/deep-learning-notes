@@ -173,14 +173,10 @@ mean = x_grouped.mean(dim, keepdim=True)
 var = x_grouped.var(dim, correction=0, keepdim=True)
 
 x_hat_grouped = (x_grouped - mean) / (var + 1e-5).sqrt()
-x_hat = x_hat_grouped.reshape_as(x)
-
-output_grouped = x_hat.reshape(n, num_groups, c // num_groups, h, w)
-
 print('Output means by group:')
-print(output_grouped.mean(dim))
+print(x_hat_grouped.mean(dim))
 print('\nOutput variances by group:')
-print(output_grouped.var(dim, correction=0))
+print(x_hat_grouped.var(dim, correction=0))
 ```
 
 每个样本的每个 group 都会得到接近 0 的均值和接近 1 的方差。为了避免除 0，我们在方差上加了一个 $\epsilon$。
