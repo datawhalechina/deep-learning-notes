@@ -125,35 +125,7 @@ $$
 
 从模块顺序上看，一个 encoder block 的计算流程是：
 
-```{mermaid}
-%%| fig-height: 750px
-%%| fig-cap: "图 11.4.3：ViT Encoder 模型结构"
-
----
-config:
-  flowchart:
-    wrappingWidth: 250
----
-
-flowchart TD
-    X[Input]
-
-    X --> LN1[LayerNorm]
-    LN1 --> MSA[Multihead Self-Attention]
-    MSA --> ADD1((+))
-
-    X -. Residual .-> ADD1
-
-    ADD1 --> H[Hidden H]
-
-    H --> LN2[LayerNorm]
-    LN2 --> MLP[MLP]
-    MLP --> ADD2((+))
-
-    H -. Residual .-> ADD2
-
-    ADD2 --> OUT[Output]
-```
+![图 11.4.3：ViT Encoder 模型结构](figures/ch11.4-vit-encoder-block.svg){height=750px}
 
 这和我们前面讲过的 Transformer Encoder 非常接近。只不过现在 token 不再是词，而是图像 patch。
 
