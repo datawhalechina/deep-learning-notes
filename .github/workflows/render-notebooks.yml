@@ -72,24 +72,6 @@ jobs:
           path: dnnl-zh.tar.gz
           archive: false
 
-      - name: Notify dnnl-notebooks zh sync
-        if: ${{ hashFiles('dnnl-zh.tar.gz') != '' }}
-        run: |
-          curl --fail-with-body -X POST \
-            -H "Authorization: Bearer ${{ secrets.DNNL_SYNC_SRC }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/jshn9515/dnnl-notebooks/dispatches \
-            -d '{
-              "event_type": "sync-dnnl-zh",
-              "client_payload": {
-                "source_repo": "jshn9515/deep-learning-notes",
-                "run_id": "${{ github.run_id }}",
-                "artifact_name": "dnnl-zh.tar.gz",
-                "archive_name": "dnnl-zh.tar.gz",
-                "lang": "zh"
-              }
-            }'
-
       - name: Upload zh Notebooks to GitHub Release
         if: ${{ github.event_name == 'release' && hashFiles('dnnl-zh.tar.gz') != '' }}
         env:
@@ -153,24 +135,6 @@ jobs:
         with:
           path: dnnl-en.tar.gz
           archive: false
-
-      - name: Notify dnnl-notebooks en sync
-        if: ${{ hashFiles('dnnl-en.tar.gz') != '' }}
-        run: |
-          curl --fail-with-body -X POST \
-            -H "Authorization: Bearer ${{ secrets.DNNL_SYNC_SRC }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/jshn9515/dnnl-notebooks/dispatches \
-            -d '{
-              "event_type": "sync-dnnl-en",
-              "client_payload": {
-                "source_repo": "jshn9515/deep-learning-notes",
-                "run_id": "${{ github.run_id }}",
-                "artifact_name": "dnnl-en.tar.gz",
-                "archive_name": "dnnl-en.tar.gz",
-                "lang": "en"
-              }
-            }'
 
       - name: Upload en Notebooks to GitHub Release
         if: ${{ github.event_name == 'release' && hashFiles('dnnl-en.tar.gz') != '' }}
