@@ -1,67 +1,52 @@
 name: Bug Report
-description: Create a report to help us improve
-title: "[BUG]"
+description: Report an error, bug, or problem
+title: "[BUG] "
 labels:
   - bug
 assignees:
   - jshn9515
+
 body:
-  - type: checkboxes
+  - type: dropdown
     id: issue-type
     attributes:
-      label: Type of issue
-      description: Check all that apply.
+      label: Issue type
       options:
-        - label: Error or inaccuracy in the notes
-        - label: Unclear explanation, derivation, or wording
-        - label: Code example, notebook, or rendering problem
-        - label: "`dnnlpy` package issue"
-        - label: Topic request or content suggestion
-        - label: Build, workflow, or repository tooling issue
-        - label: Other
+        - Error or inaccuracy in the notes
+        - Code example or notebook issue
+        - "`dnnlpy` package issue"
+        - Website, rendering, or tooling issue
+        - Other
     validations:
       required: true
 
-  - type: textarea
-    id: current-behavior
+  - type: input
+    id: location
     attributes:
-      label: Current behavior or text
-      description: What currently happens, or what does the current explanation say?
+      label: Location
+      description: Where did you encounter the issue?
+      placeholder: "e.g. 9.3 Self-Attention, ch9.3-self-attention.qmd"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the problem you encountered.
+      placeholder: |
+        Explain what is incorrect, unclear, broken, or unexpected.
     validations:
       required: true
 
   - type: textarea
     id: expected-behavior
     attributes:
-      label: Expected behavior or suggested change
-      description: What should happen instead, or how could the notes be improved?
+      label: Expected behavior
+      description: What did you expect instead?
     validations:
       required: true
-
-  - type: textarea
-    id: reproduction-steps
-    attributes:
-      label: Reproduction steps
-      description: For code, notebook, rendering, or package issues, include commands and a minimal example.
-      placeholder: |
-        1. Run the relevant command, notebook, or page render.
-        2. Observe the issue.
-        3. Share the error, output, or unexpected result.
-
-  - type: textarea
-    id: environment
-    attributes:
-      label: Environment
-      description: Fill in when relevant.
-      value: |
-        - OS:
-        - Python version:
-        - PyTorch version:
-        - Quarto version:
-        - `dnnlpy` version or commit:
 
   - type: textarea
     id: additional-context
     attributes:
       label: Additional context
-      description: Add screenshots, logs, links, references, or mathematical details that help explain the issue.
+      description: Add error messages, screenshots, reproduction steps, environment details, or other useful information.
