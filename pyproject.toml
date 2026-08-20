@@ -22,10 +22,10 @@ dependencies = [
     "transformers>=5.15.0,<5.16.0",
 
     # Jupyter and related tools
-    "ipython>=9.10.0",
+    "ipython>=9.15.0",
     "ipywidgets>=8.0.0",
     "jupyter-cache>=1.0.0",
-    "jupyterlab>=4.3.0",
+    "jupyterlab>=4.5.0",
 
     # Data processing and visualization
     "matplotlib>=3.11.0,<3.12.0",

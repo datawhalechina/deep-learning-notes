@@ -1,7 +1,7 @@
 [project]
 name = "dnnlpy"
 version = "2026.07.21"
-keywords = ["deep learning notes", "library", "utilities"]
+keywords = ["deep learning", "pytorch", "utilities"]
 description = "A utility library for deep learning notes, providing common functions and tools to support the main content of the deep learning notes collection."
 authors = [{ name = "Yunjie Lin", email = "jshn9510@gmail.com" }]
 readme = "README.md"
@@ -30,7 +30,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-notebook = ['ipython>=9.10.0']
+notebook = [
+    'ipython>=9.15.0',
+    "jupyterlab>=4.5.0"
+]
 test = [
     'datasets>=5.0.0,<5.1.0',
     'pytest>=9.1.0,<9.2.0',
