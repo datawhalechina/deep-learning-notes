@@ -1,7 +1,16 @@
 [project]
 name = "deep-learning-notes"
 version = "2026.07.21"
-keywords = ["deep learning tutorials", "PyTorch", "Quarto"]
+keywords = [
+    "deep learning tutorial",
+    "computer vision",
+    "natural language processing",
+    "large language model",
+    "pytorch",
+    "quarto",
+    "jupyter notebook",
+    "typst",
+]
 description = "A collection of notes and code examples for deep learning concepts and techniques."
 authors = [{ name = "jshn9515", email = "jshn9510@gmail.com" }]
 readme = "README.md"
