@@ -11,7 +11,7 @@ dependencies = [
     # Deep learning core libraries
     "accelerate>=1.14.0,<1.15.0",
     "datasets>=5.0.0,<5.1.0",
-    "diffusers>=0.39.0,<0.40.0",
+    "diffusers>=0.40.0,<0.41.0",
     "evaluate>=0.4.0,<0.5.0",
     "opt-einsum>=3.4.0,<3.5.0",
     "tokenizers>=0.22.0,<0.23.0",
