@@ -27,9 +27,6 @@ format:
     syntax-highlighting: github
     code-annotations: hover
     license: CC BY-NC
-    include-in-header:
-      - text: |
-          <script src="/utils/html_mermaid_defaults.js"></script>
 
 website:
   title: deep-learning-notes

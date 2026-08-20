@@ -35,6 +35,8 @@ format:
       - "utils/typst-header-en.typ"
 
 book:
+  title: "Deep Learning Notes"
+  output-file: "deep-learning-notes"
   chapters:
     - index.qmd
     - part: "Chapter 1: Introduction to Deep Learning"

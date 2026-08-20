@@ -37,6 +37,8 @@ format:
       - "utils/typst-header-zh.typ"
 
 book:
+  title: "Deep Learning Notes"
+  output-file: "deep-learning-notes"
   chapters:
     - index.qmd
     - part: "Chapter 1: 深度学习简介"
