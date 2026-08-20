@@ -14,7 +14,7 @@ body:
       options:
         - Error or inaccuracy in the notes
         - Code example or notebook issue
-        - "`dnnlpy` package issue"
+        - Bug in dnnlpy package
         - Website, rendering, or tooling issue
         - Other
     validations:
@@ -26,6 +26,8 @@ body:
       label: Location
       description: Where did you encounter the issue?
       placeholder: "e.g. 9.3 Self-Attention, ch9.3-self-attention.qmd"
+    validations:
+      required: true
 
   - type: textarea
     id: description
@@ -42,6 +44,8 @@ body:
     attributes:
       label: Expected behavior
       description: What did you expect instead?
+      placeholder: |
+        Describe what you expected to happen, or what the correct behavior should be.
     validations:
       required: true
 
