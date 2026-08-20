@@ -25,7 +25,7 @@ dependencies = [
     "ipython>=9.10.0",
     "ipywidgets>=8.0.0",
     "jupyter-cache>=1.0.0",
-    "jupyterlab>=4.3.0",
+    "jupyterlab>=4.5.0",
 
     # Data processing and visualization
     "matplotlib>=3.11.0,<3.12.0",
