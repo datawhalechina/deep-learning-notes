@@ -1,0 +1,37 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 14px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A[可微的网络结构] --> F[梯度提供局部更新方向]
+    B[高维参数空间] --> G[需要同时考虑大量局部方向]
+    C[过参数化] --> H[好解可能不是唯一的孤立点]
+    D[Mini-batch SGD] --> I[优化过程带有随机性]
+    E[真实数据具有结构] --> J[模型不需要拟合整个输入空间]
+    F --> K[神经网络训练在实践中变得可行]
+    G --> K
+    H --> K
+    I --> K
+    J --> K
