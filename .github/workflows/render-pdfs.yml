@@ -12,7 +12,7 @@ on:
       - "_quarto-typst-*.yml"
       - "refs-*.bib"
       - "utils/download_datasets.py"
-      - "utils/clean_cache.py"
+      - "utils/clean_quarto_cache.py"
       - "utils/clean_checkpoints.py"
       - "utils/typst*"
       - ".github/workflows/render-pdfs.yml"
