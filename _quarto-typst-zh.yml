@@ -13,6 +13,11 @@ execute:
   freeze: auto
   cache: true
 
+filters:
+  - "utils/typst-reference-page.lua"
+
+reference-section-title: "参考文献"
+
 format:
   typst:
     lang: en
