@@ -16,13 +16,13 @@ order: 6
 Adam 的更新步骤可以写成：
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2 \\
 \hat{m}_t &= \frac{m_t}{1 - \beta_1^t} \\
 \hat{v}_t &= \frac{v_t}{1 - \beta_2^t} \\
 \theta_t &= \theta_{t-1} - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
-\end{aligned}
+\end{align}
 $$
 
 在 4.1 里我们曾经提到过 L2 正则化和 weight decay 这两个概念。当时我们说，在 SGD 里，这两者是等价的。在 loss 中加入 L2 正则项，和在参数更新时直接做 weight decay，最终都会导致参数被统一地衰减。但是，到了 Adam 这种自适应优化器里，这两者就产生了一些区别。
@@ -141,10 +141,10 @@ $$
 然后 Adam 会用这个正则化后的梯度更新一阶矩和二阶矩：
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t^{\mathrm{reg}} \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) (g_t^{\mathrm{reg}})^2
-\end{aligned}
+\end{align}
 $$
 
 问题就在这里。
@@ -168,10 +168,10 @@ AdamW 中的 W 来自 weight decay。它的关键想法非常直接：
 也就是说，AdamW 不把 $\lambda\theta$ 加到梯度 $g_t$ 上。Adam 的一阶矩和二阶矩仍然只根据原始梯度 $g_t$ 来更新：
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 经过 bias correction 之后，Adam 的梯度更新方向仍然是：

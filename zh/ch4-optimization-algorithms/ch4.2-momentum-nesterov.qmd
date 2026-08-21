@@ -186,10 +186,10 @@ $$
 此外，有些教材会把 momentum 写成另一种形式：
 
 $$
-\begin{aligned}
+\begin{align}
 v_t &= \beta v_{t-1} + \eta g_t \\
 \theta_{t+1} &= \theta_t - v_t
-\end{aligned}
+\end{align}
 $$
 
 这和前面的写法有细微的不同。前一种写法中，$v_t$ 累积的是梯度，学习率 $\eta$ 在最后更新参数时才乘上；后一种写法中，梯度先乘以学习率，再被累积进 $v_t$，因此 $v_t$ 本身就表示一次参数更新的步长。如果学习率 $\eta$ 在训练过程中保持不变，并且初始 $v_0 = 0$，这两种写法本质上只是差一个常数缩放，最终得到的参数更新是等价的。PyTorch 采用的是前一种写法。
@@ -336,12 +336,12 @@ Momentum 的想法是让参数带着惯性往前走。但这也带来一个问�
 一种常见写法是：
 
 $$
-\begin{aligned}
+\begin{align}
 \tilde{\theta}_t &= \theta_t - \eta \beta v_{t-1} \\
 g_t &= \nabla_\theta L(\tilde{\theta}_t) \\
 v_t &= \beta v_{t-1} + g_t \\
 \theta_{t+1} &= \theta_t - \eta v_t
-\end{aligned}
+\end{align}
 $$
 
 这里的 $\tilde{\theta}_t$ 就是一个 lookahead 的位置。我们先根据上一轮的动量方向，估计参数接下来可能到达的位置；然后在这个位置计算梯度 $g_t$，再用它更新动量和参数。

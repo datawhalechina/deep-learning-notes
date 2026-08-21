@@ -22,10 +22,10 @@ $$
 Momentum 在这个基础上加入了过去梯度方向的累计：
 
 $$
-\begin{aligned}
+\begin{align}
 v_t &= \beta v_{t-1} + g_t \\
 \theta_{t+1} &= \theta_t - \eta v_t
-\end{aligned}
+\end{align}
 $$
 
 Momentum 解决的是方向问题：当前 mini-batch 的梯度可能很杂乱，所以我们不要只相信当前梯度，而是参考过去一段时间的趋势。因此，momentum 可以让梯度下降更有惯性，能加速训练并减少震荡。
@@ -361,10 +361,10 @@ $$
 Adagrad 改进的是第二部分。它仍然使用当前梯度方向，但会根据每个参数过去的梯度大小调整有效学习率：
 
 $$
-\begin{aligned}
+\begin{align}
 s_t &= s_{t-1} + g_t^2 \\
 \theta_{t+1} &= \theta_t - \eta \frac{g_t}{\sqrt{s_t}+\epsilon}
-\end{aligned}
+\end{align}
 $$
 
 所以可以这样理解：
