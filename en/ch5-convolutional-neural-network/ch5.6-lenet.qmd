@@ -1,0 +1,315 @@
+---
+author: jshn9515
+date: 2026-06-30
+date-modified: 2026-06-30
+open-graph:
+  title: ch5.6-lenet
+  description: "5.6 LeNet: The Early Template of Convolution, Pooling, and Fully Connected Layers"
+title: "5.6 LeNet: The Early Template of Convolution, Pooling, and Fully Connected Layers"
+order: 6
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch5-convolutional-neural-network/ch5.6-lenet.ipynb){fig-align="left"}
+
+The previous sections introduced convolution, pooling, downsampling, and the training process for a complete CNN separately. At this point, we know that an image-classification network can consist of several convolutional blocks and a classification head, but we still need a concrete architecture to show how these components should be arranged and how the channel counts and spatial dimensions should change.
+
+LeNet-5 is an ideal classic CNN to use as a starting point. Its structure is not complex, yet it already contains the basic pattern that image-classification networks continued to use for many years: first extract local features through convolutional layers, then gradually reduce the spatial resolution through pooling, and finally use fully connected layers to perform classification.
+
+Its overall structure can be summarized as:
+
+![Figure 5.6.0 A Simplified Version of LeNet-5](figures/ch5.6-lenet.svg)
+
+Today's CNNs are much deeper than LeNet and also use ReLU, batch normalization, residual connections, and more sophisticated downsampling methods. But if we set aside these later improvements, many modern classification networks can still be understood as answering the same question:
+
+> **How can a high-resolution, low-semantic pixel grid be gradually transformed into a low-resolution, high-semantic feature representation?**
+
+This section will first reconstruct the basic structure of LeNet-5 and then implement a version using modern PyTorch conventions that better fits current training practices. The focus is not on reproducing every historical detail, but on understanding why LeNet became a structural template for later CNNs.
+
+```{python}
+import math
+
+import dnnlpy
+import dnnlpy.nn as dnn
+import torch
+import torch.nn as nn
+import torchinfo
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 5.6.1 What Problem Did LeNet Solve?
+
+Before LeNet appeared, handwritten-digit recognition often relied on manually designed image features. Researchers first had to decide which edges, strokes, or geometric shapes to extract, and then pass those features to a classifier.
+
+CNNs changed this process. Instead of relying on manually specified features, the network directly learns a series of representations from pixels, combining them layer by layer:
+
+```text
+pixels
+  ↓
+edges and simple strokes
+  ↓
+local stroke combinations
+  ↓
+digit-level representation
+  ↓
+class prediction
+```
+
+LeNet's importance lies not only in using convolution, but also in combining several key ideas into an end-to-end trainable system:
+
+- Convolutional layers use local connectivity and weight sharing to extract features;
+- Pooling layers gradually reduce the spatial resolution;
+- Deeper channels represent more complex patterns;
+- Fully connected layers perform classification based on the final features;
+- All parameters are learned jointly through backpropagation.
+
+Therefore, LeNet can be regarded as an early representative of the shift from manually designed features to automatic feature learning with neural networks.
+
+## 5.6.2 Tensor Shapes in the Original LeNet-5
+
+LeNet-5 usually accepts a single-channel image of size $32\times 32$. For the $28\times 28$ MNIST dataset, we can first pad the image with zeros on all sides to make it $32\times 32$.
+
+The shape changes in the classic architecture are:
+
+```text
+Input:        (N,   1, 32, 32)
+Conv 5x5:     (N,   6, 28, 28)
+Pool 2x2:     (N,   6, 14, 14)
+Conv 5x5:     (N,  16, 10, 10)
+Pool 2x2:     (N,  16,  5,  5)
+Conv 5x5:     (N, 120,  1,  1)
+Flatten:      (N, 120)
+Linear:       (N, 84)
+Output:       (N, 10)
+```
+
+The first convolution does not use padding, so the spatial dimensions change from $32\times 32$ to:
+
+$$
+32 - 5 + 1 = 28
+$$
+
+Then, $2\times 2$ pooling halves both the height and width:
+
+$$
+28\times 28 \rightarrow 14\times 14
+$$
+
+The second convolution again uses a $5\times 5$ kernel:
+
+$$
+14 - 5 + 1 = 10
+$$
+
+After another pooling operation, the feature map is $5\times 5$. The final $5\times 5$ convolution covers the entire spatial region, so:
+
+$$
+5 - 5 + 1 = 1
+$$
+
+This produces an output with shape `(N, 120, 1, 1)`. After flattening the spatial dimensions, each image is represented by a 120-dimensional vector.
+
+::: {.callout-note}
+Some connectivity patterns, activation functions, and loss functions in the original LeNet-5 are not exactly the same as those in commonly used PyTorch implementations today. In teaching, we usually retain the overall structure while using standard fully connected convolutions, modern activation functions, and cross-entropy loss.
+:::
+
+## 5.6.3 Implementing Classic LeNet with PyTorch
+
+We first implement LeNet according to the classic shape changes. To stay closer to the original model, we use `Tanh` and average pooling, while the output layer still returns logits directly so that it can be used with the modern `nn.CrossEntropyLoss`.
+
+```{python}
+class LeNet5(nn.Module):
+    """A practical implementation of the classic LeNet-5 architecture."""
+
+    def __init__(self, num_classes: int = 10):
+        super().__init__()
+        self.features = nn.Sequential(
+            dnn.Conv2d(1, 6, kernel_size=5),
+            dnn.Tanh(),
+            dnn.AvgPool2d(kernel_size=2),
+            dnn.Conv2d(6, 16, kernel_size=5),
+            dnn.Tanh(),
+            dnn.AvgPool2d(kernel_size=2),
+            dnn.Conv2d(16, 120, kernel_size=5),
+            dnn.Tanh(),
+        )
+        self.classifier = nn.Sequential(
+            dnn.Flatten(),
+            dnn.Linear(120, 84),
+            dnn.Tanh(),
+            dnn.Linear(84, num_classes),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
+
+
+model = LeNet5(num_classes=10)
+x = torch.randn(8, 1, 32, 32)
+logits = model(x)
+
+print(model, end='\n\n')
+print('Input shape:', x.shape)
+print('Output shape:', logits.shape)
+```
+
+The model output has shape `(8, 10)`. The 10 values are not probabilities; they are the logits for the 10 classes. During training, they can be passed directly to:
+
+```python
+loss_fn = nn.CrossEntropyLoss()
+```
+
+`CrossEntropyLoss` internally performs `log_softmax` and the negative log-likelihood calculation, so the final layer of the model does not need an additional `Softmax`.
+
+## 5.6.4 Where Are LeNet's Parameters?
+
+The number of parameters in a convolutional layer is:
+
+$$
+C_{\text{out}} \left( C_{\text{in}} K_h K_w + 1 \right)
+$$
+
+The final 1 corresponds to the bias for each output channel.
+
+For example, the number of parameters in the first convolutional layer is:
+
+$$
+6 \times (1 \times 5 \times 5 + 1) = 156
+$$
+
+The number of parameters in the second convolutional layer is:
+
+$$
+16 \times (6 \times 5 \times 5 + 1) = 2416
+$$
+
+Although convolutional layers reuse kernels across the entire image, the same kernel shares parameters at every spatial position. Therefore, the number of parameters depends only on the input channels, output channels, and kernel size, not on how many times the kernel slides.
+
+The following counts the parameters in each learnable layer.
+
+```{python}
+summary = torchinfo.summary(model, input_size=(8, 1, 32, 32))
+print(summary)
+```
+
+From the parameter statistics, the layer with the most parameters in LeNet-5 is the final convolutional layer, C5, rather than an explicitly fully connected layer. C5 uses a $5\times 5$ kernel to map a feature map of size $16\times 5\times 5$ to $120\times 1\times 1$. Thus, although it is structurally a convolutional layer, every output unit is connected to all features in the preceding layer, making it functionally very similar to a fully connected layer.
+
+Therefore, more precisely, most of LeNet-5's parameters are concentrated in the densely connected classification module at the back of the network, rather than in the local feature-extraction layers at the front. Later architectures such as NiN and GoogLeNet introduced global average pooling so that each channel could be directly aggregated into a spatial average, reducing their dependence on such parameter-heavy dense classification layers. We will discuss this further in the next chapter.
+
+## 5.6.5 How Do the Original and Modern Implementations Differ?
+
+If we redesigned a small CNN of comparable size today, we would usually not copy every detail of LeNet. A more modern version might make the following changes:
+
+- Replace `Tanh` with `ReLU`;
+- Replace average pooling with max pooling or strided convolution;
+- Use padding to make the spatial dimensions easier to control before and after convolution;
+- Use adaptive pooling so that the classification head does not depend on a fixed input resolution;
+- Add normalization and dropout as needed.
+
+The following gives a modernized LeNet-style model.
+
+```{python}
+class ModernLeNet5(nn.Module):
+    """A modernized LeNet-style CNN with adaptive pooling."""
+
+    def __init__(self, num_classes: int = 10) -> None:
+        super().__init__()
+        self.features = nn.Sequential(
+            dnn.Conv2d(1, 16, kernel_size=3, padding=1),
+            dnn.ReLU(),
+            dnn.MaxPool2d(kernel_size=2),
+            dnn.Conv2d(16, 32, kernel_size=3, padding=1),
+            dnn.ReLU(),
+            dnn.MaxPool2d(kernel_size=2),
+        )
+        self.pool = dnn.AdaptiveAvgPool2d(1)
+        self.flatten = dnn.Flatten()
+        self.classifier = dnn.Linear(32, num_classes)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.features(x)
+        x = self.pool(x)
+        x = self.flatten(x)
+        x = self.classifier(x)
+        return x
+
+
+model = ModernLeNet5(num_classes=10)
+summary = torchinfo.summary(model, input_size=(8, 1, 32, 32))
+print(summary)
+```
+
+Because it uses `AdaptiveAvgPool2d(1)`, this model can accept inputs with different spatial dimensions. In contrast, the classic LeNet's fully connected layer expects the output after exactly two convolution-and-pooling stages to have shape `(120, 1, 1)`, so it depends more strongly on the input size.
+
+Of course, the modern version is not necessarily better than the classic one. LeNet's design is very suitable for small image-classification tasks such as MNIST, while the modernized changes are mainly intended to accommodate larger and more complex image datasets.
+
+## 5.6.6 The Relationship Between the Final Convolution and a Fully Connected Layer
+
+In classic LeNet, the final convolution maps `(N, 16, 5, 5)` to `(N, 120, 1, 1)`. Since the kernel is also $5\times 5$, it covers the entire input feature map spatially. At this point, the convolutional layer is very similar to a fully connected layer. For each sample, every output channel uses a set of weights with size:
+
+$$
+16\times 5\times 5
+$$
+
+to compute a weighted sum over the entire input feature map.
+
+We can verify that a convolution covering the entire spatial region and a linear layer can produce the same result.
+
+```{python}
+x = torch.randn(3, 16, 5, 5)
+conv = nn.Conv2d(16, 120, kernel_size=5)
+linear = nn.Linear(16 * 5 * 5, 120)
+
+with torch.no_grad():
+    linear.weight.copy_(conv.weight.reshape(120, -1))
+    linear.bias.copy_(conv.bias)
+
+conv_output = conv(x).flatten(start_dim=1)
+linear_output = linear(x.flatten(start_dim=1))
+
+max_diff = (conv_output - linear_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+This shows that convolutional and linear layers are not completely different types of operations. A convolutional layer is fundamentally also a linear transformation, but it adds image-suitable structural constraints through local connectivity and weight sharing. When the kernel covers the entire spatial region and computes only one output position, this spatial sharing no longer has an effect, and the operation degenerates into an ordinary linear layer.
+
+## 5.6.7 What Did LeNet Leave Behind?
+
+LeNet's specific scale is very small by today's standards, but its structural ideas remain important.
+
+First, it established the basic division of labor between a “feature extractor + classification head.” The convolutional layers at the front convert pixels into features, while the classifier at the back produces classes based on those features.
+
+Second, it demonstrated a typical shape change in CNNs: the spatial dimensions gradually decrease while the number of channels gradually increases. Although later models such as AlexNet, VGG, and ResNet are much larger, they still follow this overall trend.
+
+Finally, it showed that image features do not necessarily need to be designed by hand. By combining local connectivity, weight sharing, and backpropagation, a network can learn features suitable for a task directly from data.
+
+However, LeNet also left several problems unresolved:
+
+- How should the network scale when images become larger and there are more classes?
+- Does simply adding more convolutional layers necessarily make the model better?
+- How can we reduce the number of parameters introduced by large fully connected layers?
+- How can deeper networks be trained stably?
+- How can we balance accuracy and computational cost?
+
+These questions drove the development of later CNN architectures. AlexNet brought CNNs to large-scale image classification, VGG explored building deeper networks with small kernels, NiN and GoogLeNet introduced $1\times 1$ convolutions and more flexible channel transformations, ResNet made very deep networks easier to optimize through residual connections, and MobileNet and EfficientNet paid more attention to computational efficiency and model scaling.
+
+LeNet is therefore not merely a classic model to memorize. It is more like the starting point for CNN architecture design:
+
+> **First extract spatial features layer by layer with convolution, then pass the final representation to a classifier.**
+
+## 5.6.8 Chapter Summary
+
+Using LeNet, this section combined the convolution, activation, pooling, and fully connected layers introduced earlier into a complete classic CNN.
+
+The core structure of LeNet is:
+
+```text
+Conv → Pool → Conv → Pool → Conv/Flatten → Linear → Output
+```
+
+During this process, the spatial dimensions gradually decrease and the number of channels gradually increases, transforming local pixels into high-level features suitable for classification. It also demonstrates the basic division of labor between a convolutional feature extractor and a fully connected classification head, and explains why modern networks later began using global average pooling and more flexible classification heads.
+
+At this point, the basic components of CNNs are essentially complete. The next chapter will no longer introduce operators one by one. Instead, following the development of CNN architectures, it will discuss how researchers continuously improved image feature extractors through deeper networks, smaller kernels, $1\times 1$ convolutions, multi-scale branches, residual connections, and separable convolutions.
