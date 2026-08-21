@@ -1,0 +1,398 @@
+---
+author: jshn9515
+date: 2026-08-20
+date-modified: 2026-08-20
+open-graph:
+  title: ch1.4-gradient-descent
+  description: "1.4 Gradient Descent: From Gradients to Parameter Updates"
+title: "1.4 Gradient Descent: From Gradients to Parameter Updates"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch1-introduction/ch1.4-gradient-descent.ipynb){fig-align="left"}
+
+In the previous section, we learned how forward propagation produces predictions, how the loss function measures error, and how backpropagation computes the gradients of the parameters. But the gradients themselves do not change the model.
+
+Suppose a parameter is $\theta$. Backpropagation gives us:
+
+$$
+\frac{\partial L}{\partial \theta}
+$$
+
+This number tells us only:
+
+> **If we change the parameter $\theta$ slightly, in which direction will the loss change, and how quickly?**
+
+What actually makes the model begin learning is modifying the parameters according to this gradient.
+
+The most basic parameter-update method is **Gradient Descent**:
+
+$$
+\theta \leftarrow \theta-\eta\frac{\partial L}{\partial \theta}
+$$
+
+Here, $\eta$ is the **learning rate**.
+
+In this section, we will not discuss complex optimizers. We will answer only one basic question:
+
+> **Why can updating parameters in the opposite direction of the gradient reduce the loss?**
+
+## 1.4.1 The Gradient Tells Us Where to Go
+
+Let us begin with the case of only one parameter. Suppose the loss function is:
+
+$$
+L(\theta) = (\theta-3)^2
+$$
+
+Its derivative is:
+
+$$
+\frac{dL}{d\theta} = 2(\theta-3)
+$$
+
+If the current parameter is:
+
+$$
+\theta = 5
+$$
+
+then:
+
+$$
+\frac{dL}{d\theta} = 4
+$$
+
+The derivative is positive, which means that if we continue increasing $\theta$, the loss will increase. Therefore, we should move in the opposite direction, decreasing $\theta$.
+
+If the current parameter is:
+
+$$
+\theta = 1
+$$
+
+then:
+
+$$
+\frac{dL}{d\theta} = -4
+$$
+
+The derivative is negative, which means that increasing $\theta$ instead causes the loss to decrease. Therefore, the update should increase $\theta$.
+
+These two cases can actually be written together as:
+
+$$
+\theta \leftarrow \theta-\eta\frac{dL}{d\theta}
+$$
+
+When the gradient is positive, we decrease the parameter; when the gradient is negative, subtracting a negative number is equivalent to increasing the parameter.
+
+Therefore, the minus sign in gradient descent is not an arbitrary trick, but follows from the fact that:
+
+> **The gradient points in the direction of the fastest local increase, so the negative gradient points in the direction of the fastest local decrease.**
+
+In one dimension, this is simply a question of “left or right.” When a neural network has many parameters, the principle does not change; only the direction becomes a high-dimensional vector.
+
+Suppose the model parameters are:
+
+$$
+\theta =
+\begin{bmatrix}
+\theta_1 \\
+\theta_2 \\
+\vdots \\
+\theta_d
+\end{bmatrix}
+$$
+
+Then the gradient is:
+
+$$
+\nabla_\theta L =
+\begin{bmatrix}
+\frac{\partial L}{\partial \theta_1} \\
+\frac{\partial L}{\partial \theta_2} \\
+\vdots \\
+\frac{\partial L}{\partial \theta_d}
+\end{bmatrix}
+$$
+
+All parameters are updated together:
+
+$$
+\theta \leftarrow \theta-\eta\nabla_\theta L
+$$
+
+Therefore, what backpropagation actually gives the optimization process is not one particular gradient, but **a direction in the entire parameter space**.
+
+## 1.4.2 Why Can the Negative Gradient Reduce the Loss?
+
+The statement “the negative gradient is the fastest descent direction” can be understood through a local linear approximation. Suppose the current parameter is $\theta$, and we make a small change $\Delta\theta$ to the parameter. When this change is sufficiently small, the loss function can be approximated as:
+
+$$
+L(\theta+\Delta\theta) \approx L(\theta) + \nabla_\theta L^T\Delta\theta
+$$
+
+If we choose:
+
+$$
+\Delta\theta = -\eta\nabla_\theta L
+$$
+
+Substituting into the expression above gives:
+
+$$
+L(\theta+\Delta\theta) \approx L(\theta) - \eta\nabla_\theta L^T\nabla_\theta L
+$$
+
+And:
+
+$$
+\nabla_\theta L^T\nabla_\theta L = \|\nabla_\theta L\|^2 \ge 0
+$$
+
+Therefore, as long as the learning rate $\eta$ is sufficiently small:
+
+$$
+L(\theta+\Delta\theta) \lesssim L(\theta)
+$$
+
+This is the core mathematical intuition behind gradient descent.
+
+Note that this statement is **local**. The gradient describes the trend near the current position; it does not know what the entire loss function looks like or where its global minimum is. What gradient descent does is actually very simple:
+
+> **Stand at the current position, look at the steepest direction, take a small step downward, and then observe again.**
+
+Therefore, one parameter update cannot solve the entire optimization problem. Training a neural network requires repeating this process:
+
+![Figure 1.4.2 Basic Training Process of a Neural Network](figures/ch1.3-training-process.svg){height=580px}
+
+After every update, the model parameters change. The next forward pass already uses the new parameters, so the prediction, loss, and gradients also change. This is how neural networks are trained step by step.
+
+## 1.4.3 Learning Rate: How Far Should One Step Go?
+
+The gradient tells us the direction, but not how far one step should go. This distance is controlled by the learning rate $\eta$:
+
+$$
+\theta \leftarrow \theta-\eta\nabla_\theta L
+$$
+
+If the learning rate is very small, for example:
+
+$$
+\eta = 10^{-6}
+$$
+
+then each parameter change is small. Training is usually stable, but it may take many updates to reduce the loss noticeably.
+
+If the learning rate is too large, one update may jump directly across the current low-loss region. For example, for:
+
+$$
+L(\theta) = \theta^2
+$$
+
+the gradient is:
+
+$$
+\frac{dL}{d\theta} = 2\theta
+$$
+
+The gradient-descent update is:
+
+$$
+\theta_{t+1} = \theta_t-2\eta\theta_t = (1-2\eta)\theta_t
+$$
+
+If:
+
+$$
+0 < \eta < 1
+$$
+
+the parameter gradually approaches 0. But if the learning rate is too large, for example:
+
+$$
+\eta > 1
+$$
+
+then:
+
+$$
+|1-2\eta| > 1
+$$
+
+The absolute value of the parameter instead grows larger and larger, and the loss may continue increasing.
+
+Therefore, the learning rate controls a very direct question:
+
+> **How far do we trust the local direction described by the current gradient?**
+
+If the learning rate is too small, the model moves too slowly; if it is too large, the local approximation becomes invalid, and the parameters may oscillate back and forth across a low-loss region or even diverge. This is why the learning rate is usually one of the most important hyperparameters when training a neural network.
+
+Later optimization algorithms and learning-rate schedulers will use more complex methods to decide “which direction to move” and “how far to move at each step.” But regardless of how the form changes, they are all built on the basic idea introduced here.
+
+## 1.4.4 Backward and Update Are Two Different Things
+
+There is another easily confused issue here: **backpropagation does not automatically update the parameters.**
+
+Backpropagation computes:
+
+$$
+\nabla_\theta L
+$$
+
+Parameter updating performs:
+
+$$
+\theta \leftarrow \theta-\eta\nabla_\theta L
+$$
+
+These two steps must be distinguished. We can understand them as follows:
+
+- Backward: compute “how the parameters should change”;
+- Update: actually “change the parameters.”
+
+For example, suppose a parameter is currently:
+
+$$
+\theta = 2
+$$
+
+Backpropagation computes:
+
+$$
+\frac{\partial L}{\partial\theta} = 0.5
+$$
+
+At this point, the parameter is still:
+
+$$
+\theta = 2
+$$
+
+If the learning rate is:
+
+$$
+\eta = 0.1
+$$
+
+then only after performing the gradient-descent update do we obtain:
+
+$$
+\theta = 2 - 0.1 \times 0.5 = 1.95
+$$
+
+Therefore, the place where a training step actually changes is the update.
+
+This is why we will later see a training structure like this in PyTorch:
+
+```python
+loss.backward()
+optimizer.step()
+```
+
+In this code, `backward()` computes the gradients, while `step()` updates the parameters according to those gradients. Exactly how `optimizer.step()` uses the gradients belongs to the question of optimization algorithms. The simplest case is gradient descent, but actual training also uses methods such as SGD, Momentum, Adam, and AdamW. We will discuss these systematically in Chapter 4.
+
+## 1.4.5 From One Update to the Entire Training Process
+
+We can now connect all the material from the beginning of Chapter 1.
+
+Suppose the model is:
+
+$$
+\hat{y} = f(x;\theta)
+$$
+
+First, the model performs a forward pass using the current parameters:
+
+$$
+x \xrightarrow{f(\cdot;\theta)} \hat{y}
+$$
+
+Then it computes the loss according to the target $y$:
+
+$$
+L(\hat{y},y)
+$$
+
+Next, it obtains the parameter gradients through backpropagation:
+
+$$
+\nabla_\theta L
+$$
+
+Finally, it updates the parameters using gradient descent:
+
+$$
+\theta \leftarrow \theta-\eta\nabla_\theta L
+$$
+
+After the update, it recomputes the prediction using the new parameters:
+
+$$
+\theta^{(0)} \rightarrow \theta^{(1)} \rightarrow \theta^{(2)} \rightarrow \cdots
+$$
+
+If training proceeds normally, we hope to see:
+
+$$
+L(\theta^{(0)}) > L(\theta^{(1)}) > L(\theta^{(2)}) > \cdots
+$$
+
+In actual training, the loss does not necessarily decrease strictly at every step. In particular, after using mini-batches and more complex optimizers, the loss often fluctuates. But the overall goal remains unchanged:
+
+> **Continuously adjust the parameters so that the loss on the training objective gradually decreases.**
+
+Therefore, the most basic neural-network training can be summarized as:
+
+$$
+\text{Forward}
+\rightarrow
+\text{Loss}
+\rightarrow
+\text{Backward}
+\rightarrow
+\text{Update}
+$$
+
+The forward pass answers “what is the model predicting now,” the loss function answers “how wrong is the model,” backpropagation answers “in which direction should each parameter change,” and gradient descent completes the final step: **actually modifying the parameters.**
+
+## 1.4.6 Summary
+
+This chapter started with one basic question: **How does a neural network actually learn a task?**
+
+We first viewed a neural network as a parameterized function:
+
+$$
+\hat{y} = f(x;\theta)
+$$
+
+The model obtains a prediction through the forward pass and then uses a loss function to measure the gap between the prediction and the target. To determine how each parameter should be adjusted, we use the computation graph and the chain rule to perform backpropagation, obtaining:
+
+$$
+\nabla_\theta L
+$$
+
+Finally, gradient descent actually modifies the parameters:
+
+$$
+\theta \leftarrow \theta-\eta\nabla_\theta L
+$$
+
+Thus, the most basic training process of a neural network can be reduced to:
+
+$$
+\text{Forward}
+\rightarrow
+\text{Loss}
+\rightarrow
+\text{Backward}
+\rightarrow
+\text{Update}
+$$
+
+Whether we later study MLPs, CNNs, RNNs, Transformers, or larger language models, this basic framework will appear repeatedly. The model architecture may change, the loss function may change, and the optimization algorithm may change, but the core logic of training does not fundamentally change.
+
+However, so far we have answered only how a neural network completes training algorithmically. A deeper question remains unanswered. Modern neural networks may have millions or even billions of parameters, corresponding to an extremely high-dimensional, complex, and non-convex optimization problem. Based on intuition from low-dimensional spaces, such a problem should be very difficult to optimize. Why, then, can training methods that rely only on local gradients often find a good solution in practice?
+
+In the next section, we will continue discussing this question from the perspectives of high-dimensional spaces, loss landscapes, saddle points, and overparameterization.

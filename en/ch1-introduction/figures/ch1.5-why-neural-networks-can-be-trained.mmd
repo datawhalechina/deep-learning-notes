@@ -1,0 +1,37 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 14px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A[Differentiable Network Architecture] --> F[Gradients Provide Local Update Directions]
+    B[High-Dimensional Parameter Space] --> G[Need to Consider Many Local Directions Simultaneously]
+    C[Overparameterization] --> H[Good Solutions May Not Be Unique Isolated Points]
+    D[Mini-batch SGD] --> I[The Optimization Process Is Stochastic]
+    E[Real-World Data Has Structure] --> J[The Model Does Not Need to Fit the Entire Input Space]
+    F --> K[Neural Network Training Becomes Feasible in Practice]
+    G --> K
+    H --> K
+    I --> K
+    J --> K
