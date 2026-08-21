@@ -1,0 +1,511 @@
+---
+author: jshn9515
+date: 2026-06-29
+date-modified: 2026-06-29
+open-graph:
+  title: ch7.7-rms-normalization
+  description: "7.7 RMS Normalization: Normalizing Feature Magnitudes Without Mean Centering"
+title: "7.7 RMSNorm: Normalizing Feature Magnitudes Without Mean Centering"
+order: 7
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch7-regularization-and-normalization/ch7.7-rms-normalization.ipynb){fig-align="left"}
+
+In the previous section, we introduced Group Normalization. So far, we have seen that although BatchNorm, LayerNorm, InstanceNorm, and GroupNorm are used in different settings, they all contain two basic steps:
+
+1. Subtract the mean of a group of elements;
+2. Divide by the standard deviation of that group of elements.
+
+LayerNorm has become the classic normalization method in Transformers. For the hidden vector of each token, LayerNorm first subtracts the feature mean and then adjusts the overall scale according to the feature variance.
+
+But is mean centering always necessary?
+
+**Root Mean Square Normalization (RMSNorm)** [@zhang2019RMSNorm] gives a simpler answer: it no longer subtracts the mean, but adjusts the vector scale using only the root mean square of the features.
+
+In recent years, RMSNorm has become a very common normalization method in large language models. Like LayerNorm, it does not depend on other samples in the batch and does not need to maintain running statistics, but its computation is simpler.
+
+This section answers the following questions:
+
+- What exactly is the RMS in RMSNorm?
+- What is the formula-level difference between RMSNorm and LayerNorm?
+- What effect does not subtracting the mean have?
+- Which dimensions does `nn.RMSNorm(hidden_size)` normalize?
+- Why is RMSNorm suitable for Transformers and large language models?
+- How can we implement RMSNorm from scratch?
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.7.1 Starting with the Root Mean Square
+
+For a vector of length $D$:
+
+$$
+x=[x_1,x_2,\ldots,x_D]
+$$
+
+its root mean square is defined as:
+
+$$
+\operatorname{RMS}(x) = \sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2}
+$$
+
+It looks very similar to the standard deviation, but the two are not the same.
+
+The standard deviation first subtracts the mean:
+
+$$
+\sigma(x) = \sqrt{\frac{1}{D}\sum_{i=1}^{D}(x_i-\mu)^2}
+$$
+
+The root mean square, on the other hand, directly computes the overall scale from the squares of the original values.
+
+```{python}
+x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+
+mean = x.mean()
+std = x.std(correction=0)
+rms = x.square().mean().sqrt()
+
+print('Mean:', mean.item())
+print('Standard deviation:', std.item())
+print('Root mean square:', rms.item())
+```
+
+If the mean of a vector is not 0, its RMS is usually larger than its standard deviation. The two satisfy:
+
+$$ \operatorname{RMS}(x)^2 = \operatorname{Var}(x)+\mu^2
+$$
+
+```{python}
+left = rms.square()
+right = x.var(correction=0) + x.mean().square()
+
+print('RMS squared:', left.item())
+print('Variance + mean squared:', right.item())
+print('Difference:', (left - right).abs().item())
+```
+
+This shows that RMS contains both the vector's variation and its overall offset, while the standard deviation describes only the variation around the mean.
+
+## 7.7.2 The RMSNorm Formula
+
+RMSNorm first computes the root mean square over the last one or several feature dimensions:
+
+$$
+\operatorname{RMS}(x) = \sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2+\epsilon}
+$$
+
+It then uses this value to adjust the scale of the feature vector:
+
+$$
+\hat{x}_i = \frac{x_i}{\operatorname{RMS}(x)}
+$$
+
+Finally, it multiplies by a learnable scaling parameter:
+
+$$
+y_i = \gamma_i\hat{x}_i
+$$
+
+Written in full:
+
+$$
+\operatorname{RMSNorm}(x) =
+\frac{x}{\sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2+\epsilon}} \odot\gamma
+$$
+
+Compared with LayerNorm, there is no mean subtraction here, and there is usually no learnable bias.
+
+```{python}
+x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+eps = 1e-5
+
+rms = (x.square().mean() + eps).sqrt()
+x_hat = x / rms
+
+print('RMS:', rms.item())
+print('Normalized values:', x_hat)
+print('RMS after normalization:', x_hat.square().mean().sqrt().item())
+print('Mean after normalization:', x_hat.mean().item())
+```
+
+After normalization, the RMS of the vector is close to 1, but its mean is not necessarily 0. This is the most direct difference between RMSNorm and LayerNorm:
+
+- LayerNorm performs both mean centering and scale normalization;
+- RMSNorm performs only scale normalization.
+
+## 7.7.3 The Difference between RMSNorm and LayerNorm
+
+For the same vector, LayerNorm computes:
+
+$$
+\operatorname{LayerNorm}(x) =
+\frac{x-\mu}{\sqrt{\frac{1}{D}\sum_{i=1}^{D}(x_i-\mu)^2+\epsilon}}
+\odot\gamma+\beta
+$$
+
+RMSNorm computes:
+
+$$
+\operatorname{RMSNorm}(x) =
+\frac{x}{\sqrt{\frac{1}{D}\sum_{i=1}^{D}x_i^2+\epsilon}}
+\odot\gamma
+$$
+
+We can directly compare their outputs:
+
+```{python}
+x = torch.tensor([[1.0, 2.0, 3.0, 4.0]])
+
+layer_norm = nn.LayerNorm(4, elementwise_affine=False)
+rms_norm = nn.RMSNorm(4, elementwise_affine=False)
+
+ln_output = layer_norm(x)
+rms_output = rms_norm(x)
+
+print('LayerNorm output:', ln_output)
+print('LayerNorm mean:', ln_output.mean(dim=-1))
+print('LayerNorm RMS:', ln_output.square().mean(dim=-1).sqrt())
+print('RMSNorm output:', rms_output)
+print('RMSNorm mean:', rms_output.mean(dim=-1))
+print('RMSNorm RMS:', rms_output.square().mean(dim=-1).sqrt())
+```
+
+The mean of the LayerNorm output is close to 0 and its variance is close to 1; the RMS of the RMSNorm output is close to 1, but its mean is retained.
+
+Note that we should not simply understand RMSNorm as LayerNorm with one subtraction removed. They impose different constraints on representations:
+
+- LayerNorm removes the overall shift and scale of the vector;
+- RMSNorm removes only the overall scale.
+
+## 7.7.4 What Happens under Shifting and Scaling?
+
+RMSNorm is approximately invariant to positive scaling. Suppose:
+
+$$
+x' = a x, \quad a > 0
+$$
+
+Then:
+
+$$
+\operatorname{RMSNorm}(ax) \approx \operatorname{RMSNorm}(x)
+$$
+
+```{python}
+x = torch.randn(2, 6)
+rms_norm = nn.RMSNorm(6, elementwise_affine=False)
+
+original = rms_norm(x)
+scaled = rms_norm(5.0 * x)
+
+max_diff = (original - scaled).abs().max()
+print('Maximum difference after positive scaling:', max_diff.item())
+```
+
+However, when the same constant is added to every feature, the output of RMSNorm changes:
+
+```{python}
+shifted = rms_norm(x + 10.0)
+
+max_diff = (original - shifted).abs().max()
+print('Maximum difference after shifting:', max_diff.item())
+```
+
+Because LayerNorm subtracts the mean, it is approximately invariant to an overall shift:
+
+```{python}
+layer_norm = nn.LayerNorm(6, elementwise_affine=False)
+
+ln_original = layer_norm(x)
+ln_shifted = layer_norm(x + 10.0)
+
+max_diff = (ln_original - ln_shifted).abs().max()
+print('LayerNorm difference after shifting:', max_diff.item())
+```
+
+## 7.7.5 The Meaning of `normalized_shape`
+
+`nn.RMSNorm` and `nn.LayerNorm` use the same `normalized_shape` convention:
+
+```python
+nn.RMSNorm(normalized_shape)
+```
+
+RMSNorm computes the root mean square over the last several dimensions of the input and sets the learnable parameter `weight` to the corresponding shape given by `normalized_shape`.
+
+The most common Transformer input shape is:
+
+$$
+(N,L,D)
+$$
+
+Here, $N$ is the batch size, $L$ is the sequence length, and $D$ is the hidden size.
+
+When we write:
+
+```{python}
+hidden_size = 8
+rms_norm = nn.RMSNorm(hidden_size)
+
+x = torch.randn(2, 4, hidden_size)
+y = rms_norm(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', y.shape)
+print('Normalized shape:', rms_norm.normalized_shape)
+print('Weight shape:', rms_norm.weight.shape)
+```
+
+RMSNorm processes the hidden vector of each token independently.
+
+For each position $(n,l)$:
+
+$$
+\operatorname{RMS}_{n,l} =
+\sqrt{\frac{1}{D}\sum_{d=1}^{D}x_{n,l,d}^2+\epsilon}
+$$
+
+Different tokens do not share statistics, and different samples in the batch do not share statistics either.
+
+```{python}
+rms_per_token = y.square().mean(dim=-1).sqrt()
+print('RMS of every normalized token:', rms_per_token, sep='\n')
+```
+
+## 7.7.6 RMSNorm Has Only the Learnable `weight` Parameter
+
+PyTorch's `nn.RMSNorm` contains one learnable scaling parameter, `weight`, by default:
+
+```{python}
+rms_norm = nn.RMSNorm(6)
+
+print('Weight:', rms_norm.weight)
+```
+
+It does not contain a bias by default. This agrees with the common definition of RMSNorm:
+
+$$
+y=\hat{x}\odot\gamma
+$$
+
+Because RMSNorm does not perform mean centering, adding a bias is not part of its standard definition. However, subsequent linear layers usually already contain a bias or other learnable transformations, so the model can still adjust the position of the representation.
+
+If learnable scaling is not needed, we can set:
+
+```python
+nn.RMSNorm(6, elementwise_affine=False)
+```
+
+## 7.7.7 RMSNorm Has No Running Statistics
+
+The statistics of RMSNorm come from the features of the current token or current sample itself and do not depend on other samples in the batch. Therefore, unlike BatchNorm, it does not need to maintain:
+
+- `running_mean`;
+- `running_var`;
+- `num_batches_tracked`.
+
+```{python}
+rms_norm = nn.RMSNorm(6)
+
+print(dict(rms_norm.state_dict()))
+```
+
+By default, `state_dict` contains only `weight`.
+
+Because it has no running statistics, RMSNorm also uses the same computation in `train()` and `eval()` modes:
+
+```{python}
+x = torch.randn(3, 6)
+rms_norm = nn.RMSNorm(6)
+
+rms_norm.train()
+y_train = rms_norm(x)
+
+rms_norm.eval()
+y_eval = rms_norm(x)
+
+max_diff = (y_train - y_eval).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+`train()` and `eval()` still recursively modify the module's `training` attribute, but this attribute does not change RMSNorm's forward computation.
+
+## 7.7.8 A PyTorch Implementation of RMSNorm
+
+A minimal function-form RMSNorm only needs the following steps:
+
+1. Compute the mean square over the last several dimensions;
+2. Use `rsqrt` to compute the reciprocal of the root mean square;
+3. Multiply the input by the reciprocal of the root mean square;
+4. Multiply by the learnable weight (optional).
+
+```{python}
+def rms_norm(
+    x: Tensor,
+    normalized_shape: int | tuple[int, ...],
+    weight: Tensor | None = None,
+    eps: float | None = None,
+) -> Tensor:
+    """Apply root mean square normalization to an input tensor."""
+    if isinstance(normalized_shape, int):
+        normalized_shape = (normalized_shape,)
+
+    if x.shape[-len(normalized_shape) :] != normalized_shape:
+        raise AssertionError(
+            f'Expected the trailing input dimensions to match '
+            f'`normalized_shape={normalized_shape}`, '
+            f'but got input shape {tuple(x.shape)}.'
+        )
+
+    if eps is None:
+        eps = torch.finfo(x.dtype).eps
+
+    # Normalize over the trailing dimensions specified by normalized_shape.
+    reduce_dims = tuple(range(x.ndim - len(normalized_shape), x.ndim))
+
+    mean_square = x.square().mean(dim=reduce_dims, keepdim=True)
+    y = x * (mean_square + eps).rsqrt()
+
+    if weight is not None:
+        # (..., normalized_shape) -> (1, ..., 1, normalized_shape)
+        broadcast_shape = (1,) * (x.ndim - len(normalized_shape)) + normalized_shape
+        y = y * weight.reshape(broadcast_shape)
+
+    return y
+```
+
+Compare it with `F.rms_norm`:
+
+```{python}
+x = torch.randn(2, 3, 5)
+weight = torch.randn(5)
+eps = 1e-5
+
+actual = rms_norm(x, 5, weight=weight, eps=eps)
+expected = F.rms_norm(x, (5,), weight=weight, eps=eps)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+Here, `torch.rsqrt` is used because:
+
+$$
+\operatorname{rsqrt}(z)=\frac{1}{\sqrt{z}}
+$$
+
+so it directly computes the reciprocal square root needed for normalization.
+
+Now wrap the function in a module:
+
+```{python}
+class RMSNorm(nn.Module):
+    """Apply root mean square normalization over the trailing input dimensions."""
+
+    weight: Tensor | None
+
+    def __init__(
+        self,
+        normalized_shape: int | tuple[int, ...],
+        eps: float | None = None,
+        elementwise_affine: bool = True,
+    ):
+        """Initialize a root mean square normalization module"""
+        super().__init__()
+        if isinstance(normalized_shape, int):
+            normalized_shape = (normalized_shape,)
+
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+        if elementwise_affine:
+            self.weight = nn.Parameter(torch.empty(self.normalized_shape))
+        else:
+            self.register_parameter('weight', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.weight is not None:
+            nn.init.ones_(self.weight)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return rms_norm(x, self.normalized_shape, weight=self.weight, eps=self.eps)
+
+    def extra_repr(self) -> str:
+        return (
+            f'normalized_shape={self.normalized_shape}, eps={self.eps}, '
+            f'elementwise_affine={self.elementwise_affine}'
+        )
+```
+
+Validate the custom implementation:
+
+```{python}
+x = torch.randn(2, 4, 8)
+
+rms_norm1 = RMSNorm(8, eps=1e-5)
+rms_norm2 = nn.RMSNorm(8, eps=1e-5)
+
+with torch.no_grad():
+    rms_norm2.weight.copy_(rms_norm1.weight)
+
+actual = rms_norm1(x)
+expected = rms_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+This implementation retains the core behavior of RMSNorm, while the actual PyTorch implementation also handles additional device and dtype details as well as performance optimizations.
+
+## 7.7.9 Why Do Modern Large Language Models Commonly Use RMSNorm?
+
+RMSNorm has become a very common normalization method in modern large language models. Early Transformers more commonly used LayerNorm, but as model scale, sequence length, and training cost continued to increase, researchers began paying more attention to the computational complexity and numerical stability of the normalization layer itself, as well as its relationship with efficient implementations.
+
+RMSNorm preserves the most important scale-normalization function of LayerNorm, but omits the mean-centering step, so its computation path is shorter and its form simpler. At the same time, like LayerNorm, it depends only on the hidden features within the current token or sample, not on other samples in the batch, and it does not need to maintain running statistics. This makes it well suited to common large-language-model training and inference settings, such as variable-length sequences, gradient accumulation, small-batch training, and token-by-token decoding.
+
+Therefore, we can understand the popularity of RMSNorm in modern large language models from the following perspectives.
+
+1. Like LayerNorm, it does not depend on batch size, so it suits variable-length sequences, gradient accumulation, and single-sample inference.
+2. It does not need running statistics, so training and inference use exactly the same computation rule.
+3. It omits mean centering, making the mathematical form simpler and easier to combine with efficient kernels.
+4. In practice, experiments show that in many Transformer architectures, controlling only the scale of hidden vectors is sufficient for stable training, so explicitly subtracting the mean is not always necessary.
+
+However, this does not imply that RMSNorm is always better than LayerNorm. The choice of normalization method remains part of the model architecture:
+
+- Different networks may have different needs for mean centering;
+- RMSNorm and LayerNorm produce different output distributions;
+- A normalization layer should not be replaced casually in a pretrained model;
+- The choice should usually follow the original architecture and experimental results.
+
+## 7.7.10 Summary
+
+The core formula of RMSNorm is:
+
+$$
+\operatorname{RMSNorm}(x) =
+\frac{x}{\sqrt{\operatorname{mean}(x^2)+\epsilon}} \odot\gamma
+$$
+
+The most important conclusions of this section are:
+
+1. RMSNorm uses the root mean square to adjust feature scale, but does not subtract the feature mean;
+2. The RMS of the normalized vector is close to 1, but its mean is not necessarily 0;
+3. RMSNorm is approximately invariant to overall positive scaling, but not invariant to overall shifting;
+4. `normalized_shape` represents the last several dimensions being normalized and is also the shape of `weight`;
+5. RMSNorm does not depend on the batch and does not maintain running statistics;
+6. Its computation is the same in `train()` and `eval()` modes;
+7. RMSNorm has become a very common choice in modern large language models;
+8. RMSNorm and LayerNorm behave differently and should not be swapped casually in a pretrained model.
+
+In the next section, we place BatchNorm, LayerNorm, InstanceNorm, GroupNorm, and RMSNorm into the same framework and compare their statistical dimensions, parameterizations, and use cases in a unified way.

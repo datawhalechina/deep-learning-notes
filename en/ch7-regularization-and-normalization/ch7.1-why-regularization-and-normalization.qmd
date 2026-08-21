@@ -1,0 +1,291 @@
+---
+author: jshn9515
+date: 2026-06-26
+date-modified: 2026-06-26
+open-graph:
+  title: ch7.1-why-regularization-and-normalization
+  description: "7.1 Why Deep Networks Need Regularization and Normalization"
+title: "7.1 Why Deep Networks Need Regularization and Normalization"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch7-regularization-and-normalization/ch7.1-why-regularization-and-normalization.ipynb){fig-align="left"}
+
+As neural networks become deeper and contain more parameters, models usually gain stronger expressive power. They can fit more complex functions, learn richer features, and are more likely to achieve very low error on the training data. But once a model becomes more powerful, training does not automatically become easier. Instead, we often encounter two different kinds of problems.
+
+The first problem is that the model performs well on the training set but poorly on data it has not seen before. The model may memorize accidental patterns and noise in the training examples without learning genuinely generalizable rules. This is **overfitting**.
+
+The second problem is that although the model can theoretically represent the target function, the training process is unstable. Activations in different layers may fall into completely different numerical ranges, parameter updates may be highly sensitive to initialization and learning rate, and the model may converge very slowly or even fail to optimize properly.
+
+Dropout and normalization methods often appear together in neural networks, but they primarily address different problems:
+
+- Dropout is mainly a regularization method. It randomly drops some activations during training, reducing the model's overreliance on specific feature combinations;
+- Batch Normalization, Layer Normalization, Instance Normalization, Group Normalization, and Root Mean Square Normalization mainly adjust the numerical scale of intermediate activations, making the network easier to optimize.
+
+Therefore, although this chapter discusses dropout and various normalization methods together, we first need to distinguish what each of them is solving. Only after establishing this overall perspective can we avoid simply interpreting all the different formulas and PyTorch APIs that follow as techniques for making training more stable.
+
+```{python}
+import torch
+import torch.nn as nn
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.1.1 Why Does a More Powerful Model Overfit More Easily?
+
+The parameters of a neural network determine which functions it can represent. In general, the deeper the network, the wider its hidden layers, and the more parameters it has, the more complex the functions it can represent. This expressive power is an important reason for the success of deep learning, but it also creates a direct problem: the model can learn not only the true patterns in the training data, but also memorize accidental details in the training examples.
+
+Suppose we are training an image classification model. Images of one class in the training set happen to frequently appear against light-colored backgrounds, so the model may use background color as a basis for classification. This can reduce training error, but when test images have different backgrounds, the model may make incorrect predictions. Therefore, a very low training error does not mean that the model has truly learned the task. What we actually care about is how the model performs on data it has not seen, namely its **generalization ability**.
+
+Overfitting typically looks like this:
+
+- Training loss continues to decrease;
+- Training accuracy continues to increase;
+- Validation loss stops decreasing and may even begin to increase;
+- The performance gap between the training and validation sets grows larger and larger.
+
+This indicates that the model is still adapting to the training data, but the newly learned content can no longer help it handle unseen examples.
+
+We can roughly understand the goal of model training as follows:
+
+> **The model should have enough expressive power, but it should not memorize the training set without constraint.**
+
+Regularization serves this goal. It does not simply make the training loss lower. Instead, by restricting the model, perturbing the training process, or adding extra constraints, it encourages the model to learn patterns that can generalize.
+
+Common regularization methods include weight decay, data augmentation, early stopping, and dropout. This chapter focuses on dropout because it acts directly on the intermediate activations of neural networks and, like the normalization layers introduced later, usually appears as part of the network architecture.
+
+## 7.1.2 The Core Problem Dropout Solves
+
+The core idea of dropout is simple: randomly set some intermediate activations to 0 during training.
+
+Suppose the output of a layer is:
+
+$$
+x = [x_1, x_2, \dots, x_d]
+$$
+
+Dropout samples a random mask:
+
+$$
+m_i \sim \operatorname{Bernoulli}(1-p)
+$$
+
+where $p$ is the dropout probability. It then obtains a new activation:
+
+$$
+\tilde{x} = \frac{m \odot x}{1-p}
+$$
+
+The division by $1-p$ keeps the expected output during training consistent with the original input. The specific reason will be discussed in full in the next section.
+
+The key point of dropout is not to make activation values smaller, but to prevent the network from relying on exactly the same feature combinations during every forward pass.
+
+Suppose a prediction depends heavily on three hidden units appearing together. If some of these units are randomly dropped during training, the network must learn more distributed and robust representations instead of placing all its capacity on one fixed path.
+
+From this perspective, dropout adds random perturbations to the training process. What the model sees in each mini-batch resembles a slightly different subnetwork, but all these subnetworks share the same parameters. The resulting model usually does not become overly dependent on a few particular neurons.
+
+Therefore, the main keywords for dropout are:
+
+> **Random deactivation, reduced co-adaptation, and mitigation of overfitting.**
+
+Dropout may indirectly affect training stability, but its primary purpose is not to unify the scale of activations or fix exploding gradients. It is first and foremost a regularization method.
+
+## 7.1.3 Why Are Deep Networks Difficult to Optimize?
+
+Overfitting is not the only problem faced by deep networks. Even when the training set is sufficiently large and the model is not obviously overfitting, the network may still be difficult to optimize.
+
+Consider a feed-forward network with many layers:
+
+$$
+h^{(l)} = f\left(W^{(l)}h^{(l-1)} + b^{(l)}\right)
+$$
+
+The input to layer $l$ comes from the output of layer $l-1$, which in turn depends on all preceding layers. Therefore, as long as the parameters of an earlier layer change, the input distributions seen by many later layers also change.
+
+During training, all layers are updated simultaneously. A layer must not only learn parameters suited to the current input, but also continuously adapt to the new inputs produced by all preceding layers. This makes the optimization process more sensitive to the following factors:
+
+- Parameter initialization;
+- Network depth;
+- Activation function;
+- Learning rate;
+- Mini-batch size;
+- The numerical scale of the input and intermediate features.
+
+A particularly intuitive problem is that activations in different layers may have completely different means and variances. The outputs of some layers may be concentrated in a very small range, while the outputs of others may be extremely large. After several layers are composed together, these scale differences may be amplified further.
+
+Below, we use a simple example to observe how linear transformations change the scale of activations. For now, we do not use any normalization method; we simply pass through several random linear layers in succession.
+
+```{python}
+x = torch.randn(256, 128)
+layers = nn.ModuleList([nn.Linear(128, 128, bias=False) for _ in range(5)])
+
+with torch.inference_mode():
+    print(f'Input   mean={x.mean(): .4f}, std={x.std():.4f}')
+
+    for i, layer in enumerate(layers, start=1):
+        x = 1.8 * layer(x)
+        print(f'Layer {i} mean={x.mean(): .4f}, std={x.std():.4f}')
+```
+
+As we can see, when each layer applies a new linear transformation to its input, small changes in weight scale can cause activation values to become increasingly large or small as they propagate through multiple layers.
+
+Inappropriate activation scales can cause many problems. For example, some activation functions may enter their saturation regions, making gradients very small; when the output of a layer is too large, subsequent computations may become unstable; and when different parameters receive gradients with very different scales, it becomes more difficult for one learning rate to suit all parameters at the same time.
+
+Therefore, a deep network must not only learn the correct function, but also keep the entire optimization process within a relatively reasonable numerical range.
+
+## 7.1.4 What Does Normalization Do?
+
+The common idea behind normalization methods is to compute statistics for a group of activations and then use those statistics to adjust the activations.
+
+The most common form is:
+
+$$
+\hat{x} = \frac{x-\mu}{\sqrt{\sigma^2+\epsilon}}
+$$
+
+Here, $\mu$ and $\sigma^2$ are the mean and variance over some dimensions, and $\epsilon$ is a numerical stability term added to prevent the denominator from becoming too small.
+
+After standardization, models usually use learnable parameters $\gamma$ and $\beta$ to perform an affine transformation:
+
+$$
+y = \gamma \hat{x} + \beta
+$$
+
+This step is important. A normalization layer does not force all features to always have mean 0 and variance 1. Standardization only provides a more stable reference scale; the subsequent $\gamma$ and $\beta$ allow the model to relearn the scaling and shifting suitable for the current task.
+
+The formulas for different normalization methods look very similar. For BatchNorm, LayerNorm, InstanceNorm, and GroupNorm, the most important difference is usually:
+
+> **Over which dimensions are the mean and variance computed?**
+
+RMSNorm is slightly different. It does not subtract the mean or explicitly compute the variance after centering. Instead, it computes the root mean square over the specified last several dimensions:
+
+$$
+\operatorname{RMS}(x) =
+\sqrt{\frac{1}{d}\sum_{i=1}^{d}x_i^2+\epsilon}
+$$
+
+It then scales the activations using this root mean square:
+
+$$
+\operatorname{RMSNorm}(x) =
+\frac{x}{\operatorname{RMS}(x)}\odot\gamma
+$$
+
+Therefore, RMSNorm is still a normalization method, but it only controls feature scale and does not perform mean centering.
+
+Consider a four-dimensional input commonly used in convolutional networks:
+
+$$
+X \in \mathbb{R}^{N \times C \times H \times W}
+$$
+
+All normalization methods can be understood in terms of “which elements share statistics,” but they differ in the range over which statistics are computed and in the type of statistics used.
+
+- Batch Normalization typically computes statistics for each channel over the batch and spatial dimensions;
+- Layer Normalization computes statistics within an individual sample over the specified last several dimensions;
+- Instance Normalization independently computes spatial statistics for each channel of each sample;
+- Group Normalization divides the channels into several groups and computes statistics within each sample's groups;
+- Root Mean Square Normalization computes the root mean square within an individual sample over the specified last several dimensions and normalizes only the feature scale.
+
+Therefore, the most effective way to understand normalization methods is not to memorize five separate sets of formulas, but to keep asking four questions:
+
+1. Which elements share the same set of statistics?
+2. Are the mean and variance used, or only the root mean square?
+3. What is the shape of the learnable parameters?
+4. Are the same statistics used during training and inference?
+
+The following sections will all revolve around these four questions.
+
+## 7.1.5 Dropout and Normalization Are Not the Same Thing
+
+Dropout and normalization often appear together in model architectures, so it is easy to put them into the same vague category: both can make models train better. Mechanistically, however, the difference between them is clear.
+
+Dropout introduces randomness during training. The same input passed through the same dropout layer twice may produce different results. By randomly dropping features, it reduces the model's dependence on specific activation paths.
+
+Normalization usually rescales features according to the statistics of a group of activations. It is more concerned with the numerical scale of activation values and with how statistics are shared among different samples, channels, or features.
+
+The two can be roughly summarized as follows:
+
+::: {.list-table}
+Table 7.1.5: Core Differences Between Dropout and Normalization
+
+- - Method
+  - Main objective
+  - Core operation
+  - Same during training and inference?
+
+- - Dropout
+  - Mitigate overfitting
+  - Randomly drop some activations
+  - No
+
+- - Normalization
+  - Improve activation scale and the optimization process
+  - Shift and scale activations according to statistics
+  - Depends on the specific method
+:::
+
+The last column deserves special attention. Dropout is usually disabled during inference because we want to use the complete network for deterministic predictions. Batch Normalization uses the current mini-batch statistics during training and usually uses running statistics accumulated during training at inference time. Layer Normalization, Group Normalization, and RMSNorm do not depend on batch statistics across samples, so their computations are basically the same during training and inference.
+
+Therefore, dropout and normalization may both appear in a network architecture, but they cannot replace each other. A model may use only one of them or both at the same time; they affect training and generalization from different perspectives.
+
+## 7.1.6 Normalization Is Not the Same as Input Standardization
+
+When preparing tabular or image data, we also often standardize it, for example:
+
+$$
+x' = \frac{x-\mu_{\text{data}}}{\sigma_{\text{data}}}
+$$
+
+This data preprocessing and the normalization layers inside a network look similar in form, but they occur in different places and use different statistics.
+
+Input standardization occurs before the model. The mean and variance of the dataset are usually computed in advance, and all samples use the same fixed statistics. Its purpose is to give input features a more suitable scale.
+
+Normalization inside the network occurs between hidden layers. Hidden activations continually change as the parameters are updated, so normalization layers need to compute statistics from the current activations during training or maintain running statistics for inference.
+
+In addition, normalization does not mean that the model turns all activations into a strict standard normal distribution. Subtracting the mean and dividing by the standard deviation can control only the first- and second-order statistics; it cannot guarantee that the shape of the data distribution is Gaussian.
+
+Therefore, a more accurate understanding is:
+
+> **Normalization adjusts the center and scale of activations; it does not turn an arbitrary distribution into a normal distribution.**
+
+This distinction may seem subtle, but it is important. When analyzing different normalization layers later, we focus on how they choose the statistical range, how they scale activations, and what inductive biases this choice introduces, rather than assuming that all intermediate features must follow a fixed probability distribution.
+
+## 7.1.7 How Will This Chapter Organize These Methods?
+
+This chapter introduces dropout and the various normalization methods in the following order.
+
+We first introduce dropout. Starting from the bernoulli mask, we explain why training requires division by the keep probability, and why `Dropout1d`, `Dropout2d`, and `Dropout3d` in PyTorch do not simply sample independently for each element.
+
+We then introduce Batch Normalization. It is one of the best normalization methods for building complete intuition because it involves batch statistics, running statistics, training and inference modes, and the channel dimension in convolutional networks. We will also discuss further why Batch Normalization can be fused into a convolutional layer during inference.
+
+Next, we introduce Layer Normalization. It does not depend on other samples in the batch, but normalizes within each sample, so it is highly suitable for Transformers and sequence models.
+
+After that, we introduce Instance Normalization and Group Normalization. These two methods are common in vision tasks, and they help us further understand that changing the dimensions covered by the statistics produces normalization methods with different properties.
+
+Finally, we introduce Root Mean Square Normalization. It is similar to Layer Normalization and usually operates on the last several dimensions of the input, but it does not subtract the mean; instead, it controls the scale of hidden features using only the root mean square. Root Mean Square Normalization has become a very common normalization method in modern large language models.
+
+At the end of the chapter, we will compare several normalization methods within the same tensor and answer the following questions in a unified way:
+
+- Which dimensions are normalized?
+- Which elements share statistics?
+- Are the mean and variance used, or only the root mean square?
+- Does the method depend on batch size?
+- Does it maintain running statistics?
+- Is there a difference between training and inference?
+- Is it more suitable for CNNs, Transformers, or image generation tasks?
+
+Starting with this chapter, keep one important framework in mind:
+
+> **When you see dropout, first ask how it introduces stochastic regularization; when you see normalization, first ask over which dimensions it computes statistics.**
+
+## 7.1.8 Summary
+
+This section did not directly implement a particular normalization layer. Instead, it first distinguished several problems in deep-network training that are easy to confuse.
+
+Overfitting means that a model adapts too closely to the training data, causing its generalization ability to decline. Dropout randomly drops some activations and reduces the network's overreliance on fixed feature combinations, so it is mainly a regularization method.
+
+Optimization difficulties are related to factors such as network depth, activation scale, parameter initialization, and learning rate. Normalization readjusts activations according to statistics over selected dimensions, providing the network with a more stable numerical scale. BatchNorm, LayerNorm, InstanceNorm, and GroupNorm mainly perform normalization using the mean and variance, whereas RMSNorm uses only the root mean square to control feature scale. The most important differences among these methods are which elements share statistics, over which dimensions statistics are computed, and whether mean centering is performed.
+
+In the next section, we will begin with dropout and analyze specifically how it generates a random mask, why scaling is needed during training, and what the dropout layers for different dimensions in PyTorch actually drop.

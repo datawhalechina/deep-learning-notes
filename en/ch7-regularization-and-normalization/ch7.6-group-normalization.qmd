@@ -1,0 +1,572 @@
+---
+author: jshn9515
+date: 2026-06-27
+date-modified: 2026-06-27
+open-graph:
+  title: ch7.6-group-normalization
+  description: "7.6 Group Normalization: Normalizing Features Within Channel Groups"
+title: "7.6 GroupNorm: Normalizing Features Within Channel Groups"
+order: 6
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch7-regularization-and-normalization/ch7.6-group-normalization.ipynb){fig-align="left"}
+
+In the previous section, we introduced Instance Normalization. For image features with shape `(N, C, H, W)`, InstanceNorm fixes the sample and channel and computes the mean and variance only over the spatial dimensions `H` and `W`. It does not depend on other samples in the batch, so even when the batch size is small it does not suffer from the statistical instability of BatchNorm.
+
+However, InstanceNorm introduces a new problem: every channel is normalized completely independently, so different channels no longer share statistical information. This property is often useful for style transfer and image generation, but for visual tasks such as object detection and semantic segmentation, we may want to preserve some connections between channels while still avoiding dependence on the batch.
+
+**Group Normalization (GroupNorm)** [@wu2018GroupNorm] is a compromise between these two goals. It divides the channels into several groups and, within each sample, computes the mean and variance jointly over the channels and spatial positions in the same group.
+
+Therefore, the key to understanding GroupNorm is still the statistical dimensions:
+
+- How are the channels grouped?
+- Over which dimensions does each group compute the mean and variance?
+- Why does GroupNorm not depend on batch size?
+- What do `num_groups=1` and `num_groups=C` correspond to, respectively?
+- What is the relationship between GroupNorm, LayerNorm, and InstanceNorm?
+- Why is it commonly used for small-batch vision tasks?
+
+We begin with a small tensor, gradually build the statistical perspective of GroupNorm, and implement a version corresponding to `nn.GroupNorm` from scratch.
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.6.1 Why Do We Still Need GroupNorm?
+
+For an input `(N, C, H, W)`, BatchNorm fixes the channel `C` and computes statistics over the batch and spatial dimensions `N, H, W`. It usually works well when the batch is large enough, but when memory constraints allow only a small number of samples per device, the batch statistics become unstable. This is especially common in object detection and semantic segmentation. High-resolution images consume a large amount of memory, so the batch size on a single GPU is often small, sometimes only 1 or 2. InstanceNorm avoids this problem because it never computes statistics across samples. But it handles every channel separately, which may remove too much channel-level information.
+
+The idea of GroupNorm is:
+
+> **Do not compute statistics across samples, but also do not separate every channel completely. Instead, put several channels into a group and share statistics within the group.**
+
+Suppose the input has 8 channels. We can divide them into 4 groups, with 2 channels in each group:
+
+```text
+Group 1: channel 0, channel 1
+Group 2: channel 2, channel 3
+Group 3: channel 4, channel 5
+Group 4: channel 6, channel 7
+```
+
+Each sample independently performs this grouping and normalization, so other samples in the batch do not affect the output of the current sample.
+
+## 7.6.2 How Are `(N, C, H, W)` Inputs Grouped?
+
+Let the input be:
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+GroupNorm uses `G` groups and requires:
+
+$$
+C \bmod G = 0
+$$
+
+In other words, the number of channels must be divisible by the number of groups. The number of channels in each group is:
+
+$$
+C_g=\frac{C}{G}
+$$
+
+In implementation, we can first reshape the input from `(N, C, H, W)` to `(N, G, C/G, H, W)`. The second dimension then corresponds to the group, and the third dimension corresponds to the channels within the group.
+
+```{python}
+num_groups = 4
+x = torch.arange(2 * 8 * 2 * 2, dtype=torch.float32)
+x = x.reshape(2, 8, 2, 2)
+
+x_grouped = x.reshape(2, num_groups, 8 // num_groups, 2, 2)
+
+print('Original shape:', x.shape)
+print('Grouped shape:', x_grouped.shape)
+```
+
+For each sample and group, GroupNorm computes statistics over the channels within the group and the spatial dimensions, namely over:
+
+```python
+dim = (2, 3, 4)
+```
+
+as the reduction dimensions.
+
+Therefore, the mean and variance have shape `(N, G, 1, 1, 1)`.
+
+```{python}
+mean = x_grouped.mean(dim=(2, 3, 4), keepdim=True)
+var = x_grouped.var(dim=(2, 3, 4), correction=0, keepdim=True)
+
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+The rule of GroupNorm can be summarized in one sentence:
+
+> **For an `(N, C, H, W)` input, GroupNorm fixes the sample and group, and normalizes over the channels within the group and the spatial dimensions.**
+
+## 7.6.3 The Mathematical Form of GroupNorm
+
+For the $n$-th sample and the $g$-th group, let the set of elements in the group be $S_{n,g}$, with cardinality:
+
+$$
+|S_{n,g}|=\frac{C}{G}HW
+$$
+
+The within-group mean is:
+
+$$
+\mu_{n,g} = \frac{1}{|S_{n,g}|} \sum_{i\in S_{n,g}}x_i
+$$
+
+The within-group variance is:
+
+$$
+\sigma_{n,g}^2 = \frac{1}{|S_{n,g}|} \sum_{i\in S_{n,g}}(x_i-\mu_{n,g})^2
+$$
+
+Then standardize every element within the group:
+
+$$
+\hat{x}_i = \frac{x_i-\mu_{n,g}}{\sqrt{\sigma_{n,g}^2+\epsilon}}
+$$
+
+Finally, like other normalization layers, GroupNorm uses learnable parameters to restore expressive power:
+
+$$
+y_{n,c,h,w} = \gamma_c\hat{x}_{n,c,h,w}+\beta_c
+$$
+
+Note that although the statistics are computed per group, the learnable parameters are still **one set per channel**:
+
+$$
+\gamma,\beta\in\mathbb{R}^{C}
+$$
+
+```{python}
+group_norm = nn.GroupNorm(num_groups=4, num_channels=8)
+
+print('Weight shape:', group_norm.weight.shape)
+print('Bias shape:', group_norm.bias.shape)
+```
+
+Thus, channels within the same group share a mean and variance, but they can still learn different scaling and shifting through different `weight` and `bias` values.
+
+## 7.6.4 Manually Computing GroupNorm Once
+
+Below, we first omit the learnable affine transformation and manually perform grouping, standardization, and reshaping.
+
+```{python}
+num_groups = 4
+x = torch.randn(2, 8, 4, 4)
+n, c, h, w = x.size()
+
+dim = (2, 3, 4)
+x_grouped = x.reshape(n, num_groups, c // num_groups, h, w)
+mean = x_grouped.mean(dim, keepdim=True)
+var = x_grouped.var(dim, correction=0, keepdim=True)
+
+x_hat_grouped = (x_grouped - mean) / (var + 1e-5).sqrt()
+print('Output means by group:')
+print(x_hat_grouped.mean(dim))
+print('\nOutput variances by group:')
+print(x_hat_grouped.var(dim, correction=0))
+```
+
+Each sample and group obtains a mean close to 0 and a variance close to 1. To avoid division by 0, we add an $\epsilon$ to the variance.
+
+## 7.6.5 GroupNorm Does Not Depend on Other Samples in the Batch
+
+GroupNorm does not compute statistics along the batch dimension, so changing the other samples in a batch does not change the output of the current sample.
+
+```{python}
+sample = torch.randn(1, 8, 4, 4)
+other_sample1 = torch.randn(1, 8, 4, 4)
+other_sample2 = torch.randn(1, 8, 4, 4) * 100.0 + 500.0
+
+batch1 = torch.concat([sample, other_sample1], dim=0)
+batch2 = torch.concat([sample, other_sample2], dim=0)
+
+group_norm = nn.GroupNorm(4, 8, affine=False)
+
+output1 = group_norm(batch1)[0]
+output2 = group_norm(batch2)[0]
+
+max_diff = (output1 - output2).abs().max()
+print('Maximum difference for the fixed sample:', max_diff.item())
+```
+
+Because the first sample is exactly the same, its GroupNorm output is also exactly the same. This differs from BatchNorm. BatchNorm computes statistics over all samples in the same channel within the batch, so when the other samples change, the mean and variance used by the current sample also change.
+
+This property of GroupNorm means that:
+
+- It still works normally when the batch size is 1;
+- The local batch size on different devices does not change the statistical procedure;
+- There is no need to synchronize batch statistics across devices;
+- Training results are usually less sensitive to batch size than with BatchNorm.
+
+## 7.6.6 `num_groups=1`: All Channels Belong to One Group
+
+When $G=1$, all channels are placed in one group. For an `(N, C, H, W)` input, statistics are computed jointly over `C`, `H`, and `W`. In terms of statistical dimensions, this is similar to `nn.LayerNorm((C, H, W))`. Both compute the mean and variance over the entire `(C, H, W)` for each sample.
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+group_norm = nn.GroupNorm(1, 4, affine=False)
+layer_norm = nn.LayerNorm((4, 3, 3), elementwise_affine=False)
+
+gn_output = group_norm(x)
+ln_output = layer_norm(x)
+
+max_diff = (gn_output - ln_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+When the affine transformations are disabled, the two standardization results are the same, but the default affine parameter shapes are different:
+
+- The parameter shape of `GroupNorm(1, C)` is `(C,)`;
+- The parameter shape of `LayerNorm((C, H, W))` is `(C, H, W)`.
+
+Therefore, the more precise statement is:
+
+> **When `num_groups=1`, GroupNorm's statistical procedure is equivalent to applying LayerNorm to `(C, H, W)`, but the default affine parameterization is different.**
+
+## 7.6.7 `num_groups=C`: Each Channel Forms Its Own Group
+
+When $G=C$, each group contains only one channel. GroupNorm then fixes the sample and channel and computes statistics over the spatial dimensions `H` and `W`. This is exactly the statistical procedure of InstanceNorm.
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+group_norm = nn.GroupNorm(4, 4, affine=False)
+instance_norm = nn.InstanceNorm2d(4)
+
+gn_output = group_norm(x)
+in_output = instance_norm(x)
+
+max_diff = (gn_output - in_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+The outputs are the same because both methods independently compute spatial statistics for each sample and channel.
+
+Therefore, GroupNorm can be viewed as a bridge between LayerNorm and InstanceNorm:
+
+- When $G=1$, all channels share one set of statistics, and the statistical procedure is close to LayerNorm;
+- When $1<G<C$, multiple channels share one set of statistics;
+- When $G=C$, each channel computes its own statistics, and the statistical procedure is equivalent to InstanceNorm.
+
+This is also the origin of the name GroupNorm: the number of groups determines the granularity at which channels share statistical information.
+
+## 7.6.8 A PyTorch Implementation of GroupNorm
+
+Below, we implement a function-form GroupNorm. This implementation supports arbitrary spatial dimensions, not only two-dimensional images.
+
+```{python}
+def group_norm(
+    x: Tensor,
+    num_groups: int,
+    weight: Tensor | None = None,
+    bias: Tensor | None = None,
+    eps: float = 1e-5,
+) -> Tensor:
+    """Apply group normalization to an input tensor."""
+    if x.ndim < 2:
+        raise AssertionError(
+            f'Expected input tensor to have at least 2 dimensions, but got {x.ndim}.'
+        )
+    if num_groups <= 0:
+        raise AssertionError(
+            f'Expected `num_groups` to be greater than 0, but got {num_groups}.'
+        )
+
+    num_channels = x.size(1)
+    channels_per_group = num_channels // num_groups
+    if num_channels % num_groups != 0:
+        raise AssertionError(
+            f'Expected the number of channels ({num_channels}) to be divisible '
+            f'by `num_groups` ({num_groups}).'
+        )
+
+    # (N, C, H, W) -> (N, G, C // G, H, W)
+    grouped_shape = (x.size(0), num_groups, channels_per_group, *x.shape[2:])
+    grouped_x = x.reshape(grouped_shape)
+
+    # Reduce over the channels in each group and all spatial dimensions.
+    # (N, G, C // G, H, W) -> reduce_dims = (2, 3, 4)
+    reduce_dims = tuple(range(2, grouped_x.ndim))
+
+    group_mean = grouped_x.mean(dim=reduce_dims, keepdim=True)
+    group_var = grouped_x.var(dim=reduce_dims, correction=0, keepdim=True)
+
+    grouped_y = (grouped_x - group_mean) * (group_var + eps).rsqrt()
+    y = grouped_y.reshape_as(x)
+
+    # (C,) -> (1, C, 1, 1)
+    broadcast_shape = (1, num_channels) + (1,) * (x.ndim - 2)
+
+    if weight is not None:
+        y = y * weight.reshape(broadcast_shape)
+
+    if bias is not None:
+        y = y + bias.reshape(broadcast_shape)
+
+    return y
+```
+
+Now compare it with `F.group_norm`:
+
+```{python}
+x = torch.randn(3, 8, 5, 5)
+weight = torch.randn(8)
+bias = torch.randn(8)
+
+actual = group_norm(x, num_groups=4, weight=weight, bias=bias)
+expected = F.group_norm(x, num_groups=4, weight=weight, bias=bias)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+The difference between the two should come only from the order of floating-point computations.
+
+The three core steps of the implementation are:
+
+1. Reshape `(N, C, ...)` to `(N, G, C/G, ...)`;
+2. Compute the mean and variance over the channels within each group and all spatial dimensions;
+3. Reshape back to the original shape and then apply the per-channel affine transformation.
+
+Next, wrap the function in a module.
+
+```{python}
+class GroupNorm(nn.Module):
+    """Apply group normalization over channel groups."""
+
+    weight: Tensor | None
+    bias: Tensor | None
+
+    def __init__(
+        self,
+        num_groups: int,
+        num_channels: int,
+        eps: float = 1e-5,
+        affine: bool = True,
+    ):
+        """Initialize a group normalization module."""
+        super().__init__()
+        if num_channels % num_groups != 0:
+            raise AssertionError('`num_channels` must be divisible by `num_groups`.')
+
+        self.num_groups = num_groups
+        self.num_channels = num_channels
+        self.eps = eps
+        self.affine = affine
+
+        if affine:
+            self.weight = nn.Parameter(torch.empty(num_channels))
+            self.bias = nn.Parameter(torch.empty(num_channels))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.weight is not None:
+            nn.init.ones_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.size(1) != self.num_channels:
+            raise AssertionError(
+                f'Expected {self.num_channels} channels, but got {x.size(1)} channels.'
+            )
+
+        return group_norm(
+            x,
+            self.num_groups,
+            weight=self.weight,
+            bias=self.bias,
+            eps=self.eps,
+        )
+
+    def extra_repr(self) -> str:
+        return (
+            f'{self.num_groups}, {self.num_channels}, eps={self.eps}, '
+            f'affine={self.affine}'
+        )
+```
+
+Copy the parameters into the PyTorch module and compare the outputs:
+
+```{python}
+x = torch.randn(2, 8, 4, 4)
+
+group_norm1 = GroupNorm(4, 8)
+group_norm2 = nn.GroupNorm(4, 8)
+
+with torch.no_grad():
+    group_norm2.weight.copy_(group_norm1.weight)
+    group_norm2.bias.copy_(group_norm1.bias)
+
+actual = group_norm1(x)
+expected = group_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+The result should differ only by the error caused by the order of floating-point computations.
+
+Like LayerNorm, the same `nn.GroupNorm` can process `(N, C, *)` as long as the second dimension is the channel dimension.
+
+```{python}
+group_norm = nn.GroupNorm(2, 4)
+
+x_1d = torch.randn(2, 4, 10)
+x_2d = torch.randn(2, 4, 8, 8)
+x_3d = torch.randn(2, 4, 4, 8, 8)
+
+print('1D output shape:', group_norm(x_1d).shape)
+print('2D output shape:', group_norm(x_2d).shape)
+print('3D output shape:', group_norm(x_3d).shape)
+```
+
+For these inputs, GroupNorm always:
+
+- Treats the second dimension as the channel dimension;
+- Divides the channels into `num_groups` groups;
+- Computes statistics over the channels within each group and all subsequent spatial dimensions.
+
+Therefore, there is no classification into `GroupNorm1d`, `GroupNorm2d`, and `GroupNorm3d`.
+
+## 7.6.9 The Behavior Is the Same under `train()` and `eval()`
+
+GroupNorm does not maintain `running_mean` or `running_var`. During both training and inference, it uses the group statistics of the current sample. Therefore, `train()` and `eval()` do not change how GroupNorm computes its output.
+
+```{python}
+x = torch.randn(2, 8, 4, 4)
+group_norm = nn.GroupNorm(4, 8)
+
+group_norm.train()
+train_output = group_norm(x)
+
+group_norm.eval()
+eval_output = group_norm(x)
+
+max_diff = (train_output - eval_output).abs().max()
+print('Maximum difference:', max_diff.item())
+print('State dict keys:', dict(group_norm.state_dict()))
+```
+
+The `state_dict` contains only the learnable `weight` and `bias`, and does not contain BatchNorm's:
+
+- `running_mean`;
+- `running_var`;
+- `num_batches_tracked`.
+
+This also means that, unlike BatchNorm, GroupNorm does not require running statistics to have been correctly estimated before inference.
+
+## 7.6.10 How Should `num_groups` Be Chosen?
+
+The most important hyperparameter of GroupNorm is `num_groups`. It must satisfy:
+
+$$
+C \bmod G = 0
+$$
+
+The fewer groups there are, the more channels each group contains and the more channels share statistics; the more groups there are, the fewer channels each group contains and the closer the normalization behavior is to InstanceNorm.
+
+The original GroupNorm work commonly used 32 groups, but this is not a universally optimal rule for every network. When the number of channels is small, choose a number of groups that divides the number of channels and does not make each group too small.
+
+For example:
+
+```python
+nn.GroupNorm(32, 256)
+nn.GroupNorm(16, 128)
+nn.GroupNorm(8, 64)
+```
+
+Each of these gives 8 channels per group.
+
+Therefore, when choosing `num_groups`, it is more important to consider how many channels each group contains and whether the channel counts of different layers are divisible by the number of groups.
+
+## 7.6.11 Common Placement of GroupNorm in a Network
+
+In CNNs, GroupNorm is usually placed after the convolutional layer and before the activation function:
+
+```python
+block = nn.Sequential(
+    nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+    nn.GroupNorm(32, 128),
+    nn.ReLU(),
+)
+```
+
+Because GroupNorm includes a learnable bias, the convolutional layer immediately before it can usually be configured as:
+
+```python
+bias = False
+```
+
+The reason is similar to the Conv-BN structure: the constant bias produced by the convolution is subtracted during standardization, and then GroupNorm's `bias` performs the shift.
+
+However, GroupNorm usually cannot be fused into a convolution as simply as BatchNorm during inference. BatchNorm uses fixed running statistics in `eval()` mode, so the overall operation is a fixed affine transformation. GroupNorm still needs to dynamically compute the mean and variance from the current input during inference, so it cannot be absorbed into the convolution weights in advance.
+
+## 7.6.12 Use Cases and Limitations of GroupNorm
+
+The most typical use cases for GroupNorm are small-batch vision tasks, such as:
+
+- Object detection;
+- Instance segmentation;
+- Semantic segmentation;
+- High-resolution image models;
+- CNN training under memory constraints.
+
+Its main advantages include:
+
+- It does not depend on batch size;
+- Its training and inference behavior is consistent;
+- It does not require running statistics;
+- It does not require synchronizing statistics across devices;
+- It is usually more stable than BatchNorm with small batches.
+
+However, GroupNorm is not the universally optimal default for every task.
+
+When the batch is sufficiently large and the training and inference data distributions are similar, BatchNorm is still a highly effective choice for CNNs. Moreover, BatchNorm's cross-sample statistics introduce some random perturbation, which may provide an additional regularization effect. GroupNorm also requires manually choosing `num_groups`. The number of channels may differ across layers, so we must ensure that the channel count of every layer is divisible by the number of groups. Finally, GroupNorm still needs to compute the mean and variance of the current input during inference, so it cannot perform a simple Conv-BN Fusion like BatchNorm.
+
+## 7.6.13 Summary
+
+This section introduced Group Normalization.
+
+For an input `(N, C, H, W)`, GroupNorm first divides the channels into `G` groups and reshapes the input as:
+
+$$
+\left(N, G, \frac{C}{G}, H, W \right)
+$$
+
+It then fixes the sample and group and computes the mean and variance over the channels within the group and the spatial dimensions.
+
+Its most important characteristics are:
+
+- It does not compute statistics across samples, so it does not depend on batch size;
+- Multiple channels within the same group share statistics;
+- Learnable parameters are still set per channel;
+- It does not maintain running statistics;
+- Its behavior is the same during training and inference;
+- When `num_groups=1`, its statistical procedure is close to LayerNorm;
+- When `num_groups=C`, its statistical procedure is equivalent to InstanceNorm;
+- It is suitable for small-batch vision tasks such as object detection and segmentation.
+
+At this point, we have introduced BatchNorm, LayerNorm, InstanceNorm, and GroupNorm separately. They all first compute the mean and variance, and then perform centering and scale normalization. What truly differs is which elements are placed into the same group to share statistics.
+
+However, not every normalization method uses both the mean and variance. RMSNorm has also become a very common choice in modern Transformers and large language models. It no longer subtracts the mean, but controls the overall scale of hidden vectors using only the root mean square of the features.
+
+In the next section, we introduce **Root Mean Square Normalization** [@zhang2019RMSNorm] and compare its relationship with and difference from LayerNorm. After that, we will place BatchNorm, LayerNorm, InstanceNorm, GroupNorm, and RMSNorm into a unified framework and compare them again from the perspective of “which statistics are computed over which dimensions.”

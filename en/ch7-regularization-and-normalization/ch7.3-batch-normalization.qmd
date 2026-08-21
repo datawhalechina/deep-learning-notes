@@ -1,0 +1,893 @@
+---
+author: jshn9515
+date: 2026-06-26
+date-modified: 2026-06-26
+open-graph:
+  title: ch7.3-batch-normalization
+  description: "7.3 BatchNorm: Stabilizing Training with Batch Statistics"
+title: "7.3 BatchNorm: Stabilizing Training with Batch Statistics"
+order: 3
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch7-regularization-and-normalization/ch7.3-batch-normalization.ipynb){fig-align="left"}
+
+In the previous section, we introduced dropout. By randomly dropping intermediate activations, it prevents the network from becoming overly dependent on a few fixed features and is mainly used to mitigate overfitting.
+
+This section discusses another common operation: **Batch Normalization (BatchNorm)** [@ioffe2015BatchNorm]. During training, BatchNorm uses the mean and variance of a mini-batch to standardize intermediate features, and then rescales and shifts them using learnable parameters. This stabilizes the numerical scale of inputs to different layers, improves the optimization process, and to some extent mitigates problems caused by gradients that are too large or too small.
+
+In this section, we answer the following questions:
+
+- Over which dimensions does it actually compute the mean and variance?
+- Why do fully connected and convolutional layers use the same underlying idea?
+- Why do its behaviors differ during training and inference?
+- What are `running_mean`, `running_var`, and `momentum`, respectively?
+- Why can BatchNorm be merged into the preceding convolution during inference?
+
+We begin with a two-dimensional tensor, gradually extend the discussion to four-dimensional feature maps in CNNs, and finally implement BatchNorm and Conv-BN Fusion from scratch.
+
+```{python}
+import copy
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.3.1 Why Do We Need to Control the Scale of Intermediate Activations?
+
+A neural network is composed of many layers in sequence. When the parameters of one layer change, the distribution of the activations it outputs to the next layer changes as well. The next layer must not only learn the current task, but also continually adapt to changes in the numerical scale of its input.
+
+For example, the following two batches express the same relative relationships, but their overall scales are clearly different:
+
+```text
+batch 1: [1, 2, 3, 4]
+batch 2: [100, 200, 300, 400]
+```
+
+For a linear layer, inputs with a larger scale usually produce larger outputs and gradients. The deeper the network, the more likely these scale changes are to accumulate across multiple operations, making training more sensitive to initialization and learning rate.
+
+The basic idea of BatchNorm is:
+
+> **After a layer receives activations, first standardize them according to the mean and variance of the current batch, and then pass them to subsequent computations.**
+
+For a group of scalars $x_1,x_2,\dots,x_m$, first compute the mean:
+
+$$
+\mu_B = \frac{1}{m}\sum_{i=1}^{m}x_i
+$$
+
+Then compute the variance:
+
+$$
+\sigma_B^2 = \frac{1}{m}\sum_{i=1}^{m}(x_i-\mu_B)^2
+$$
+
+The standardized result is:
+
+$$
+\hat{x}_i = \frac{x_i-\mu_B}{\sqrt{\sigma_B^2+\epsilon}}
+$$
+
+Here, $\epsilon$ is a very small positive number used to avoid division by zero or numerical instability when the variance is close to 0.
+
+After standardization, the mean of this data is close to 0 and the variance is close to 1:
+
+```{python}
+x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+mean = x.mean()
+var = x.var(correction=0)
+
+x_hat = (x - mean) / (var + 1e-5).sqrt()
+x_hat_mean = x_hat.mean()
+x_hat_var = x_hat.var(correction=0)
+
+print('Input values:', x)
+print('Mean before normalization:', mean.item())
+print('Variance before normalization:', var.item())
+print('Normalized values:', x_hat)
+print('Mean after normalization:', x_hat_mean.item())
+print('Variance after normalization:', x_hat_var.item())
+```
+
+However, BatchNorm does not merely turn all activations into values with mean 0 and variance 1. Actual BatchNorm also includes learnable scaling and shifting parameters. As we will see later, this step allows the model to restore or even change the original scale when necessary.
+
+## 7.3.2 Over Which Dimensions Does BatchNorm Normalize?
+
+The most important question for understanding BatchNorm is: **over which dimensions are the mean and variance computed?**
+
+First, consider the two-dimensional input common to fully connected layers:
+
+$$
+X\in\mathbb{R}^{N\times C}
+$$
+
+Here, $N$ is the batch size and $C$ is the number of features.
+
+BatchNorm computes statistics separately for each feature $c$ and aggregates over the batch dimension $N$:
+
+$$
+\begin{align}
+\mu_c &= \frac{1}{N}\sum_{n=1}^{N}x_{n,c} \\
+\sigma_c^2 &= \frac{1}{N}\sum_{n=1}^{N}(x_{n,c}-\mu_c)^2
+\end{align}
+$$
+
+Therefore, every column has its own mean and variance. BatchNorm does not mix different features together when computing statistics.
+
+```{python}
+x = torch.tensor(
+    [
+        [1.0, 10.0, 100.0],
+        [2.0, 20.0, 200.0],
+        [3.0, 30.0, 300.0],
+        [4.0, 40.0, 400.0],
+    ]
+)
+
+feature_mean = x.mean(dim=0)
+feature_var = x.var(dim=0, correction=0)
+x_hat = (x - feature_mean) / (feature_var + 1e-5).sqrt()
+
+print('Feature means:', feature_mean)
+print('Feature variances:', feature_var)
+print('Normalized tensor:')
+print(x_hat)
+print('Mean of each feature:', x_hat.mean(dim=0))
+print('Variance of each feature:', x_hat.var(dim=0, correction=0))
+```
+
+Here, `dim=0` means that statistics are computed along the batch dimension. The output remains `(N, C)`, but each feature is standardized using its own statistics, bringing the mean of each feature close to 0 and its variance close to 1.
+
+We can summarize the rule of BatchNorm as follows:
+
+> **Preserve the feature dimension $C$, and compute statistics over the sample dimensions belonging to the same feature.**
+
+This rule still holds in CNNs, except that the samples in one channel now include not only the batch dimension, but also spatial positions.
+
+A common input shape for a convolutional layer is:
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+Here, $C$ denotes the number of channels. Each output channel of a convolutional kernel extracts one kind of feature, so BatchNorm still maintains a separate set of statistics for each channel.
+
+For channel $c$, the mean is computed over the three dimensions $N$, $H$, and $W$:
+
+$$
+\mu_c = \frac{1}{NHW} \sum_{n=1}^{N} \sum_{h=1}^{H} \sum_{w=1}^{W} x_{n,c,h,w}
+$$
+
+The variance is likewise computed over $N,H,W$:
+
+$$
+\sigma_c^2 = \frac{1}{NHW} \sum_{n,h,w} (x_{n,c,h,w}-\mu_c)^2
+$$
+
+In other words, BatchNorm combines values from different samples and different spatial positions within the same channel when computing statistics, but it does not mix different channels together.
+
+```{python}
+x = torch.arange(2 * 3 * 2 * 2, dtype=torch.float32)
+x = x.reshape(2, 3, 2, 2)
+
+dim = (0, 2, 3)  # batch, height, width
+channel_mean = x.mean(dim, keepdim=True)
+channel_var = x.var(dim, correction=0, keepdim=True)
+x_hat = (x - channel_mean) / (channel_var + 1e-5).sqrt()
+
+print('Input shape:', x.shape)
+print('Channel mean shape:', channel_mean.shape)
+print('Channel means:', channel_mean.flatten())
+print('Channel variances:', channel_var.flatten())
+print('Normalized channel means:', x_hat.mean(dim))
+print('Normalized channel variances:', x_hat.var(dim, correction=0))
+```
+
+Here, the statistics have shape `(1, C, 1, 1)`. By retaining these dimensions of length 1, the mean and variance can be applied to the entire input through broadcasting. This also explains the meaning of `num_features` in `BatchNorm2d`: it is not the height or width of the image, but the number of input channels $C$.
+
+For example:
+
+```{python}
+batch_norm = nn.BatchNorm2d(3)
+print(batch_norm)
+```
+
+For an input `(N, 3, H, W)`, this layer maintains 3 independent sets of parameters and statistics, one for each channel.
+
+## 7.3.3 Why Are Gamma and Beta Still Needed after Standardization?
+
+If BatchNorm always forced the output to have mean 0 and variance 1, it could limit the expressive power of the network. For example, suppose the preceding layer has already learned a particularly suitable scale, but standardization directly removes that scale. To solve this problem, BatchNorm adds two learnable parameters after standardization:
+
+$$
+y_{n,c} = \gamma_c\hat{x}_{n,c}+\beta_c
+$$
+
+Here, $\gamma_c$ controls the scaling of feature or channel $c$, while $\beta_c$ controls its shift. For CNN inputs, these two parameters can be viewed as having shape `(1, C, 1, 1)` and are applied to all samples and spatial positions through broadcasting.
+
+If the model considers the standardized scale to be appropriate, it can learn:
+
+$$
+\gamma_c\approx 1, \qquad \beta_c\approx 0
+$$
+
+If the model wants to restore a different mean and scale, it can also achieve this through $\gamma_c$ and $\beta_c$. Therefore, BatchNorm does not simply permanently delete the original distribution. Instead, it first places the data in a unified coordinate system and then lets the network learn an appropriate scaling and shift.
+
+By default, PyTorch initializes `weight`, namely $\gamma$, to 1 and `bias`, namely $\beta$, to 0:
+
+```{python}
+batch_norm = nn.BatchNorm1d(4)
+
+print('gamma:', batch_norm.weight)
+print('beta:', batch_norm.bias)
+```
+
+When `affine=False`, BatchNorm no longer contains these two learnable parameters:
+
+```{python}
+batch_norm = nn.BatchNorm1d(4, affine=False)
+
+print('weight:', batch_norm.weight)
+print('bias:', batch_norm.bias)
+```
+
+However, most models retain the default `affine=True`.
+
+## 7.3.4 Training-Stage Statistics and Batch Dependence
+
+During training, BatchNorm uses the mean and variance of the current mini-batch:
+
+$$
+\mu_B, \qquad \sigma_B^2
+$$
+
+to standardize the input. Therefore, after a sample passes through BatchNorm, its output depends not only on the sample itself, but also on the other samples in the same batch. This phenomenon is called BatchNorm's **batch dependence**.
+
+We can place the same sample in two different batches and observe the BatchNorm outputs:
+
+```{python}
+batch_norm = nn.BatchNorm1d(2, affine=False, track_running_stats=False)
+batch_norm.train()
+
+sample = torch.tensor([[1.0, 2.0]])
+other_sample1 = torch.tensor([[2.0, 4.0], [3.0, 6.0], [4.0, 8.0]])
+other_sample2 = torch.tensor([[10.0, 20.0], [20.0, 40.0], [30.0, 60.0]])
+
+batch1 = torch.concat([sample, other_sample1], dim=0)
+batch2 = torch.concat([sample, other_sample2], dim=0)
+
+output1 = batch_norm(batch1)[0]
+output2 = batch_norm(batch2)[0]
+
+print('Same sample in batch A:', output1)
+print('Same sample in batch B:', output2)
+```
+
+Although the first sample is exactly the same, its corresponding mean and variance differ in the two batches, so its standardized result also differs.
+
+This batch dependence has two consequences. On the one hand, BatchNorm can dynamically adapt to the continuously changing activation scales during training, usually making optimization more stable. On the other hand, when the batch is small, the estimates of the statistics become noisier. In the extreme case, if only one value per channel participates in the statistics, the variance may not even provide useful information.
+
+Therefore, BatchNorm is usually better suited to settings where batch statistics are relatively reliable. For vision tasks with very small batch sizes, GroupNorm, introduced later, is often more stable.
+
+## 7.3.5 Why Can Inference No Longer Depend on the Current Batch?
+
+During inference, the input may contain only one sample, or the batch size may differ from request to request. Continuing to use the statistics of the current batch would create two problems:
+
+1. The mean and variance of a single sample or small batch are unreliable;
+2. The prediction for the same sample would be affected by the other samples in its batch.
+
+Therefore, during training, BatchNorm additionally maintains two buffers:
+
+- `running_mean`: a moving estimate of the mean during training;
+- `running_var`: a moving estimate of the variance during training.
+
+During inference, it no longer uses the batch statistics of the current input, but instead uses these accumulated running statistics:
+
+$$
+y = \gamma \frac{x-\mu_{\text{running}}} {\sqrt{\sigma^2_{\text{running}}+\epsilon}} + \beta
+$$
+
+We can directly observe the difference between `train()` and `eval()`:
+
+```{python}
+x = torch.tensor(
+    [
+        [1.0, 10.0, 100.0],
+        [2.0, 20.0, 200.0],
+        [3.0, 30.0, 300.0],
+        [4.0, 40.0, 400.0],
+    ]
+)
+
+batch_norm = nn.BatchNorm1d(3)
+batch_norm.train()
+
+for _ in range(10):
+    y = batch_norm(x + torch.randn_like(x))
+
+print('Running mean:', batch_norm.running_mean)
+print('Running variance:', batch_norm.running_var)
+
+batch_norm.eval()
+with torch.inference_mode():
+    y_eval = batch_norm(x)
+
+print('Training output mean:', y.mean(dim=0))
+print('Evaluation output mean:', y_eval.mean(dim=0))
+```
+
+The training output uses the statistics of the current batch, so the output mean of each feature is close to 0. The inference output uses the running statistics. Because the running statistics have not fully approached the current data distribution after only 10 training batches, the output mean is not necessarily 0.
+
+Pay special attention to this:
+
+> **`torch.inference_mode()` only disables autograd; it does not automatically switch the model to inference behavior. Whether BatchNorm uses running statistics is determined by the module's `training` state.**
+
+Therefore, remember to add `model.eval()` during inference. Otherwise, BatchNorm will continue to use the statistics of the current batch.
+
+## 7.3.6 Running Statistics and Momentum
+
+PyTorch updates running statistics using `momentum`. For the running mean, the update can be written as:
+
+$$
+\mu_{\text{running}} \leftarrow (1-m)\mu_{\text{running}} + m\mu_B
+$$
+
+Here, $m$ is the `momentum` of BatchNorm.
+
+The running variance is updated in a similar way:
+
+$$
+\sigma^2_{\text{running}} \leftarrow (1-m)\sigma^2_{\text{running}} + m\sigma_B^2
+$$
+
+Note that `momentum` has the same name here as in optimizers, but its meaning and common formulation are different. BatchNorm's default `momentum=0.1` means retaining $90\%$ of the old statistics and adding $10\%$ of the current batch statistics. This is the opposite of the convention used for optimizers.
+
+```{python}
+batch_norm = nn.BatchNorm1d(2, momentum=0.1)
+batch_norm.train()
+
+x1 = torch.tensor([[0.0, 10.0], [2.0, 14.0]])
+x2 = torch.tensor([[10.0, 20.0], [14.0, 28.0]])
+print('Initial running mean:', batch_norm.running_mean)
+
+y1 = batch_norm(x1)
+print('After batch 1:', batch_norm.running_mean)
+
+y2 = batch_norm(x2)
+print('After batch 2:', batch_norm.running_mean)
+```
+
+The initial running mean is 0. The mean of the first batch is `[1, 12]`, so after the update it is approximately `[0.1, 1.2]`. The second batch continues updating from this result.
+
+PyTorch also maintains `num_batches_tracked`, which records how many training batches the module has processed:
+
+```{python}
+print('Number of tracked batches:', batch_norm.num_batches_tracked)
+```
+
+When `momentum=None`, BatchNorm uses a cumulative moving average rather than an exponential moving average with fixed weights.
+
+Another easily overlooked detail is that PyTorch uses the population-variance form, which divides by $m$, in the standardization calculation for the current batch; when updating `running_var`, it uses a bias-corrected variance estimate. Therefore, when manually reproducing PyTorch's running variance, we need to distinguish these two definitions of variance.
+
+For understanding BatchNorm, the most important point is not to memorize this implementation detail, but to clearly understand the purposes of the two sets of statistics:
+
+- Batch statistics: used immediately during the training forward pass;
+- Running statistics: accumulated during training and used during the inference forward pass.
+
+## 7.3.7 A PyTorch Implementation of BatchNorm
+
+Below, we implement a simplified BatchNorm that supports four-dimensional `(N, C, H, W)` inputs. This implementation includes:
+
+- Learnable parameters `weight` and `bias`;
+- Buffers `running_mean` and `running_var`;
+- Batch statistics during training;
+- Running statistics during inference;
+- Bias correction for the running variance.
+
+First, write a function `batch_norm`:
+
+```{python}
+def batch_norm(
+    x: Tensor,
+    running_mean: Tensor,
+    running_var: Tensor,
+    weight: Tensor | None = None,
+    bias: Tensor | None = None,
+    training: bool = False,
+    momentum: float = 0.1,
+    eps: float = 1e-5,
+) -> Tensor:
+    """Apply batch normalization to an input tensor."""
+    if x.ndim < 2:
+        raise AssertionError(
+            f'Expected at least 2D input, but got shape {tuple(x.shape)}.'
+        )
+
+    # (N, C, H, W) -> reduce_dims = (0, 2, 3)
+    reduce_dims = (0, *range(2, x.ndim))
+    # (C,) -> broadcast_shape = (1, C, 1, 1)
+    broadcast_shape = (1, x.size(1)) + (1,) * (x.ndim - 2)
+
+    if training:
+        sample_count = x.numel() // x.size(1)
+        if sample_count <= 1:
+            raise ValueError(
+                'Expected more than 1 value per channel when training, '
+                f'but got input shape {tuple(x.shape)}.'
+            )
+
+        batch_mean = x.mean(dim=reduce_dims)
+        batch_var = x.var(dim=reduce_dims, correction=0)
+        unbiased_var = batch_var * sample_count / (sample_count - 1)
+
+        with torch.no_grad():
+            running_mean.lerp_(batch_mean, momentum)
+            running_var.lerp_(unbiased_var, momentum)
+
+    else:
+        batch_mean = running_mean
+        batch_var = running_var
+
+    batch_mean = batch_mean.reshape(broadcast_shape)
+    batch_var = batch_var.reshape(broadcast_shape)
+
+    y = (x - batch_mean) * (batch_var + eps).rsqrt()
+    if weight is not None:
+        y = y * weight.reshape(broadcast_shape)
+    if bias is not None:
+        y = y + bias.reshape(broadcast_shape)
+
+    return y
+```
+
+We can test whether this function and the output of `F.batch_norm` agree:
+
+```{python}
+x = torch.randn(16, 3, 32, 32)
+weight = torch.randn(3)
+bias = torch.randn(3)
+running_mean = torch.zeros(3)
+running_var = torch.ones(3)
+
+actual = batch_norm(
+    x,
+    running_mean=running_mean,
+    running_var=running_var,
+    weight=weight,
+    bias=bias,
+)
+expected = F.batch_norm(
+    x,
+    running_mean=running_mean,
+    running_var=running_var,
+    weight=weight,
+    bias=bias,
+)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+The difference between the two should come only from the order of floating-point computations.
+
+Next, we can use this function to implement a simplified `nn.BatchNorm`:
+
+```{python}
+class BatchNorm(nn.Module):
+    """Base class for batch normalization modules."""
+
+    weight: Tensor | None
+    bias: Tensor | None
+    running_mean: Tensor
+    running_var: Tensor
+
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 1e-5,
+        momentum: float = 0.1,
+        affine: bool = True,
+    ):
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+        self.affine = affine
+
+        if affine:
+            self.weight = nn.Parameter(torch.ones(num_features))
+            self.bias = nn.Parameter(torch.zeros(num_features))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.size(1) != self.num_features:
+            raise AssertionError(
+                f'Expected {self.num_features} channels, but got {x.size(1)} channels.'
+            )
+
+        return batch_norm(
+            x,
+            self.running_mean,
+            self.running_var,
+            weight=self.weight,
+            bias=self.bias,
+            training=self.training,
+            momentum=self.momentum,
+            eps=self.eps,
+        )
+
+    def extra_repr(self) -> str:
+        return (
+            f'{self.num_features}, eps={self.eps}, momentum={self.momentum}, '
+            f'affine={self.affine}'
+        )
+```
+
+First, compare it with `BatchNorm` using a two-dimensional input:
+
+```{python}
+x = torch.randn(8, 4)
+batch_norm1 = BatchNorm(4)
+batch_norm2 = nn.BatchNorm1d(4)
+
+with torch.no_grad():
+    batch_norm2.weight.copy_(batch_norm1.weight)
+    batch_norm2.bias.copy_(batch_norm1.bias)
+
+batch_norm1.train()
+batch_norm2.train()
+
+actual = batch_norm1(x)
+expected = batch_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+diff_mean = (batch_norm1.running_mean - batch_norm2.running_mean).abs().max()
+diff_var = (batch_norm1.running_var - batch_norm2.running_var).abs().max()
+
+print('Maximum training difference:', max_diff.item())
+print('Running mean difference:', diff_mean.item())
+print('Running variance difference:', diff_var.item())
+```
+
+Then test a four-dimensional CNN input:
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+batch_norm1 = BatchNorm(3)
+batch_norm2 = nn.BatchNorm2d(3)
+
+with torch.no_grad():
+    batch_norm2.weight.copy_(batch_norm1.weight)
+    batch_norm2.bias.copy_(batch_norm1.bias)
+
+batch_norm1.train()
+batch_norm2.train()
+
+actual = batch_norm1(x)
+expected = batch_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+diff_mean = (batch_norm1.running_mean - batch_norm2.running_mean).abs().max()
+diff_var = (batch_norm1.running_var - batch_norm2.running_var).abs().max()
+
+print('Maximum training difference:', max_diff.item())
+print('Running mean difference:', diff_mean.item())
+print('Running variance difference:', diff_var.item())
+```
+
+This implementation omits some options from the complete PyTorch module, such as `track_running_stats=False` and `momentum=None`, but it already includes the core computation of BatchNorm. The complete implementation is in the `dnnlpy` source code.
+
+## 7.3.8 BatchNorm1d, BatchNorm2d, and BatchNorm3d
+
+PyTorch provides three commonly used BatchNorm modules:
+
+- `nn.BatchNorm1d`
+- `nn.BatchNorm2d`
+- `nn.BatchNorm3d`
+
+Their main difference is the expected input shape, not a difference in the normalization idea.
+
+::: {.list-table}
+Table 1: PyTorch BatchNorm Modules and Common Input Shapes
+
+- - Module
+  - Common input shape
+  - Statistical dimensions for each channel
+
+- - `BatchNorm1d(C)`
+  - $(N, C)$
+  - $N$
+
+- - `BatchNorm1d(C)`
+  - $(N, C, L)$
+  - $N, L$
+
+- - `BatchNorm2d(C)`
+  - $(N, C, H, W)$
+  - $N, H, W$
+
+- - `BatchNorm3d(C)`
+  - $(N, C, D, H, W)$
+  - $N, D, H, W$
+:::
+
+Regardless of how many spatial or sequence dimensions the input has, BatchNorm preserves the channel dimension $C$ and computes statistics over the other dimensions.
+
+```{python}
+x_1d = torch.randn(4, 8, 16)
+x_2d = torch.randn(4, 8, 16, 16)
+x_3d = torch.randn(4, 8, 4, 16, 16)
+
+batch_norm_1d = nn.BatchNorm1d(8)
+batch_norm_2d = nn.BatchNorm2d(8)
+batch_norm_3d = nn.BatchNorm3d(8)
+
+print('BatchNorm1d output:', batch_norm_1d(x_1d).shape)
+print('BatchNorm2d output:', batch_norm_2d(x_2d).shape)
+print('BatchNorm3d output:', batch_norm_3d(x_3d).shape)
+```
+
+Note that `1d`, `2d`, and `3d` describe the additional sequence or spatial structure in the data, while `num_features` always corresponds to the channel dimension.
+
+## 7.3.9 Conv-BN Fusion: Why Can They Be Merged during Inference?
+
+In evaluation mode, BatchNorm uses fixed running statistics:
+
+$$
+y = \gamma \frac{z-\mu}{\sqrt{\sigma^2+\epsilon}} + \beta
+$$
+
+where $z$ is the convolution output:
+
+$$
+z = W * x + b
+$$
+
+Substitute the convolution into BatchNorm:
+
+$$
+y = \gamma \frac{W*x+b-\mu}{\sqrt{\sigma^2 + \epsilon}} + \beta
+$$
+
+Let:
+
+$$
+s = \frac{\gamma}{\sqrt{\sigma^2 + \epsilon}}
+$$
+
+Then we can write:
+
+$$
+y = s(W*x+b-\mu) + \beta
+$$
+
+Expanding gives:
+
+$$
+y = (sW)*x + [s(b-\mu)+\beta]
+$$
+
+Therefore, we can construct a new convolutional layer:
+
+$$
+\begin{align}
+W_{\text{fused}} &= sW, \\
+b_{\text{fused}} &= s(b-\mu)+\beta
+\end{align}
+$$
+
+The output of this new convolutional layer is the same as that of the original `Conv2d + BatchNorm2d`. Thus, BatchNorm does not need to be executed separately during inference.
+
+Here, every output channel has an independent $s_c$. Therefore, for the convolution kernel:
+
+$$
+W\in\mathbb{R}^{C_{\text{out}}\times C_{\text{in}}\times K_H\times K_W}
+$$
+
+the scaling factor needs to be reshaped to:
+
+$$
+(C_{\text{out}},1,1,1)
+$$
+
+and then multiplied by the entire convolution kernel corresponding to each output channel.
+
+::: {.callout-Warning}
+Note that Conv-BN Fusion applies only to inference semantics. During training, BatchNorm uses the dynamic statistics of the current batch, so it cannot be absorbed into fixed convolution parameters in advance.
+:::
+
+## 7.3.10 A PyTorch Implementation of Conv-BN Fusion
+
+Below, we implement a simplified `fuse_conv_bn_eval`. It requires both the convolutional layer and BatchNorm to already be in `eval` mode and BatchNorm to have maintained its running statistics.
+
+```{python}
+def fuse_conv_bn_eval(
+    conv: nn.Conv2d,
+    bn: nn.BatchNorm2d,
+) -> nn.Conv2d:
+    if conv.training or bn.training:
+        raise AssertionError('Both `conv` and `bn` must be in eval mode.')
+
+    if conv.out_channels != bn.num_features:
+        raise AssertionError('`conv.out_channels` must equal `bn.num_features`.')
+
+    fused_conv = copy.deepcopy(conv)
+
+    conv_weight = conv.weight
+    if conv.bias is None:
+        conv_bias = torch.zeros(
+            conv.out_channels,
+            device=conv_weight.device,
+            dtype=conv_weight.dtype,
+        )
+    else:
+        conv_bias = conv.bias
+
+    if bn.affine:
+        gamma = bn.weight
+        beta = bn.bias
+    else:
+        gamma = torch.ones_like(bn.running_mean)
+        beta = torch.zeros_like(bn.running_mean)
+
+    scale = gamma * (bn.running_var + bn.eps).rsqrt()
+
+    fused_weight = conv_weight * scale.reshape(-1, 1, 1, 1)
+    fused_bias = (conv_bias - bn.running_mean) * scale + beta
+
+    fused_conv.weight = nn.Parameter(fused_weight)
+    fused_conv.bias = nn.Parameter(fused_bias)
+
+    return fused_conv
+```
+
+Construct a convolution and BatchNorm, first update the running statistics with several batches, and then compare the outputs before and after fusion:
+
+```{python}
+conv = nn.Conv2d(
+    in_channels=3,
+    out_channels=8,
+    kernel_size=3,
+    padding=1,
+    bias=False,
+)
+batch_norm = nn.BatchNorm2d(8)
+
+conv.train()
+batch_norm.train()
+
+for _ in range(20):
+    x = torch.randn(16, 3, 16, 16)
+    y = batch_norm(conv(x))
+
+conv.eval()
+batch_norm.eval()
+
+fused_conv = fuse_conv_bn_eval(conv, batch_norm)
+fused_conv.eval()
+
+x = torch.randn(4, 3, 16, 16)
+
+with torch.inference_mode():
+    output = batch_norm(conv(x))
+    fused_output = fused_conv(x)
+
+max_diff = (output - fused_output).abs().max()
+print('Maximum fusion difference:', max_diff.item())
+```
+
+Because of floating-point rounding errors, the two outputs may not be exactly identical bit by bit, but the maximum difference should be very small.
+
+The fused module contains only one convolutional layer:
+
+```{python}
+print('Original convolution bias:', conv.bias)
+print('Fused convolution bias shape:', fused_conv.bias.shape)
+```
+
+Even if the original convolution is configured with `bias=False`, the fused convolution usually needs a bias because the running mean of BatchNorm and $\beta$ produce a new shift term.
+
+PyTorch also provides a corresponding utility function:
+
+```{python}
+from torch.nn.utils import fuse_conv_bn_eval as torch_fuse_conv_bn_eval
+
+torch_fused_conv = torch_fuse_conv_bn_eval(conv, batch_norm)
+
+with torch.inference_mode():
+    torch_fused_output = torch_fused_conv(x)
+
+max_diff = (fused_output - torch_fused_output).abs().max()
+print('Difference from PyTorch fusion:', max_diff.item())
+```
+
+Conv-BN Fusion does not change the function learned by the model. It simply uses the fact that BatchNorm becomes a fixed affine transformation during inference and rewrites two consecutive operators as a single convolution operator.
+
+## 7.3.11 Where Is BatchNorm Usually Placed in a Network?
+
+In a classic CNN, a common structure is:
+
+```text
+Convolution
+    ↓
+Batch Normalization
+    ↓
+Activation
+```
+
+That is:
+
+```python
+nn.Conv2d(..., bias=False)
+n.BatchNorm2d(...)
+n.ReLU()
+```
+
+The convolution first produces a linear response for each channel, BatchNorm adjusts the scale of these responses, and the activation function then adds nonlinearity.
+
+```{python}
+block = nn.Sequential(
+    nn.Conv2d(3, 16, kernel_size=3, padding=1, bias=False),
+    nn.BatchNorm2d(16),
+    nn.ReLU(),
+)
+
+x = torch.randn(4, 3, 32, 32)
+output = block(x)
+print('Output shape:', output.shape)
+```
+
+Here, the convolutional layer can usually be configured with `bias=False` because BatchNorm itself contains a learnable shift parameter $\beta$. Even if the convolution adds a fixed bias, it will be removed when the mean is computed during training:
+
+$$
+\operatorname{Conv}(x)+b - \mathbb{E}[\operatorname{Conv}(x)+b] =
+\operatorname{Conv}(x) - \mathbb{E}[\operatorname{Conv}(x)]
+$$
+
+Therefore, the convolutional bias is usually redundant in a convolutional layer immediately followed by BatchNorm.
+
+However, the module order is not a mathematical law. Different architectures may use different placements, and modern networks also include designs such as pre-activation. When reading model code, follow the specific architecture instead of assuming that every BatchNorm must be placed before the activation function.
+
+## 7.3.12 Limitations of BatchNorm
+
+BatchNorm is effective, but it is not suitable for every setting.
+
+First, it depends on batch statistics. When the batch size is small, the estimates of the mean and variance become noisier. In high-resolution tasks such as object detection and semantic segmentation, memory constraints may allow only a small number of samples on each GPU, in which case the effectiveness of BatchNorm may decline.
+
+Second, training and inference use different statistics. If the running statistics have not been sufficiently updated, or if the inference data distribution differs substantially from the training distribution, model performance may be affected.
+
+Third, the training output for one sample is affected by the other samples in the batch. This means BatchNorm is not completely sample-wise independent, which also makes it less natural for some sequence-modeling and autoregressive tasks.
+
+Finally, in distributed training, each device may see only its local mini-batch. Ordinary BatchNorm uses statistics from the local device by default. If statistics should be computed jointly across devices, a synchronization scheme such as `SyncBatchNorm` is needed, but this adds communication overhead.
+
+These limitations explain why Layer Normalization, Instance Normalization, and Group Normalization appear later. Their formulas are all very similar; what actually changes is the dimension over which statistics are computed and whether they depend on the batch.
+
+## 7.3.13 Summary
+
+This section introduced the core idea of batch normalization.
+
+For a two-dimensional input `(N, C)`, BatchNorm computes statistics separately for each feature `C` and calculates the mean and variance over the batch dimension `N`. For a CNN input `(N, C, H, W)`, it still preserves the channel dimension `C`, but computes statistics jointly over `N, H, W`. After standardization, BatchNorm uses learnable parameters $\gamma$ and $\beta$ to restore the model's expressive power over feature scale and shift:
+
+$$
+y = \gamma \frac{x-\mu}{\sqrt{\sigma^2+\epsilon}} + \beta
+$$
+
+During training, it uses the current batch statistics while updating the running statistics; during inference, it uses the fixed `running_mean` and `running_var`. Therefore, BatchNorm is a module whose training and inference behaviors differ, and calling `model.eval()` is very important.
+
+The core of BatchNorm can be summarized as follows:
+
+1. Preserve the channel dimension `C`;
+2. Compute statistics over the batch and spatial dimensions;
+3. Standardize to a unified scale;
+4. Use $\gamma$ and $\beta$ to learn an appropriate affine transformation.
+
+In CNNs, BatchNorm is a fixed affine transformation during inference, so it can be merged into the preceding convolutional layer. This is the basis of Conv-BN Fusion.
+
+The main limitation of BatchNorm is its dependence on batch statistics. In the next section, we introduce **Layer Normalization** [@ba2016LayerNorm]. It no longer computes statistics across samples, but normalizes the last several feature dimensions within each sample, so it uses exactly the same computation during training and inference.
