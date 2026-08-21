@@ -4,7 +4,7 @@ project:
   render:
     - "*.qmd"
   post-render:
-    - "utils/clean_cache.py"
+    - "utils/clean_quarto_cache.py"
     - "utils/ipynb_clean_attachments.py"
     - "utils/ipynb_add_image_attrs.py"
 

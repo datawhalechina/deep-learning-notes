@@ -5,7 +5,7 @@ project:
     - "en/*.qmd"
   post-render:
     - "utils/clean_checkpoints.py"
-    - "utils/clean_cache.py"
+    - "utils/clean_quarto_cache.py"
     - "utils/typst_rename_pdfs.py"
 
 execute:
@@ -42,7 +42,10 @@ book:
     - part: "Chapter 1: Introduction to Deep Learning"
       chapters:
         - "en/ch1-introduction/ch1.1-neural-network.qmd"
+        - "en/ch1-introduction/ch1.2-loss-function.qmd"
         - "en/ch1-introduction/ch1.3-computation-graph.qmd"
+        - "en/ch1-introduction/ch1.4-gradient-descent.qmd"
+        - "en/ch1-introduction/ch1.5-why-neural-networks-can-be-trained.qmd"
     - part: "Chapter 2: Getting Started with PyTorch"
       chapters:
         - "en/ch2-pytorch-introduction/ch2.1-automatic-differentiation.qmd"
@@ -73,6 +76,24 @@ book:
         - "en/ch4-optimization-algorithms/ch4.7-muon.qmd"
         - "en/ch4-optimization-algorithms/ch4.8-optimizer-practice.qmd"
         - "en/ch4-optimization-algorithms/ch4.9-learning-rate-schedulers.qmd"
+    - part: "Chapter 5: Convolutional Neural Network: From Local Perception to Global Modeling"
+      chapters:
+        - "zh/ch5-convolutional-neural-network/ch5.1-from-mlp-to-cnn.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.2-convolution.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.3-conv2d-from-scratch.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.4-pooling-and-downsampling.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.5-build-a-simple-cnn.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.6-lenet.qmd"
+    - part: "Chapter 7: Regularization and Normalization: Making Deep Networks More Stable"
+      chapters:
+        - "zh/ch7-regularization-and-normalization/ch7.1-why-regularization-and-normalization.qmd"
+        - "zh/ch7-regularization-and-normalization/ch7.2-dropout.qmd"
+        - "zh/ch7-regularization-and-normalization/ch7.3-batch-normalization.qmd"
+        - "zh/ch7-regularization-and-normalization/ch7.4-layer-normalization.qmd"
+        - "zh/ch7-regularization-and-normalization/ch7.5-instance-normalization.qmd"
+        - "zh/ch7-regularization-and-normalization/ch7.6-group-normalization.qmd"
+        - "zh/ch7-regularization-and-normalization/ch7.7-rms-normalization.qmd"
+        - "zh/ch7-regularization-and-normalization/ch7.8-normalization-unified-view.qmd"
     - part: "Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
       chapters:
         - "en/ch9-attention-and-transformer/ch9.1-bahdanau-attention.qmd"
@@ -111,3 +132,15 @@ book:
         - "en/ch14-diffusion-models/ch14.3-ddpm-reverse.qmd"
         - "en/ch14-diffusion-models/ch14.4-ddpm-design-and-sampling.qmd"
         - "en/ch14-diffusion-models/ch14.5-elbo-for-ddpm.qmd"
+    - part: "Chapter 18: Implementing GPT-2 from Scratch: Core Structures for Language Model Training"
+      chapters:
+        - "zh/ch18-gpt2-from-scratch/ch18.1-next-token-prediction.qmd"
+        - "zh/ch18-gpt2-from-scratch/ch18.2-minigpt.qmd"
+        - "zh/ch18-gpt2-from-scratch/ch18.3-tokenizer.qmd"
+        - "zh/ch18-gpt2-from-scratch/ch18.4-weight-tying.qmd"
+        - "zh/ch18-gpt2-from-scratch/ch18.5-train-minigpt.qmd"
+        - "zh/ch18-gpt2-from-scratch/ch18.6-generation.qmd"
+        - "zh/ch18-gpt2-from-scratch/ch18.7-gpt2-vs-minigpt.qmd"
+    - part: "Chapter 19: LLM Training Engineering: Memory, Computation, and Parallel Training"
+      chapters:
+        - "zh/ch19-llm-training-engineering/ch19.1-memory-ledger.qmd"

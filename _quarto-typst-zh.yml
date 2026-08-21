@@ -5,7 +5,7 @@ project:
     - "zh/*.qmd"
   post-render:
     - "utils/clean_checkpoints.py"
-    - "utils/clean_cache.py"
+    - "utils/clean_quarto_cache.py"
     - "utils/typst_rename_pdfs.py"
 
 execute:
@@ -46,6 +46,8 @@ book:
         - "zh/ch1-introduction/ch1.1-neural-network.qmd"
         - "zh/ch1-introduction/ch1.2-loss-function.qmd"
         - "zh/ch1-introduction/ch1.3-computation-graph.qmd"
+        - "zh/ch1-introduction/ch1.4-gradient-descent.qmd"
+        - "zh/ch1-introduction/ch1.5-why-neural-networks-can-be-trained.qmd"
     - part: "Chapter 2: PyTorch 入门"
       chapters:
         - "zh/ch2-pytorch-introduction/ch2.1-automatic-differentiation.qmd"
