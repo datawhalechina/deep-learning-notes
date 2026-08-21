@@ -22,10 +22,10 @@ $$
 Momentum adds the accumulated direction of past gradients on top of this:
 
 $$
-\begin{aligned}
+\begin{align}
 v_t &= \beta v_{t-1} + g_t \\
 \theta_{t+1} &= \theta_t - \eta v_t
-\end{aligned}
+\end{align}
 $$
 
 Momentum addresses the direction problem: the gradient of the current mini-batch may be noisy, so instead of trusting only the current gradient, we refer to the trend over a period of time in the past. Therefore, momentum can make gradient descent more inertial, accelerate training, and reduce oscillation.
@@ -361,10 +361,10 @@ $$
 Adagrad improves the second part. It still uses the current gradient direction, but adjusts the effective learning rate according to the magnitude of each parameter's past gradients:
 
 $$
-\begin{aligned}
+\begin{align}
 s_t &= s_{t-1} + g_t^2 \\
 \theta_{t+1} &= \theta_t - \eta \frac{g_t}{\sqrt{s_t}+\epsilon}
-\end{aligned}
+\end{align}
 $$
 
 So we can understand it this way:

@@ -330,11 +330,11 @@ The update process of this simplified Muon can be split into three steps:
 That is:
 
 $$
-\begin{aligned}
+\begin{align}
 B_t &= \mu B_{t-1} + G_t \\
 O_t &= \operatorname{Orthogonalize}(B_t) \\
 W_t &= W_{t-1} - \eta O_t
-\end{aligned}
+\end{align}
 $$
 
 Now let us test this Muon implementation.
