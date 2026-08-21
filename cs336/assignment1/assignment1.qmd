@@ -1106,10 +1106,10 @@ print('y.shape:', y.shape)
 block 采用 pre-norm 结构。第一个 residual branch 为 causal self-attention，第二个 residual branch 为完整 SwiGLU feed-forward network：
 
 $$
-\begin{aligned}
+\begin{align}
 h &= x + \operatorname{Attention}(\operatorname{RMSNorm}(x)) \\
 y &= h + \operatorname{SwiGLU}(\operatorname{RMSNorm}(h))
-\end{aligned}
+\end{align}
 $$
 
 ```{python}
