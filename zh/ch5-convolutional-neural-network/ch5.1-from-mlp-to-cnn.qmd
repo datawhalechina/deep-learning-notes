@@ -311,7 +311,7 @@ print(f'Conv2d layer: {conv2d_params:,} parameters.')
 
 可以把这个过程粗略理解为：
 
-![图 5.1.7 CNN 层次化特征学习](figures/ch5.1-hierarchical-learning.png){width="80%"}
+![图 5.1.7 CNN 层次化特征学习](figures/ch5.1-hierarchical-learning.png){width=80%}
 
 这种从局部到全局、从简单模式到复杂模式的逐层组合过程，就是 CNN 的**层次化特征学习（hierarchical feature learning）**。虽然单个卷积输出只依赖一个局部窗口，但多层卷积堆叠后，后层特征能够间接看到越来越大的输入区域。
 
