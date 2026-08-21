@@ -14,7 +14,7 @@ on:
       - "styles.css"
       - "refs-*.bib"
       - "utils/download_datasets.py"
-      - "utils/clean_cache.py"
+      - "utils/clean_quarto_cache.py"
       - "utils/clean_checkpoints.py"
       - "utils/html*"
       - ".github/workflows/quarto-ci.yml"
