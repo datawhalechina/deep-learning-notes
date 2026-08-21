@@ -106,11 +106,11 @@ $$
 如果输入有 3 个通道，那么生成一个输出通道时，需要进行 3 次二维卷积：
 
 $$
-\begin{aligned}
+\begin{align}
 X_0 \ast W_{o,0} \\
 X_1 \ast W_{o,1} \\
 X_2 \ast W_{o,2}
-\end{aligned}
+\end{align}
 $$
 
 然后将这 3 个结果相加：
@@ -660,11 +660,11 @@ print('Is the unfold implementation close to F.conv2d?', flag)
 卷积层最重要的张量形状是：
 
 $$
-\begin{aligned}
+\begin{align}
 X&:\ (N,C_{\text{in}},H,W) \\
 W&:\ (C_{\text{out}},C_{\text{in}},K_h,K_w) \\
 Y&:\ (N,C_{\text{out}},H_{\text{out}},W_{\text{out}})
-\end{aligned}
+\end{align}
 $$
 
 对于每个输出位置，卷积层取出一个形状为 $(C_{\text{in}},K_h,K_w)$ 的局部窗口，与某个输出通道对应的整组权重逐元素相乘并求和。不同空间位置共享相同的权重，而不同输出通道使用不同的权重组。
