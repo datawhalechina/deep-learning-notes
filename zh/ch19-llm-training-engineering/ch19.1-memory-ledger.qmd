@@ -424,11 +424,11 @@ optimizer states
 Self-Attention 首先计算：
 
 $$
-\begin{aligned}
+\begin{align}
 Q &= X W_Q \\
 K &= X W_K \\
 V &= X W_V
-\end{aligned}
+\end{align}
 $$
 
 它们通常都具有和 hidden states 相同的总元素数量，也就是 $BTD$。所以三者合起来大约为 $3BTD$ 个元素。
