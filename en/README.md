@@ -5,6 +5,8 @@
 - 1.1 Neural Networks: A Learnable Function
 - 1.2 Loss Function: How Does a Model Know How Wrong It Is?
 - 1.3 Forward Propagation, Backpropagation, and Computation Graph
+- 1.4 Gradient Descent: From Gradients to Parameter Updates
+- 1.5 Why Neural Networks Can Be Trained: Optimization Intuition in High-Dimensional Spaces
 
 ## Chapter 2: Getting Started with PyTorch
 
@@ -38,6 +40,26 @@
 - 4.7 Muon: Orthogonalized Updates for Matrix Parameters
 - 4.8 Optimizer Map: When to Use Which Optimization Algorithm
 - 4.9 Learning Rate Schedulers: Letting the Learning Rate Change During Training
+
+## Chapter 5: Convolutional Neural Networks: From Local Perception to Global Modeling
+
+- 5.1 From MLP to CNN: Why Images Need Convolution
+- 5.2 Convolution Computation: Kernel, Padding, Stride, and Channels
+- 5.3 Implement Conv2d from Scratch: From Sliding Windows to a PyTorch Module
+- 5.4 Pooling and Downsampling: Max Pooling, Average Pooling, and Adaptive Pooling
+- 5.5 Building a Simple CNN: From Feature Extraction to Image Classification
+- 5.6 LeNet: The Early Template of Convolution, Pooling, and Fully Connected Layers
+
+## Chapter 7: Regularization and Normalization: Making Deep Networks More Stable
+
+- 7.1 Why Deep Networks Need Regularization and Normalization
+- 7.2 Dropout: Reducing Overfitting through Random Deactivation
+- 7.3 BatchNorm: Stabilizing Training with Batch Statistics
+- 7.4 LayerNorm: Normalizing Features Within Each Sample
+- 7.5 InstanceNorm: Normalizing Each Channel Within Each Sample
+- 7.6 GroupNorm: Normalizing Features Within Channel Groups
+- 7.7 RMSNorm: Normalizing Feature Magnitudes Without Mean Centering
+- 7.8 A Unified View of Normalization: Which Dimensions Are Normalized?
 
 ## Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling
 
@@ -81,3 +103,17 @@
 - 14.3 DDPM's Reverse Denoising Process and Training Objective
 - 14.4 DDPM Network Structure and Sampling Process
 - 14.5 DDPM from a Variational Derivation: Where Does the ELBO Come From?
+
+## Chapter 18: Implementing GPT-2 from Scratch: Core Structures for Language Model Training
+
+- 18.1 What Language Models Predict: Next-Token Prediction
+- 18.2 MiniGPT: From a Causal GPT Block to a Decoder-only Language Model
+- 18.3 Tokenizer: Characters, BPE, and Vocabulary
+- 18.4 Embedding, LM Head, and Weight Tying
+- 18.5 Training MiniGPT on TinyStories
+- 18.6 From Training to Generation: Temperature, Top-k, and Top-p
+- 18.7 GPT-2: From MiniGPT to a Pretrained Language Model
+
+## Chapter 19: LLM Training Engineering: Memory, Computation, and Parallel Training
+
+- 19.1 Where Does the Memory Go When Training an LLM? Model States, Activations, and Runtime Overhead
