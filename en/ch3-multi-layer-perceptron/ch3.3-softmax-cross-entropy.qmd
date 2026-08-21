@@ -14,11 +14,11 @@ order: 3
 In the previous two sections, we obtained the basic form of an MLP:
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \phi(H) \\
 Z &= AW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 Here, $Z$ is the output of the final layer of the model. For the MNIST classification task, each image belongs to one of 10 classes, so the final layer usually outputs 10 numbers:

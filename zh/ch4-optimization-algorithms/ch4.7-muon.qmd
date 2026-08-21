@@ -330,11 +330,11 @@ class Muon(dopt.Optimizer):
 也就是：
 
 $$
-\begin{aligned}
+\begin{align}
 B_t &= \mu B_{t-1} + G_t \\
 O_t &= \operatorname{Orthogonalize}(B_t) \\
 W_t &= W_{t-1} - \eta O_t
-\end{aligned}
+\end{align}
 $$
 
 现在我们来测试一下这个 Muon 实现。

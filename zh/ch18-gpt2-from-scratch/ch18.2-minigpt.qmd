@@ -59,10 +59,10 @@ print('PyTorch version:', torch.__version__)
 现代 GPT 类模型通常使用 Pre-LN 结构：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= X + \operatorname{CausalSelfAttention}(\operatorname{LayerNorm}(X)) \\
 Y &= H + \operatorname{MLP}(\operatorname{LayerNorm}(H))
-\end{aligned}
+\end{align}
 $$
 
 写成代码就是：
@@ -558,12 +558,12 @@ print('Logits vector shape:', logits[b, t].shape)
 Causal mask 保证每个位置只能看到左侧上下文，因此一段长度为 $T$ 的输入可以同时产生 $T$ 个训练样本：
 
 $$
-\begin{aligned}
+\begin{align}
 x_1 &\rightarrow x_2, \\
 x_1,x_2 &\rightarrow x_3, \\
 &\vdots \\
 x_1,\dots,x_T &\rightarrow x_{T+1}
-\end{aligned}
+\end{align}
 $$
 
 模型输出：

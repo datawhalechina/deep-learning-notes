@@ -42,12 +42,12 @@ $$
 也就是：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \operatorname{ReLU}(H) \\
 Z &= AW_2 + b_2 \\
 L &= \operatorname{CrossEntropyLoss}(Z, y)
-\end{aligned}
+\end{align}
 $$
 
 其中，$X$ 是输入，$y$ 是标签，$H$ 是隐藏层输出，$A$ 是经过 ReLU 后的隐藏层表示，$Z$ 是最终 logits，$L$ 是分类损失。
@@ -210,11 +210,11 @@ $$
 对应的梯度为：
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial W_2} &= A^\top G_Z \\
 \frac{\partial L}{\partial b_2} &= \sum_{i=1}^{B} (G_Z)_i \\
 \frac{\partial L}{\partial A} &= G_Z W_2^\top
-\end{aligned}
+\end{align}
 $$
 
 接着经过 ReLU。因为：
@@ -246,11 +246,11 @@ $$
 对应的梯度为：
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial W_1} &= X^\top G_H \\
 \frac{\partial L}{\partial b_1} &= \sum_{i=1}^{B} (G_H)_i \\
 \frac{\partial L}{\partial X} &= G_H W_1^\top
-\end{aligned}
+\end{align}
 $$
 
 如果我们只是训练模型，通常不需要继续使用 $\frac{\partial L}{\partial X}$，因为输入图片不是需要学习的参数。但从反向传播的角度看，线性层仍然会把梯度传回给前一层。

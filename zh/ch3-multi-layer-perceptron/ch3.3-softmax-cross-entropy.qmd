@@ -14,11 +14,11 @@ order: 3
 前面两节我们已经得到了 MLP 的基本形式：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \phi(H) \\
 Z &= AW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 其中，$Z$ 是模型最后一层的输出。对于 MNIST 分类任务，每张图片属于 10 个类别之一，所以最后一层通常输出 10 个数字：

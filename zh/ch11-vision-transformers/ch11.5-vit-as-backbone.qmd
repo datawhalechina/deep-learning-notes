@@ -14,14 +14,14 @@ order: 5
 上一节里，我们已经把一个最基本的 Vision Transformer 串了起来：
 
 $$
-\begin{aligned}
+\begin{align}
 \text{image}
 & \rightarrow \text{patch embedding} \\
 & \rightarrow \text{class token} \\
 & \rightarrow \text{positional embedding} \\
 & \rightarrow \text{Transformer Encoder} \\
 & \rightarrow \text{classification head}
-\end{aligned}
+\end{align}
 $$
 
 如果目标只是图像分类，到这里似乎已经结束了。输入一张图像，模型输出类别 logits，然后用交叉熵训练即可。

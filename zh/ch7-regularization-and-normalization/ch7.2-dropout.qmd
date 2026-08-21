@@ -130,13 +130,13 @@ $$
 所以：
 
 $$
-\begin{aligned}
+\begin{align}
 \mathbb{E}[\tilde{x}_i]
 &= \mathbb{E}\left[\frac{m_i x_i}{1-p}\right] \\
 &= \frac{x_i}{1-p}\mathbb{E}[m_i] \\
 &= \frac{x_i}{1-p}(1-p) \\
 &= x_i
-\end{aligned}
+\end{align}
 $$
 
 因此，虽然单次前向传播会随机改变输出，但大量随机采样下，dropout 输出的期望值仍然等于原始输入。
@@ -166,10 +166,10 @@ $$
 也就是说：
 
 $$
-\begin{aligned}
+\begin{align}
 \text{training:} &\quad \tilde{x}=\frac{m\odot x}{1-p} \\
 \text{inference:} &\quad \tilde{x}=x
-\end{aligned}
+\end{align}
 $$
 
 这也是 PyTorch、TensorFlow 等框架通常采用的实现方式。

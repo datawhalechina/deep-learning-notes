@@ -29,12 +29,12 @@ $$
 
 To train it, we manually completed:
 
-1. forward propagation;
-2. loss function computation;
-3. backpropagation;
-4. parameter updates;
-5. mini-batch training loop;
-6. numerical gradient checking.
+1. Forward propagation;
+2. Loss function computation;
+3. Backpropagation;
+4. Parameter updates;
+5. Mini-batch training loop;
+6. Numerical gradient checking.
 
 The benefit of doing this is that we can see every detail of neural network training clearly. But in real projects, we usually do not hand-write the backward pass for every layer. Instead, we let a deep learning framework handle it automatically.
 
@@ -63,17 +63,17 @@ print('PyTorch version:', torch.__version__)
 In the previous NumPy version, the structure of the two-layer MLP was:
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \operatorname{ReLU}(H) \\
 Z &= AW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 where:
 
 $$
-\begin{aligned}
+\begin{align}
 X &\in \mathbb{R}^{B \times 784} \\
 W_1 &\in \mathbb{R}^{784 \times H} \\
 b_1 &\in \mathbb{R}^{H} \\
@@ -82,7 +82,7 @@ A &\in \mathbb{R}^{B \times H} \\
 W_2 &\in \mathbb{R}^{H \times 10} \\
 b_2 &\in \mathbb{R}^{10} \\
 Z &\in \mathbb{R}^{B \times 10}
-\end{aligned}
+\end{align}
 $$
 
 For MNIST, each image has size $28 \times 28$. After flattening, it becomes a 784-dimensional vector. The output layer has 10 neurons, corresponding to the 10 classes for digits 0 through 9.
@@ -145,8 +145,8 @@ print('loss:', loss.item())
 
 This is the same objective function as the `CrossEntropyLoss` we implemented in NumPy earlier. The difference is:
 
-- in the NumPy version, we explicitly implemented softmax, cross entropy, and backward;
-- in the PyTorch version, `nn.CrossEntropyLoss` internally performs stable log-softmax and negative log likelihood computation for us.
+- In the NumPy version, we explicitly implemented softmax, cross entropy, and backward;
+- In the PyTorch version, `nn.CrossEntropyLoss` internally performs stable log-softmax and negative log likelihood computation for us.
 
 Therefore, in PyTorch, do not write this first:
 
@@ -388,10 +388,10 @@ for epoch in range(1, num_epochs + 1):
 
 This training loop is very similar to the NumPy version. The biggest differences are:
 
-- in the NumPy version, `backward` was written by hand;
-- in the PyTorch version, `loss.backward()` automatically performs backpropagation;
-- in the NumPy version, `param -= lr * grad` was written by hand;
-- in the PyTorch version, `optimizer.step()` automatically performs parameter updates.
+- In the NumPy version, `backward` was written by hand;
+- In the PyTorch version, `loss.backward()` automatically performs backpropagation;
+- In the NumPy version, `param -= lr * grad` was written by hand;
+- In the PyTorch version, `optimizer.step()` automatically performs parameter updates.
 
 ## 3.8.7 Visualizing the Training Process
 

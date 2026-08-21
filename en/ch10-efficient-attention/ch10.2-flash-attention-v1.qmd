@@ -75,9 +75,9 @@ This means that softmax does not seem as easy to tile as matrix multiplication. 
 
 In other words, even if we compute $QK^\top$ block by block, we still cannot immediately accumulate it as simply as GEMM, because:
 
-- the local maximum inside the current block may not be the maximum of the whole row;
-- the exponential sum of the current block also depends on the choice of maximum;
-- the output that has already been accumulated earlier may also need to be rescaled according to the new maximum.
+- The local maximum inside the current block may not be the maximum of the whole row;
+- The exponential sum of the current block also depends on the choice of maximum;
+- The output that has already been accumulated earlier may also need to be rescaled according to the new maximum.
 
 This is the root reason why standard attention cannot directly perform “compute while normalizing.”
 
@@ -195,15 +195,15 @@ $$
 
 This formula may look a bit confusing at first, but the logic behind it is actually simple:
 
-- the old output $O_i$ was computed under the old scale, so it must be multiplied by $\alpha l_i$ to be rescaled to the new scale;
-- the output $P_{ij} V_j$ of the new block was computed under the current block’s own scale, so it must be multiplied by $\beta$ to be rescaled to the new scale;
-- after adding the two parts together, we divide by the new normalized sum $l_i'$ to obtain the correct output under the unified scale.
+- The old output $O_i$ was computed under the old scale, so it must be multiplied by $\alpha l_i$ to be rescaled to the new scale;
+- The output $P_{ij} V_j$ of the new block was computed under the current block’s own scale, so it must be multiplied by $\beta$ to be rescaled to the new scale;
+- After adding the two parts together, we divide by the new normalized sum $l_i'$ to obtain the correct output under the unified scale.
 
 So what FlashAttention v1 really maintains is not the full block of $S$ or $P$, but only:
 
-- one maximum value $m_i$ for each row;
-- one normalized sum $l_i$ for each row;
-- one output vector $O_i$ for each row.
+- One maximum value $m_i$ for each row;
+- One normalized sum $l_i$ for each row;
+- One output vector $O_i$ for each row.
 
 These quantities (except for $O$) are much smaller than the $N\times N$ attention matrix, so they can be kept entirely in on-chip SRAM, thus avoiding writing intermediate matrices back to HBM.
 
@@ -213,12 +213,12 @@ With online softmax, the forward pass of FlashAttention v1 becomes very natural.
 
 The overall idea is:
 
-1. split $Q$ into row blocks, and split $K$ and $V$ into column blocks;
-2. fix one $Q_i$ block and scan all $K_j, V_j$ blocks in sequence;
-3. for each block, compute the local scores $S_{ij} = Q_i K_j^\top$;
-4. perform local softmax inside the block, and update $m_i, l_i, O_i$ using the online softmax formulas;
-5. after all $K, V$ blocks have been scanned, obtain the final output corresponding to this $Q_i$ block;
-6. repeat this process until all $Q$ blocks have been processed.
+1. Split $Q$ into row blocks, and split $K$ and $V$ into column blocks;
+2. Fix one $Q_i$ block and scan all $K_j, V_j$ blocks in sequence;
+3. For each block, compute the local scores $S_{ij} = Q_i K_j^\top$;
+4. Perform local softmax inside the block, and update $m_i, l_i, O_i$ using the online softmax formulas;
+5. After all $K, V$ blocks have been scanned, obtain the final output corresponding to this $Q_i$ block;
+6. Repeat this process until all $Q$ blocks have been processed.
 
 ![Figure 10.2.3: FlashAttention v1 forward pass flow [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.2-fa1-loop.png){width=50%}
 
@@ -272,10 +272,10 @@ $$
 Then after applying the backward pass of softmax, we obtain $dS$, and finally propagate back to $Q$ and $K$:
 
 $$
-dS = dP \odot P - \mathrm{rowsum}(dP \odot P)
-$$
-$$
-dQ = dS\,K, \quad dK = dS^\top Q
+\begin{align}
+dS = dP \odot P - \mathrm{rowsum}(dP \odot P) \\
+dQ = dS\ K, \quad dK = dS^\top Q
+\end{align}
 $$
 
 So mathematically, the backward pass of FlashAttention v1 is the same as that of standard attention. The only real difference is this: these intermediate quantities are no longer stored in advance, but are recomputed during the backward pass.
@@ -352,7 +352,7 @@ But this does not mean that FlashAttention v1 has already reached the optimum. M
 
 In the forward pass of FlashAttention v1, it is common to place the blocks of $K, V$ in the outer loop and the blocks of $Q$ in the inner loop. In other words, the computation is closer to the following structure:
 
-```{.python filename="FA1 pseudo code"}
+```python
 for j in KV blocks:
     for i in Q blocks:
         update O_i, m_i, l_i

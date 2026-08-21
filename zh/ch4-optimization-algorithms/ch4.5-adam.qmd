@@ -106,10 +106,10 @@ $$
 Adam 把这两个想法放在一起。它同时维护两个状态：
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 其中：
@@ -193,10 +193,10 @@ $$
 如果 Adam 只是把 momentum 和 RMSProp 合起来，这两个公式似乎已经结束了：
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 但是 Adam 还有一个容易被忽略、但很重要的细节：**偏差修正（bias correction）**。
@@ -274,14 +274,14 @@ $$
 所以完整的 Adam 可以写成：
 
 $$
-\begin{aligned}
+\begin{align}
 g_t &= \nabla_\theta L_{\mathcal{B}_t}(\theta_t) \\
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2 \\
 \hat{m}_t &= \frac{m_t}{1 - \beta_1^t} \\
 \hat{v}_t &= \frac{v_t}{1 - \beta_2^t} \\
 \theta_{t+1} &= \theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
-\end{aligned}
+\end{align}
 $$
 
 不过，Adam 并不是绝对更好的优化器。它引入了更多状态，也引入了更多超参数。更重要的是，Adam 和 weight decay 的结合方式还会带来一个问题，这会引出下一节的 AdamW。
@@ -445,10 +445,10 @@ $$
 在 SGD 里，把 L2 正则项加进梯度，和直接做 weight decay，基本是一回事。但 Adam 里不一样。Adam 不会直接用 $g_t$ 更新参数，而是会先把梯度放进一阶矩和二阶矩：
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 如果我们像 SGD 那样，把 L2 正则项直接加到梯度里：

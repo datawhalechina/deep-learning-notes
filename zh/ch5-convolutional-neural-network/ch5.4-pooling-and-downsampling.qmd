@@ -209,10 +209,10 @@ print('Average pooling:', avg_value.item())
 池化层的输出尺寸和卷积层使用相同的基本公式。在不考虑 dilation 时：
 
 $$
-\begin{aligned}
+\begin{align}
 H_{\text{out}} &= \left\lfloor \frac{H+2P_h-K_h}{S_h} \right\rfloor+1 \\
 W_{\text{out}} &= \left\lfloor \frac{W+2P_w-K_w}{S_w} \right\rfloor+1
-\end{aligned}
+\end{align}
 $$
 
 最常见的下采样设置是：

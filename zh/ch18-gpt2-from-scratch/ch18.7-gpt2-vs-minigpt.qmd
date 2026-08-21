@@ -48,20 +48,20 @@ MiniGPT 的目标不是发明一个与 GPT-2 不同的模型，而是用较小�
 从计算流程看，两者都可以写成：
 
 $$
-\begin{aligned}
+\begin{align}
 H^{(0)} &= E_{\text{token}}(X) + E_{\text{position}}(X) \\
 H^{(l+1)} &= \operatorname{GPTBlock}^{(l)}(H^{(l)}) \\
 Z &= \operatorname{LMHead}(\operatorname{LayerNorm}(H^{(L)}))
-\end{aligned}
+\end{align}
 $$
 
 其中，每个 GPT block 都由 causal self-attention、MLP、LayerNorm 和 residual connection 组成：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= X + \operatorname{Attention}(\operatorname{LayerNorm}(X)) \\
 Y &= H + \operatorname{MLP}(\operatorname{LayerNorm}(H))
-\end{aligned}
+\end{align}
 $$
 
 因此，MiniGPT 和 GPT-2 在下面这些核心设计上是一致的。真正影响模型规模的，是配置中的几个超参数：
@@ -267,7 +267,6 @@ inputs = tokenizer(prompt, return_tensors='pt').to(device)
 GPT-2 是 causal language model，因此可以根据已有 token 逐步预测后续 token。下面使用 sampling 生成文本。这里我们设置 `repetition_penalty=1.1`，可以降低重复生成相同内容的倾向。
 
 ```{python}
-model.cpu()
 with torch.inference_mode():
     output_ids = model.generate(
         **inputs,

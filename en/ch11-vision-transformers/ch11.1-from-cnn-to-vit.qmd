@@ -162,7 +162,7 @@ Now we can first look at the overall structure of ViT. It does not reinvent a co
 The overall process can be summarized as:
 
 $$
-\begin{aligned}
+\begin{align}
 \text{image}
 & \rightarrow \text{patches} \\
 & \rightarrow \text{patch embedding} \\
@@ -171,7 +171,7 @@ $$
 & \rightarrow \text{Transformer Encoder} \\
 & \rightarrow \text{class token output} \\
 & \rightarrow \text{classification head}
-\end{aligned}
+\end{align}
 $$
 
 ![Figure 11.1.5: ViT model architecture [@dosovitskiy2021ViT, fig. 1]](figures/ch11.1-vit.png){width=70%}

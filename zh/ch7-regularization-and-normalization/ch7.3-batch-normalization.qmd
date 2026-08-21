@@ -110,10 +110,10 @@ $$
 BatchNorm 会为每个特征 $c$ 单独计算统计量，并在 batch 维度 $N$ 上聚合：
 
 $$
-\begin{aligned}
+\begin{align}
 \mu_c &= \frac{1}{N}\sum_{n=1}^{N}x_{n,c} \\
 \sigma_c^2 &= \frac{1}{N}\sum_{n=1}^{N}(x_{n,c}-\mu_c)^2
-\end{aligned}
+\end{align}
 $$
 
 因此，每一列都有自己的均值和方差。BatchNorm 不会把不同特征混在一起统计。
@@ -678,10 +678,10 @@ $$
 因此，可以构造一个新的卷积层：
 
 $$
-\begin{aligned}
+\begin{align}
 W_{\text{fused}} &= sW, \\
 b_{\text{fused}} &= s(b-\mu)+\beta
-\end{aligned}
+\end{align}
 $$
 
 这个新卷积层的输出与原来的 `Conv2d + BatchNorm2d` 相同。这样，推理时就不必再单独执行 BatchNorm。

@@ -186,10 +186,10 @@ This shows that when the gradient direction stays consistent across many consecu
 In addition, some textbooks write momentum in another form:
 
 $$
-\begin{aligned}
+\begin{align}
 v_t &= \beta v_{t-1} + \eta g_t \\
 \theta_{t+1} &= \theta_t - v_t
-\end{aligned}
+\end{align}
 $$
 
 This is slightly different from the previous form. In the first form, $v_t$ accumulates gradients, and the learning rate $\eta$ is multiplied only at the final parameter update. In the second form, the gradient is first multiplied by the learning rate and then accumulated into $v_t$, so $v_t$ itself represents the step size of a parameter update. If the learning rate $\eta$ remains unchanged during training and the initial $v_0 = 0$, these two forms are essentially equivalent up to a constant scaling, and they produce equivalent parameter updates. PyTorch uses the first form.
@@ -336,12 +336,12 @@ In this way, Nesterov momentum can sense changes ahead earlier. If the loss surf
 One common form is:
 
 $$
-\begin{aligned}
+\begin{align}
 \tilde{\theta}_t &= \theta_t - \eta \beta v_{t-1} \\
 g_t &= \nabla_\theta L(\tilde{\theta}_t) \\
 v_t &= \beta v_{t-1} + g_t \\
 \theta_{t+1} &= \theta_t - \eta v_t
-\end{aligned}
+\end{align}
 $$
 
 Here, $\tilde{\theta}_t$ is a lookahead position. We first estimate the position that the parameters may reach next according to the previous momentum direction; then we compute the gradient $g_t$ at that position and use it to update the momentum and the parameters.

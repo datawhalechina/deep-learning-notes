@@ -16,13 +16,13 @@ In the previous section, we saw that Adam combines the ideas of momentum and RMS
 Adam's update steps can be written as:
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2 \\
 \hat{m}_t &= \frac{m_t}{1 - \beta_1^t} \\
 \hat{v}_t &= \frac{v_t}{1 - \beta_2^t} \\
 \theta_t &= \theta_{t-1} - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
-\end{aligned}
+\end{align}
 $$
 
 In Section 4.1, we briefly mentioned the two concepts of L2 regularization and weight decay. At that time, we said that in SGD, they are equivalent. Adding an L2 regularization term to the loss and directly applying weight decay during the parameter update both eventually cause the parameters to decay uniformly. However, when we move to an adaptive optimizer such as Adam, the two start to differ.
@@ -141,10 +141,10 @@ $$
 Then Adam uses this regularized gradient to update the first and second moments:
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t^{\mathrm{reg}} \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) (g_t^{\mathrm{reg}})^2
-\end{aligned}
+\end{align}
 $$
 
 This is where the problem appears.
@@ -168,10 +168,10 @@ The W in AdamW comes from weight decay. Its key idea is very direct:
 That is, AdamW does not add $\lambda\theta$ to the gradient $g_t$. Adam's first and second moments are still updated only from the original gradient $g_t$:
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 After bias correction, Adam's gradient update direction is still:

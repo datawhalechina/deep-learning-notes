@@ -15,14 +15,14 @@ eval: false
 In the previous section, we connected a most basic Vision Transformer end to end:
 
 $$
-\begin{aligned}
+\begin{align}
 \text{image}
 & \rightarrow \text{patch embedding} \\
 & \rightarrow \text{class token} \\
 & \rightarrow \text{positional embedding} \\
 & \rightarrow \text{Transformer Encoder} \\
 & \rightarrow \text{classification head}
-\end{aligned}
+\end{align}
 $$
 
 If the goal is only image classification, it seems that we are done here. Feed in an image, let the model output class logits, and train it with cross entropy.

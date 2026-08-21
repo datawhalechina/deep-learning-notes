@@ -88,12 +88,12 @@ $$
 其中：
 
 $$
-\begin{aligned}
+\begin{align}
 X &\in \mathbb{R}^{B \times 784} \\
 W &\in \mathbb{R}^{784 \times 10} \\
 b &\in \mathbb{R}^{10} \\
 Z &\in \mathbb{R}^{B \times 10}
-\end{aligned}
+\end{align}
 $$
 
 这里的 $Z$ 通常叫做 **logits**，表示模型对每个类别的未归一化分数。对于每一张图片，模型会输出 10 个数，分别表示它对 10 个类别的打分。打分越高，表示模型越倾向于认为图片属于那个类别。
@@ -164,10 +164,10 @@ $$
 假设我们把两个线性层连起来：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 Z &= HW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 把第一行代入第二行，可以得到：
@@ -185,10 +185,10 @@ $$
 令：
 
 $$
-\begin{aligned}
+\begin{align}
 W' &= W_1W_2 \\
 b' &= b_1W_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 那么整个模型就变成：
@@ -208,11 +208,11 @@ $$
 现在我们在两个线性层之间加入一个激活函数 $\phi$：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \phi(H) \\
 Z &= AW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 这里的 $H$ 是隐藏层的 pre-activation，也就是激活函数之前的值；$A$ 是隐藏层经过激活函数之后的表示。$\phi$ 是一个非线性函数，比如 sin、cos 等（虽然我们后面不用它们，但它们也确实算激活函数）。
@@ -222,7 +222,7 @@ $$
 对于 MNIST，我们可以写成：
 
 $$
-\begin{aligned}
+\begin{align}
 X &\in \mathbb{R}^{B \times 784} \\
 W_1 &\in \mathbb{R}^{784 \times H} \\
 b_1 &\in \mathbb{R}^{H} \\
@@ -230,7 +230,7 @@ A &\in \mathbb{R}^{B \times H} \\
 W_2 &\in \mathbb{R}^{H \times 10} \\
 b_2 &\in \mathbb{R}^{10} \\
 Z &\in \mathbb{R}^{B \times 10}
-\end{aligned}
+\end{align}
 $$
 
 其中，$H$ 是隐藏层维度。比如我们可以令 $H=256$，表示每张图片会先被映射成一个 256 维的隐藏表示，再由这个隐藏表示预测 10 个类别。这样做的好处是，模型可以先从输入中提取出一些有用的特征（隐藏表示），再用这些特征来做分类。$H$ 是一个超参数，我们可以根据数据集的复杂度和希望模型实现的表达能力来调整它。

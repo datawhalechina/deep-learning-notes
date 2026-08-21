@@ -22,11 +22,11 @@ $$
 对于一个两层 MLP，我们可以写成：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \phi(H) \\
 Z &= AW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 其中，$\phi$ 就是激活函数。它通常逐元素作用在 $H$ 上，也就是说，$H$ 中的每个元素都会经过同一个函数。

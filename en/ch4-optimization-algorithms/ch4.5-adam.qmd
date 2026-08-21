@@ -106,10 +106,10 @@ Here, $v_t$ can be understood as the gradient scale over a recent period of time
 Adam puts these two ideas together. It maintains two states at the same time:
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 where:
@@ -193,10 +193,10 @@ In the final update, Adam uses $m_t$ as the direction and uses $\sqrt{v_t}$ for 
 If Adam only combined momentum and RMSProp, the two formulas below might seem to be the end of the story:
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 However, Adam also has an easily overlooked but important detail: **bias correction**.
@@ -274,14 +274,14 @@ $$
 Therefore, the complete Adam algorithm can be written as:
 
 $$
-\begin{aligned}
+\begin{align}
 g_t &= \nabla_\theta L_{\mathcal{B}_t}(\theta_t) \\
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2 \\
 \hat{m}_t &= \frac{m_t}{1 - \beta_1^t} \\
 \hat{v}_t &= \frac{v_t}{1 - \beta_2^t} \\
 \theta_{t+1} &= \theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
-\end{aligned}
+\end{align}
 $$
 
 However, Adam is not an absolutely better optimizer. It introduces more states and more hyperparameters. More importantly, the way Adam combines with weight decay also causes a problem, which leads to the next section on AdamW.
@@ -445,10 +445,10 @@ This formula is easy to understand: besides the normal gradient descent step, ea
 In SGD, adding the L2 regularization term to the gradient and directly applying weight decay are basically the same thing. But in Adam, this is different. Adam does not directly use $g_t$ to update the parameters. Instead, it first puts the gradient into the first moment and the second moment:
 
 $$
-\begin{aligned}
+\begin{align}
 m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
 v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{aligned}
+\end{align}
 $$
 
 If we add the L2 regularization term directly to the gradient as in SGD:
