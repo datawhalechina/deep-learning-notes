@@ -182,11 +182,11 @@ $$
 那么反向传播结果是：
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial X} &= GW^\top \\
 \frac{\partial L}{\partial W} &= X^\top G \\
 \frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
-\end{aligned}
+\end{align}
 $$
 
 为了检查 `W` 的梯度，我们需要构造一个标量 loss。这里用一个非常简单的函数：

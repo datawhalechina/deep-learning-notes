@@ -63,17 +63,17 @@ print('PyTorch version:', torch.__version__)
 前面的 NumPy 版本中，两层 MLP 的结构是：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \operatorname{ReLU}(H) \\
 Z &= AW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 其中：
 
 $$
-\begin{aligned}
+\begin{align}
 X &\in \mathbb{R}^{B \times 784} \\
 W_1 &\in \mathbb{R}^{784 \times H} \\
 b_1 &\in \mathbb{R}^{H} \\
@@ -82,7 +82,7 @@ A &\in \mathbb{R}^{B \times H} \\
 W_2 &\in \mathbb{R}^{H \times 10} \\
 b_2 &\in \mathbb{R}^{10} \\
 Z &\in \mathbb{R}^{B \times 10}
-\end{aligned}
+\end{align}
 $$
 
 对于 MNIST 来说，一张图片大小是 $28 \times 28$，展开以后就是 784 维向量；输出层有 10 个神经元，对应数字 0 到 9 的 10 个类别。

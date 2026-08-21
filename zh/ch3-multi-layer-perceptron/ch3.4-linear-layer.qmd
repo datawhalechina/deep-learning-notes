@@ -26,10 +26,10 @@ order: 4
 对于一个两层 MLP，线性层出现了两次：
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 Y &= HW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 虽然它们的输入输出维度不同，但本质上做的是同一件事：
@@ -64,10 +64,10 @@ $$
 线性层有两个可学习参数，权重 $W$ 和偏置 $b$：
 
 $$
-\begin{aligned}
+\begin{align}
 W &\in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}} \\
 b &\in \mathbb{R}^{D_{\text{out}}}
-\end{aligned}
+\end{align}
 $$
 
 前向传播为：
@@ -156,12 +156,12 @@ $$
 其中：
 
 $$
-\begin{aligned}
+\begin{align}
 X &\in \mathbb{R}^{B \times D_{\text{in}}} \\
 W &\in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}} \\
 b &\in \mathbb{R}^{D_{\text{out}}} \\
 Y &\in \mathbb{R}^{B \times D_{\text{out}}}
-\end{aligned}
+\end{align}
 $$
 
 输出的第 $i$ 个样本、第 $j$ 个分量可以写成：
@@ -173,12 +173,12 @@ $$
 固定一个输入分量 $X_{i,k}$，它会出现在同一个样本的每个输出 $Y_{i,j}$ 的公式里：
 
 $$
-\begin{aligned}
+\begin{align}
 Y_{i,1} &= \cdots + X_{i,k} W_{k,1} + \cdots \\
 Y_{i,2} &= \cdots + X_{i,k} W_{k,2} + \cdots \\
 &\vdots \\
 Y_{i,D_{\text{out}}} &= \cdots + X_{i,k} W_{k,D_{\text{out}}} + \cdots
-\end{aligned}
+\end{align}
 $$
 
 因此，如果我们想知道输入的第 $i$ 个样本、第 $k$ 个分量 $X_{i,k}$ 对损失的影响，就需要把该样本所有输出维度上的影响加起来：
@@ -234,12 +234,12 @@ $$
 固定权重 $W_{k,j}$，它会出现在每个样本的第 $j$ 个输出里：
 
 $$
-\begin{aligned}
+\begin{align}
 Y_{1,j} &= \cdots + X_{1,k} W_{k,j} + \cdots \\
 Y_{2,j} &= \cdots + X_{2,k} W_{k,j} + \cdots \\
 &\vdots \\
 Y_{B,j} &= \cdots + X_{B,k} W_{k,j} + \cdots
-\end{aligned}
+\end{align}
 $$
 
 因此，如果我们想知道权重 $W_{k,j}$ 对损失的影响，就需要把 batch 中所有样本的影响加起来：
@@ -327,11 +327,11 @@ $$
 那么反向传播为：
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial X} &= G W^\top \\
 \frac{\partial L}{\partial W} &= X^\top G \\
 \frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
-\end{aligned}
+\end{align}
 $$
 
 用 NumPy 写出来就是：
@@ -457,10 +457,10 @@ print('db.shape:', linear.b.grad.shape)
 线性层的 backward 只负责计算梯度，并不直接更新参数。参数更新通常由优化器完成。最简单的优化器是 SGD：
 
 $$
-\begin{aligned}
+\begin{align}
 W &\leftarrow W - \eta \frac{\partial L}{\partial W} \\
 b &\leftarrow b - \eta \frac{\partial L}{\partial b}
-\end{aligned}
+\end{align}
 $$
 
 其中，$\eta$ 是学习率。
@@ -524,11 +524,11 @@ $$
 线性层的反向传播为：
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial X} &= G W^\top \\
 \frac{\partial L}{\partial W} &= X^\top G \\
 \frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
-\end{aligned}
+\end{align}
 $$
 
 从实现角度看，线性层需要在 forward 时保存输入，因为 backward 计算 $\frac{\partial L}{\partial W}$ 时需要用到 $X$。这也体现了反向传播的一个基本规律：每一层在 forward 中保存必要信息，在 backward 中利用这些信息和上游梯度计算自己的梯度。
