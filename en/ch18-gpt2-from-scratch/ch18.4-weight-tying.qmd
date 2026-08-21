@@ -1,0 +1,614 @@
+---
+author: jshn9515
+date: 2026-06-18
+date-modified: 2026-06-18
+open-graph:
+  title: ch18.4-weight-tying
+  description: "18.4 Embedding, LM Head, and Weight Tying"
+title: "18.4 Embedding, LM Head, and Weight Tying"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch18-gpt2-from-scratch/ch18.4-weight-tying.ipynb){fig-align="left"}
+
+In the previous sections, we completed three things:
+
+- 18.1 clarified the objective of a language model: given a prefix, predict the next token;
+- 18.2 assembled GPT blocks into MiniGPT;
+- 18.3 explained how a tokenizer turns text into token ids and where `vocab_size` comes from.
+
+Looking back at the structure of MiniGPT, we can see an important symmetry at its two ends:
+
+> **Both the input and output are related to the same vocabulary.**
+
+At the input, the model needs to convert token ids into vectors. At the output, it needs to map hidden states back to vocabulary-sized logits. In other words, a language model needs to work with the vocabulary at both ends.
+
+This section takes a closer look at these two ends:
+
+- Embedding: How does a token id enter the model?
+- LM Head: How does a hidden state return to the vocabulary?
+- Weight Tying: Why can the input embedding and output LM head share weights?
+
+```{python}
+import dnnlpy.nn as dnn
+import dnnlpy.models.gpt as gpt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 18.4.1 One Vocabulary, Two Directions
+
+Suppose the tokenizer's vocabulary size is $V$ and the model's hidden size is $D$.
+
+The token embedding at the input is a lookup matrix:
+
+$$
+E \in \mathbb{R}^{V \times D}
+$$
+
+Its role is:
+
+$$
+\text{token id} \rightarrow \text{token vector}
+$$
+
+The LM head at the output is a linear layer:
+
+$$
+W_{\text{out}} \in \mathbb{R}^{V \times D}
+$$
+
+Its role is:
+
+$$
+\text{hidden state} \rightarrow \text{logits over vocabulary}
+$$
+
+Therefore, the shapes at the two ends are very similar:
+
+```text
+token embedding weight: (V, D)
+lm head weight:         (V, D)
+```
+
+The difference is the direction in which they are used.
+
+At the input, we use a token id to select a row of `E`:
+
+$$
+x_t = E[\text{token\_id}_t]
+$$
+
+At the output, we take the inner product of the hidden state with every row of `W_out` to obtain the logit for each token:
+
+$$
+\text{logits}_t = h_t W_{\text{out}}^\top
+$$
+
+In other words, the input side maps an id to a vector, while the output side scores ids from a vector.
+
+Let us first look at the shapes with a small example.
+
+```{python}
+vocab_size = 10
+embed_dim = 4
+batch_size = 2
+block_size = 5
+
+input_ids = torch.tensor(
+    [
+        [1, 3, 5, 7, 9],
+        [2, 4, 6, 8, 0],
+    ]
+)
+
+embedding = nn.Embedding(vocab_size, embed_dim)
+lm_head = dnn.Linear(embed_dim, vocab_size, bias=False)
+
+x_emb = embedding(input_ids)
+logits = lm_head(x_emb)
+
+print('Embedding weight shape:', embedding.weight.shape)
+print('LM head weight shape:', lm_head.weight.shape)
+
+print('input_ids.shape:', input_ids.shape)
+print('x_emb.shape:', x_emb.shape)
+print('logits.shape:', logits.shape)
+```
+
+The shape changes are:
+
+$$
+(B, T) \rightarrow (B, T, D) \rightarrow (B, T, V)
+$$
+
+This is the basic path from token ids to vocabulary predictions in a language model.
+
+## 18.4.2 Token Embedding: Do Not Feed the Numerical Magnitude into the Model
+
+An easy point to misunderstand is that although token ids are integers, they do not have numerical meaning themselves.
+
+For example, a tokenizer might contain:
+
+```text
+"deep"     ->  12
+"learning" -> 503
+"GPT"      ->  87
+```
+
+This does not mean that `learning` is greater than `deep`, nor does the distance between token 503 and token 12 have semantic meaning. Therefore, the model does not directly take these integers as continuous numerical inputs.
+
+What `nn.Embedding` does is more like a table lookup:
+
+```text
+token id 12  -> embedding.weight[12]
+token id 503 -> embedding.weight[503]
+token id 87  -> embedding.weight[87]
+```
+
+We can also think of a token id as a one-hot vector. Suppose the vocabulary size is $V$ and the one-hot representation of the $i$-th token is $e_i$. Then embedding can be written as:
+
+$$
+x_i = e_i^\top E
+$$
+
+In the actual implementation, however, we do not construct one-hot vectors because that would be wasteful. PyTorch directly selects the corresponding row from the id.
+
+```{python}
+vocab_size = 5
+embed_dim = 3
+
+embedding = nn.Embedding(vocab_size, embed_dim)
+token_id = torch.tensor([2])
+
+lookup_result = embedding(token_id)
+manual_result = embedding.weight[2]
+
+print('Embedding table:', embedding.weight, sep='\n')
+print('Lookup result:', lookup_result)
+print('Manual result:', manual_result)
+
+flag = torch.allclose(lookup_result.squeeze(0), manual_result)
+print('Is lookup result equal to manual result?', flag)
+```
+
+Thus, the essence of embedding is:
+
+> **Learn a vector representation for every token in the vocabulary.**
+
+At the beginning of training, these vectors are usually initialized randomly. During training, backpropagation continually adjusts them so that they are useful for next-token prediction.
+
+## 18.4.3 Positional Embedding: Position Is Not Part of the Vocabulary
+
+In Section 18.2, we added token embedding and positional embedding together:
+
+$$
+X = E_{\text{token}}[\text{input\_ids}] + E_{\text{pos}}[\text{positions}]
+$$
+
+The two embeddings are similar in that both perform lookups, but their meanings are different.
+
+The size of the token embedding table is determined by the vocabulary:
+
+$$
+E_{\text{token}} \in \mathbb{R}^{V \times D}
+$$
+
+The size of the positional embedding table is determined by the maximum context length:
+
+$$
+E_{\text{pos}} \in \mathbb{R}^{T_{\max} \times D}
+$$
+
+They are added together because the model needs to know two pieces of information at the same time:
+
+1. What the current token is;
+2. Which position the current token occupies in the sequence.
+
+```{python}
+vocab_size = 100
+block_size = 8
+embed_dim = 16
+
+input_ids = torch.tensor([[10, 25, 31, 7]])
+B, T = input_ids.size()
+
+tok_embed = nn.Embedding(vocab_size, embed_dim)  # word/token embedding
+pos_embed = nn.Embedding(block_size, embed_dim)  # positional embedding
+
+positions = torch.arange(T)
+x_tok = tok_embed(input_ids)
+x_pos = pos_embed(positions)
+x = x_tok + x_pos
+
+print('input_ids.shape:', input_ids.shape)
+print('positions.shape:', positions.shape)
+print('x_tok.shape:', x_tok.shape)
+print('x_pos.shape:', x_pos.shape)
+print('x.shape:', x.shape)
+```
+
+Note that positional embedding does not participate in the vocabulary prediction produced by the LM head. The LM head only cares which token in the vocabulary is next, not what the next position number is. Therefore, weight tying usually occurs only between token embedding and the LM head, not between positional embedding and the LM head.
+
+## 18.4.4 LM Head: Turning Hidden States into Vocabulary Scores
+
+After passing through the GPT blocks, each position has a hidden state:
+
+$$
+h_t \in \mathbb{R}^{D}
+$$
+
+The LM head must assign a score to every token in the vocabulary:
+
+$$
+\text{logits}_t \in \mathbb{R}^{V}
+$$
+
+Suppose the LM head's weight is:
+
+$$
+W_{\text{out}} \in \mathbb{R}^{V \times D}
+$$
+
+Then the logit for token $j$ can be written as:
+
+$$
+\text{logit}_{t,j} = h_t \cdot W_{\text{out},j}
+$$
+
+Here, $W_{\text{out},j}$ is row $j$ of the LM head's weight matrix. It can also be understood as the vector learned by the output side for token $j$.
+
+Thus, the LM head can be understood as:
+
+> **Take the hidden state at the current position and score its similarity with the output vector of every token in the vocabulary.**
+
+Strictly speaking, this is only an inner-product score from a linear layer and is not necessarily a normalized similarity. Only after softmax does it become a probability distribution:
+
+$$
+p(x_{t+1}=j \mid x_{\le t}) =
+\frac{\exp(\text{logit}_{t,j})}
+{\sum_{k=1}^{V} \exp(\text{logit}_{t,k})}
+$$
+
+During training, we usually pass the logits directly into cross entropy.
+
+```{python}
+B, T, D = 2, 4, 16
+V = 100
+
+h = torch.randn(B, T, D)
+lm_head = nn.Linear(D, V, bias=False)
+logits = lm_head(h)
+
+labels = torch.randint(0, V, (B, T))
+loss = F.cross_entropy(
+    logits.reshape(B * T, V),
+    labels.reshape(B * T),
+)
+
+print('h.shape:', h.shape)
+print('logits.shape:', logits.shape)
+print('labels.shape:', labels.shape)
+print('Loss:', loss.item())
+```
+
+Here, `labels[b, t]` is the true next-token id that sample `b` at position `t` should predict.
+
+## 18.4.5 Weight Tying: Sharing the Same Vocabulary Vector Table at the Input and Output
+
+Now consider a key question.
+
+The token embedding at the input has a table:
+
+$$
+E \in \mathbb{R}^{V \times D}
+$$
+
+The LM head at the output also has a weight with the same shape:
+
+$$
+W_{\text{out}} \in \mathbb{R}^{V \times D}
+$$
+
+Since both are learning vectors for tokens in the same vocabulary, can we simply share the same set of parameters? This is **weight tying**.
+
+The simplest form is:
+
+```python
+self.lm_head.weight = self.tok_embed.weight
+```
+
+Now `tok_embed.weight` and `lm_head.weight` are no longer two independent sets of parameters; they are the same parameter object.
+
+Intuitively, weight tying means that the model satisfies:
+
+> **The representation of a token when it is used as input and the representation of the same token when it is an output candidate use the same vector space.**
+
+The output logit can then be written as:
+
+$$
+\text{logit}_{t,j} = h_t \cdot E_j
+$$
+
+Here, $E_j$ is both the input embedding of token $j$ and the token vector used for scoring at the output.
+
+Next, let us write a minimal example.
+
+```{python}
+class TiedEmbeddingLM(nn.Module):
+    """A tiny model that only demonstrates embedding, LM head, and weight tying."""
+
+    def __init__(self, vocab_size: int, embed_dim: int = 128):
+        super().__init__()
+        self.token_embed = dnn.Embedding(vocab_size, embed_dim)
+        self.lm_head = dnn.Linear(embed_dim, vocab_size, bias=False)
+
+        # Weight tying: both modules share the same Parameter object.
+        self.lm_head.weight = self.token_embed.weight
+        assert self.lm_head.weight is self.token_embed.weight
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        x = self.token_embed(input_ids)
+        logits = self.lm_head(x)
+        return logits
+```
+
+Check whether they are the same parameter object:
+
+```{python}
+model = TiedEmbeddingLM(vocab_size=20, embed_dim=8)
+
+print('Embedding weight shape:', model.token_embed.weight.shape)
+print('LM head weight shape: ', model.lm_head.weight.shape)
+
+flag1 = model.token_embed.weight is model.lm_head.weight
+flag2 = model.token_embed.weight.data_ptr() == model.lm_head.weight.data_ptr()
+print('Is the same object?', flag1)
+print('Do they share the same data pointer?', flag2)
+```
+
+As we can see, the `weight` attributes of the two modules point to the same parameter.
+
+## 18.4.6 How Many Parameters Does Weight Tying Save?
+
+Without weight tying, embedding and the LM head each have a separate set of $V \times D$ parameters:
+
+$$
+\text{params}_{\text{untied}} = VD + VD = 2VD
+$$
+
+With weight tying, the two components share one set of parameters:
+
+$$
+\text{params}_{\text{tied}} = VD
+$$
+
+In other words, this alone saves $VD$ parameters.
+
+When the vocabulary is large, this saving is significant. For example:
+
+```{python}
+V = 50000
+D = 768
+
+untied_params = 2 * V * D
+tied_params = V * D
+saved_params = untied_params - tied_params
+saved_params = saved_params * 4 / pow(1024, 2)  # Convert to MB
+
+print(f'Untied params: {untied_params:,}')
+print(f'Tied params: {tied_params:,}')
+print(f'Saved params: {saved_params:.4f} MB')
+```
+
+This only accounts for the parameters at the embedding and LM head. For a larger model with a larger vocabulary, the savings are even more noticeable.
+
+However, weight tying is not only about saving parameters. More importantly, it imposes a constraint on the input and output token representations: they must share the same vector space. This is usually reasonable because the input and output sides of a language model face the same set of tokens.
+
+## 18.4.7 How Are Shared Weights Updated During Backpropagation?
+
+After weight tying, the same parameter is used twice during the forward pass:
+
+1. At the input: look up the embedding according to the token id;
+2. At the output: use it as the LM head weight to compute logits.
+
+Therefore, during backpropagation it also receives two sources of gradient contributions. We can see this with a small example.
+
+```{python}
+vocab_size = 10
+model = TiedEmbeddingLM(vocab_size=vocab_size, embed_dim=4)
+input_ids = torch.tensor([[1, 2, 3]])
+labels = torch.tensor([[2, 3, 4]])
+
+logits = model(input_ids)
+loss = F.cross_entropy(
+    logits.reshape(-1, vocab_size),
+    labels.reshape(-1),
+)
+loss.backward()
+
+print('Loss:', loss.item())
+print('Embedding grad shape:', model.token_embed.weight.grad.shape)
+
+flag = model.lm_head.weight.grad is model.token_embed.weight.grad
+print('Is the gradient the same object?', flag)
+```
+
+Because they are the same parameter, the gradients also accumulate into the same `.grad` attribute.
+
+More specifically, the shared weight has two paths of use in the computation graph: one from the input embedding and one from the output LM head. During backpropagation, the two paths produce gradient contributions separately, and these are automatically added to the same `.grad`. The optimizer then uses the total gradient to update the shared parameter only once:
+
+$$
+\left. \frac{\partial L}{\partial W} \right|{\text{Embedding}} +
+\left. \frac{\partial L}{\partial W} \right|{\text{LM Head}}
+$$
+
+Thus, these are not two parameters updated separately, nor is the gradient simply multiplied by 2. The two paths jointly determine the update to the same parameter. Weight tying does not copy one set of weights to another; it makes the two locations genuinely share the same learnable parameter.
+
+## 18.4.8 Adding Weight Tying to MiniGPT
+
+Returning to MiniGPT, weight tying usually requires changing only the definition and initialization of the LM head.
+
+Without shared weights, we might write:
+
+```python
+self.token_embed = nn.Embedding(vocab_size, embed_dim)
+self.lm_head = nn.Linear(embed_dim, vocab_size)
+```
+
+To share weights, a common implementation is:
+
+```python
+self.token_embed = nn.Embedding(vocab_size, embed_dim)
+self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)
+self.lm_head.weight = self.token_embed.weight
+```
+
+Next, write a MiniGPT version with weight tying.
+
+```{python}
+class MiniGPTWithWeightTying(nn.Module):
+    """A MiniGPT model with weight tying between token embedding and LM head."""
+
+    def __init__(
+        self,
+        vocab_size: int,
+        block_size: int,  # or context window
+        embed_dim: int = 128,
+        num_layers: int = 4,
+        num_heads: int = 4,
+        hidden_dim: int = 512,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.minigpt = gpt.MiniGPT(
+            vocab_size,
+            block_size,
+            embed_dim=embed_dim,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            hidden_dim=hidden_dim,
+            dropout=dropout,
+            weight_tying=True,  # Enable weight tying
+        )
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        return self.minigpt(input_ids)
+
+    def loss(self, input_ids: Tensor, targets: Tensor | None = None) -> Tensor:
+        return self.minigpt.loss(input_ids, targets)
+```
+
+Test it:
+
+```{python}
+model = MiniGPTWithWeightTying(
+    vocab_size=100,
+    block_size=8,
+    embed_dim=32,
+)
+
+token_ids = torch.tensor([[10, 25, 31, 7, 42]])
+input_ids = token_ids[:, :-1]
+labels = token_ids[:, 1:]
+
+logits = model(input_ids)
+loss = model.loss(token_ids, labels)
+
+print('input_ids.shape:', input_ids.shape)
+print('labels.shape:', labels.shape)
+print('logits.shape:', logits.shape)
+print('Loss:', loss.item())
+
+flag = model.minigpt.token_embed.weight is model.minigpt.lm_head.weight
+print('Is embedding weight the same object as LM head weight?', flag)
+```
+
+As we can see, the input and output sides do indeed share the same weights.
+
+## 18.4.9 Several Easily Confused Points
+
+First, `vocab_size` affects both the embedding and the LM head.
+
+Suppose the tokenizer's vocabulary size is $V$. Then:
+
+```text
+token_embed:     (V, D)
+lm_head:         (D -> V)
+logits:          (B, T, V)
+```
+
+Therefore, if we change the tokenizer and the vocabulary size changes, the model's token embedding and LM head must change with it. This is also why we cannot arbitrarily pair one tokenizer with an incompatible model. The meaning of token ids and the model parameters correspond one-to-one.
+
+Second, `embed_dim` must match the hidden size. The dimension of the token embedding must equal the hidden size accepted by the LM head.
+
+That is:
+
+```text
+token_embed.weight:     (V, D)
+lm_head.weight:         (V, D)
+```
+
+If the GPT blocks output `(B, T, D)`, the LM head can directly use the same `(V, D)` weight for the output projection.
+
+Finally, the LM head outputs logits, not token ids.
+
+The output of the LM head is:
+
+$$
+\text{logits} \in \mathbb{R}^{B \times T \times V}
+$$
+
+These are not the final tokens yet.
+
+During training, the logits enter cross entropy. During generation, we use the logits from the last position for argmax or sampling.
+
+```{python}
+prefix = torch.tensor([[10, 25, 31]])
+logits = model(prefix)
+
+last_logits = logits[:, -1, :]
+next_token = last_logits.argmax(dim=-1)
+
+print('Prefix:', prefix)
+print('Last_logits shape:', last_logits.shape)
+print('Next token:', next_token)
+```
+
+There is one more point to note: weight tying occurs only between token embedding and the LM head; it **does not include positional embedding**. Positional embedding learns vectors for position indices and has shape `(block_size, D)`, while the LM head outputs vocabulary logits with shape `(B, T, V)`. Therefore, there is no meaningful weight sharing between positional embedding and the LM head.
+
+## 18.4.10 Summary
+
+This section took a closer look at the two parts of MiniGPT that are easiest to overlook: embedding and the LM head.
+
+At the input:
+
+$$
+\text{input\_ids} \in \mathbb{N}^{B \times T}
+\rightarrow
+X \in \mathbb{R}^{B \times T \times D}
+$$
+
+At the output:
+
+$$
+H \in \mathbb{R}^{B \times T \times D}
+\rightarrow
+\text{logits} \in \mathbb{R}^{B \times T \times V}
+$$
+
+In this process:
+
+- Token embedding converts token ids into vectors;
+- Positional embedding adds positional information to the sequence;
+- The LM head maps hidden states back to vocabulary-sized logits;
+- Weight tying allows token embedding and the LM head to share the same vocabulary vector table;
+- Shared weights both save parameters and make the input and output sides use the same token representation space.
+
+At this point, the structure of MiniGPT is essentially clear.
+
+Next, we will turn to training: how to batch a long sequence of tokens, how to set the context length, how to compute the loss, and which parameters a single training loop actually updates.

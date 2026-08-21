@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="background: #ffffff; background-color: var(--ge-adaptive-bg, #ffffff); color-scheme: light dark;" version="1.1" width="420px" height="240px" viewBox="0 0 420 240" id="ge-svg-MrN2foFfLnVkNUpKc8TZ" content="&lt;mxfile host=&quot;Electron&quot; scale=&quot;1&quot; border=&quot;0&quot;&gt;&#10;  &lt;diagram name=&quot;Page-1&quot; id=&quot;c5mxn-UFWKS_V1gqIczr&quot;&gt;&#10;    &lt;mxGraphModel dx=&quot;949&quot; dy=&quot;677&quot; grid=&quot;1&quot; gridSize=&quot;10&quot; guides=&quot;1&quot; tooltips=&quot;1&quot; connect=&quot;1&quot; arrows=&quot;1&quot; fold=&quot;1&quot; page=&quot;1&quot; pageScale=&quot;1&quot; pageWidth=&quot;827&quot; pageHeight=&quot;1169&quot; math=&quot;0&quot; shadow=&quot;0&quot;&gt;&#10;      &lt;root&gt;&#10;        &lt;mxCell id=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;1&quot; parent=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;t0yjY63KKONZOQmhbcDP-17&quot; connectable=&quot;0&quot; parent=&quot;1&quot; style=&quot;group;strokeColor=none;html=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;240&quot; width=&quot;420&quot; x=&quot;190&quot; y=&quot;230&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;t0yjY63KKONZOQmhbcDP-13&quot; connectable=&quot;0&quot; parent=&quot;t0yjY63KKONZOQmhbcDP-17&quot; style=&quot;group;strokeColor=none;container=0;html=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;240&quot; width=&quot;420&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;t0yjY63KKONZOQmhbcDP-2&quot; parent=&quot;t0yjY63KKONZOQmhbcDP-17&quot; style=&quot;text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;fontFamily=Consolas;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;reserved&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;110&quot; x=&quot;40&quot; y=&quot;10&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;t0yjY63KKONZOQmhbcDP-3&quot; parent=&quot;t0yjY63KKONZOQmhbcDP-17&quot; style=&quot;rounded=1;html=1;labelBackgroundColor=default;labelBorderColor=none;textShadow=0;fillColor=#dae8fc;strokeColor=#0066CC;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;170&quot; width=&quot;340&quot; x=&quot;40&quot; y=&quot;50&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;t0yjY63KKONZOQmhbcDP-5&quot; parent=&quot;t0yjY63KKONZOQmhbcDP-17&quot; style=&quot;text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&amp;lt;font face=&amp;quot;Consolas&amp;quot;&amp;gt;allocated&amp;lt;/font&amp;gt;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;120&quot; x=&quot;50&quot; y=&quot;60&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;t0yjY63KKONZOQmhbcDP-6&quot; parent=&quot;t0yjY63KKONZOQmhbcDP-17&quot; style=&quot;rounded=1;html=1;fontFamily=Consolas;fillStyle=auto;fillColor=#fff2cc;strokeColor=#d6b656;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&amp;lt;font style=&amp;quot;font-size: 18px;&amp;quot;&amp;gt;live PyTorch tensors&amp;lt;/font&amp;gt;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;60&quot; width=&quot;225&quot; x=&quot;102.5&quot; y=&quot;100&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;t0yjY63KKONZOQmhbcDP-10&quot; parent=&quot;t0yjY63KKONZOQmhbcDP-17&quot; style=&quot;text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontFamily=Consolas;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&amp;lt;font style=&amp;quot;font-size: 18px;&amp;quot;&amp;gt;cached but currently unused&amp;lt;/font&amp;gt;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;280&quot; x=&quot;70&quot; y=&quot;180&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;      &lt;/root&gt;&#10;    &lt;/mxGraphModel&gt;&#10;  &lt;/diagram&gt;&#10;&lt;/mxfile&gt;&#10;">
+  <style type="text/css">@supports (color: light-dark(#000, #fff)) { #ge-svg-MrN2foFfLnVkNUpKc8TZ { --ge-adaptive-bg: light-dark(#ffffff, var(--ge-dark-color, #121212)); } }
+  </style>
+  <defs/>
+  <rect fill="#ffffff" width="100%" height="100%" x="0" y="0" style="fill: var(--ge-adaptive-bg, #ffffff);"/>
+  <g>
+    <g data-cell-id="0">
+      <g data-cell-id="1">
+        <g data-cell-id="t0yjY63KKONZOQmhbcDP-17">
+          <g/>
+          <g data-cell-id="t0yjY63KKONZOQmhbcDP-13">
+            <g/>
+          </g>
+          <g data-cell-id="t0yjY63KKONZOQmhbcDP-2">
+            <g>
+              <rect x="40" y="10" width="110" height="30" fill="none" stroke="none" pointer-events="all"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Consolas" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+                <g transform="translate(95,34) scale(1)">
+                  <text>
+                    <tspan>reserved
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="t0yjY63KKONZOQmhbcDP-3">
+            <g transform="translate(0.5,0.5)">
+              <rect x="40" y="50" width="340" height="170" rx="25.5" ry="25.5" fill="#dae8fc" stroke="#0066cc" pointer-events="all" style="fill: rgb(218, 232, 252); stroke: rgb(0, 102, 204);"/>
+            </g>
+          </g>
+          <g data-cell-id="t0yjY63KKONZOQmhbcDP-5">
+            <g>
+              <rect x="50" y="60" width="120" height="30" fill="none" stroke="none" pointer-events="all"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+                <g transform="translate(110,84) scale(1)">
+                  <text>
+                    <tspan style="font-family: Consolas;">
+                      <tspan>allocated
+                      </tspan>
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="t0yjY63KKONZOQmhbcDP-6">
+            <g transform="translate(0.5,0.5)">
+              <rect x="102.5" y="100" width="225" height="60" rx="9" ry="9" fill="#fff2cc" stroke="#d6b656" pointer-events="all" style="fill: rgb(255, 242, 204); stroke: rgb(214, 182, 86);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Consolas" text-anchor="middle" font-size="12px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+                <g transform="translate(215,135) scale(1)">
+                  <text>
+                    <tspan style="font-size: 1.5em;">
+                      <tspan>live PyTorch tensors
+                      </tspan>
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="t0yjY63KKONZOQmhbcDP-10">
+            <g>
+              <rect x="70" y="180" width="280" height="30" fill="none" stroke="none" pointer-events="all"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Consolas" text-anchor="middle" font-size="12px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+                <g transform="translate(210,200) scale(1)">
+                  <text>
+                    <tspan style="font-size: 1.5em;">
+                      <tspan>cached but currently unused
+                      </tspan>
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>
