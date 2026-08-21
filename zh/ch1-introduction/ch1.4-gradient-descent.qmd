@@ -9,6 +9,8 @@ title: "1.4 梯度下降：从梯度到参数更新"
 order: 4
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch1-introduction/ch1.4-gradient-descent.ipynb){fig-align="left"}
+
 在上一节中，我们已经知道了前向传播如何得到预测、损失函数如何衡量误差，以及反向传播如何计算参数的梯度。但梯度本身并不会改变模型。
 
 假设某个参数是 $\theta$，反向传播得到：
