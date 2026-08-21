@@ -1,0 +1,585 @@
+---
+author: jshn9515
+date: 2026-06-27
+date-modified: 2026-06-27
+open-graph:
+  title: ch7.8-normalization-unified-view
+  description: "7.8 A Unified View of Normalization: Which Dimensions Are Normalized?"
+title: "7.8 A Unified View of Normalization: Which Dimensions Are Normalized?"
+order: 7
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch7-regularization-and-normalization/ch7.8-normalization-unified-view.ipynb){fig-align="left"}
+
+In the previous sections, we introduced Batch Normalization, Layer Normalization, Instance Normalization, Group Normalization, and RMS Normalization separately. The first four methods all compute the mean and variance before standardizing; RMSNorm omits mean centering and adjusts feature scale using only the root mean square.
+
+What truly makes these methods different is not the standardization formula itself, but:
+
+> **Which elements are grouped together to compute the mean and variance.**
+
+For an image-feature tensor with shape `(N, C, H, W)`, different normalization methods choose different statistical sets:
+
+- BatchNorm fixes the channel and computes statistics over `N, H, W`;
+- LayerNorm fixes the sample and usually computes statistics over `C, H, W`;
+- InstanceNorm fixes the sample and channel and computes statistics over `H, W`;
+- GroupNorm fixes the sample and group and computes statistics over the channels within the group and `H, W`;
+- RMSNorm fixes the prefix position and computes the root mean square over the trailing dimensions corresponding to `normalized_shape`.
+
+Therefore, this section no longer treats them as five independent formulas. Instead, it starts from a unified framework and answers the following questions:
+
+- What common form can all normalization layers be written in?
+- What do statistical dimensions and retained dimensions mean, respectively?
+- Why can reshaping transform GroupNorm into ordinary normalization?
+- Which methods depend on the batch and which do not?
+- Why is `GroupNorm(1, C)` close to LayerNorm?
+- Why is `GroupNorm(C, C)` close to InstanceNorm?
+- How does the statistical procedure of RMSNorm differ from that of LayerNorm?
+- How should we choose among them for CNNs, Transformers, and small-batch tasks?
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.8.1 All Normalization Layers Do the Same Thing
+
+Let a normalization set be $S$, containing several input elements. A normalization layer first computes the mean of this set:
+
+$$
+\mu_S = \frac{1}{|S|} \sum_{i\in S}x_i
+$$
+
+and its variance:
+
+$$
+\sigma_S^2 = \frac{1}{|S|} \sum_{i\in S}(x_i-\mu_S)^2
+$$
+
+It then standardizes each element in the set:
+
+$$
+\hat{x}_i = \frac{x_i-\mu_S}{\sqrt{\sigma_S^2+\epsilon}}
+$$
+
+Finally, it applies a learnable affine transformation:
+
+$$
+y_i = \gamma_i\hat{x}_i+\beta_i
+$$
+
+BatchNorm, LayerNorm, InstanceNorm, and GroupNorm all follow this “centering + scale normalization” form. Their differences come from the definition of the set $S$.
+
+RMSNorm is slightly different. It does not compute the mean or perform centering, but instead uses the root mean square of the set directly:
+
+$$
+\operatorname{RMS}(x_S) =
+\sqrt{\frac{1}{|S|}\sum_{i\in S}x_i^2+\epsilon}
+$$
+
+to scale the input:
+
+$$
+\hat{x}_i = \frac{x_i}{\operatorname{RMS}(x_S)}
+$$
+
+Therefore, RMSNorm still needs to define a statistical set $S$, but it computes the second moment rather than the mean and centered variance.
+
+In other words, when learning normalization methods, the most important question is not what the formula is, but:
+
+> **For a given element in the current input, which other elements share the same mean and variance with it?**
+
+## 7.8.2 Statistical Dimensions and Retained Dimensions
+
+Consider a four-dimensional input:
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+Here, $N$ denotes the batch size, $C$ denotes the number of channels, and $H$ and $W$ denote the spatial dimensions.
+
+In PyTorch, the dimensions specified in `mean(dim=...)` and `var(dim=...)` can be called the **statistical dimensions**, namely the dimensions that are reduced; dimensions that are not reduced can be called **retained dimensions**. Each retained position has its own independent mean and variance.
+
+For example, compute statistics over `(0, 2, 3)`:
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (0, 2, 3)
+mean = x.mean(dim, keepdim=True)
+var = x.var(dim, correction=0, keepdim=True)
+
+print('Input shape:', x.shape)
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+The output statistics have shape `(1, C, 1, 1)`, indicating that only the channel dimension is retained.
+
+The two types of dimensions can be understood as follows:
+
+- Statistical dimensions: which elements are placed into the same statistical set;
+- Retained dimensions: how many separate sets of means and variances need to be maintained.
+
+## 7.8.3 BatchNorm: Fix the Channel and Compute Statistics across Samples and Space
+
+For an input `(N, C, H, W)`, the statistical dimensions of BatchNorm are:
+
+```python
+dim = (0, 2, 3)
+```
+
+Thus, it fixes channel $c$ and computes statistics over the batch and spatial dimensions:
+
+$$
+\begin{align}
+\mu_c &= \frac{1}{NHW} \sum_{n,h,w}x_{n,c,h,w} \\
+\sigma_c^2 &= \frac{1}{NHW} \sum_{n,h,w}(x_{n,c,h,w}-\mu_c)^2
+\end{align}
+$$
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (0, 2, 3)
+bn_mean = x.mean(dim, keepdim=True)
+bn_var = x.var(dim, correction=0, keepdim=True)
+
+x_bn = (x - bn_mean) / (bn_var + 1e-5).sqrt()
+
+print('Statistics shape:', bn_mean.shape)
+print('Output means by channel:', x_bn.mean(dim))
+print('Output variances by channel:', x_bn.var(dim, correction=0))
+```
+
+BatchNorm's statistical set contains different samples, so the output of the current sample is affected by the other samples in the batch. This is the most fundamental difference between BatchNorm and the other methods.
+
+## 7.8.4 LayerNorm: Fix the Sample and Normalize the Last Several Dimensions
+
+If we use the following for an image input:
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+LayerNorm fixes the sample and computes statistics over `(C, H, W)`:
+
+```python
+dim = (1, 2, 3)
+```
+
+The mean and variance can be written as:
+
+$$
+\begin{align}
+\mu_n &= \frac{1}{CHW} \sum_{c,h,w}x_{n,c,h,w} \\
+\sigma_n^2 &= \frac{1}{CHW} \sum_{c,h,w}(x_{n,c,h,w}-\mu_n)^2
+\end{align}
+$$
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (1, 2, 3)
+ln_mean = x.mean(dim, keepdim=True)
+ln_var = x.var(dim, correction=0, keepdim=True)
+
+x_ln = (x - ln_mean) / (ln_var + 1e-5).sqrt()
+
+print('Statistics shape:', ln_mean.shape)
+print('Output means by sample:', x_ln.mean(dim))
+print('Output variances by sample:', x_ln.var(dim, correction=0))
+```
+
+However, LayerNorm does not fix a few semantic dimensions for normalization. Its rule is:
+
+> **Normalize the last `len(normalized_shape)` dimensions of the input.**
+
+Therefore, for a Transformer input `(N, L, D)` and `nn.LayerNorm(D)`, it computes statistics only over the final feature dimension $D$, and every token has its own independent mean and variance.
+
+```{python}
+x = torch.randn(2, 6, 8)
+
+layer_norm = nn.LayerNorm(8)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Output means by token:')
+print(y.mean(dim=-1))
+```
+
+Therefore, when discussing LayerNorm, it is not enough to say that it normalizes within a sample. We must also specify exactly which trailing dimensions of the input `normalized_shape` covers.
+
+## 7.8.5 InstanceNorm: Fix the Sample and Channel, and Compute Statistics Only over Space
+
+For an input `(N, C, H, W)`, the statistical dimensions of InstanceNorm are:
+
+```python
+dim = (2, 3)
+```
+
+It fixes sample $n$ and channel $c$ and computes statistics over the spatial dimensions:
+
+$$
+\begin{align}
+\mu_{n,c} &= \frac{1}{HW} \sum_{h,w}x_{n,c,h,w} \\
+\sigma_{n,c}^2 &= \frac{1}{HW} \sum_{h,w}(x_{n,c,h,w}-\mu_{n,c})^2
+\end{align}
+$$
+
+```{python}
+x = torch.randn(4, 3, 5, 5)
+
+dim = (2, 3)
+in_mean = x.mean(dim, keepdim=True)
+in_var = x.var(dim, correction=0, keepdim=True)
+
+x_in = (x - in_mean) / (in_var + 1e-5).sqrt()
+
+print('Statistics shape:', in_mean.shape)
+print('Output means by sample and channel:')
+print(x_in.mean(dim=(2, 3)))
+```
+
+Every `(sample, channel)` pair has independent statistics, so InstanceNorm computes neither across samples nor across channels. It uses a smaller statistical set than LayerNorm and more strongly removes each channel's own spatial mean and variance.
+
+## 7.8.6 GroupNorm: Group First, Then Reduce Together
+
+GroupNorm cannot be fully expressed directly by one set of `dim` values on the original `(N, C, H, W)`, because the channel dimension must first be divided into groups.
+
+Suppose the number of channels is $C$ and the number of groups is $G$. First reshape:
+
+$$
+(N, C, H, W) \rightarrow \left(N, G, \frac{C}{G}, H, W \right)
+$$
+
+Then fix the sample and group and compute statistics over the channels within the group and the spatial dimensions:
+
+```python
+dim = (2, 3, 4)
+```
+
+```{python}
+num_groups = 4
+x = torch.randn(4, 8, 5, 5)
+n, c, h, w = x.size()
+
+x_grouped = x.reshape(n, num_groups, c // num_groups, h, w)
+
+dim = (2, 3, 4)
+gn_mean = x_grouped.mean(dim, keepdim=True)
+gn_var = x_grouped.var(dim, correction=0, keepdim=True)
+
+x_gn = (x_grouped - gn_mean) / (gn_var + 1e-5).sqrt()
+x_gn = x_gn.reshape_as(x)
+
+y_grouped = x_gn.reshape(n, num_groups, c // num_groups, h, w)
+
+print('Grouped shape:', x_grouped.shape)
+print('Statistics shape:', gn_mean.shape)
+print('Output means by sample and group:')
+print(y_grouped.mean(dim))
+```
+
+Therefore, GroupNorm can be understood as:
+
+> **Creating an explicit group dimension through reshaping, and then independently standardizing each group within each sample.**
+
+This also shows that many normalization operations can be unified into three implementation steps:
+
+1. Reshape when necessary;
+2. Compute the mean and variance over the specified dimensions;
+3. Reshape back to the original shape and apply the affine transformation.
+
+## 7.8.7 RMSNorm: Normalize Only Scale over the Trailing Dimensions
+
+Like LayerNorm, RMSNorm uses `normalized_shape` to determine the statistical set.
+
+For a Transformer input `(N, L, D)` and:
+
+```python
+nn.RMSNorm(D)
+```
+
+it fixes the batch position and token position and computes the root mean square over the final hidden dimension $D$:
+
+$$
+\operatorname{RMS}_{n,l} =
+\sqrt{\frac{1}{D}\sum_{d=1}^{D}x_{n,l,d}^2+\epsilon}
+$$
+
+Unlike LayerNorm, RMSNorm does not subtract the mean. It therefore controls only the overall scale of features and does not force the output mean to be 0.
+
+```{python}
+x = torch.randn(2, 6, 8)
+
+rms_norm = nn.RMSNorm(8, elementwise_affine=False)
+y = rms_norm(x)
+
+print('Output RMS by token:')
+print(y.pow(2).mean(dim=-1).sqrt())
+print('Output means by token:')
+print(y.mean(dim=-1))
+```
+
+RMSNorm has the same statistical dimensions as `LayerNorm(D)`: both use the final hidden dimension, but their statistics differ:
+
+- LayerNorm computes the mean and centered variance;
+- RMSNorm computes only the root mean square corresponding to the mean square.
+
+Therefore, when incorporating RMSNorm into a unified perspective, we need to consider two things simultaneously:
+
+1. Which dimensions form the statistical set;
+2. Whether the statistical set is used to compute the mean and variance or the root mean square.
+
+## 7.8.8 Comparing Statistical Dimensions in One Table
+
+For an image input `(N, C, H, W)`, the five normalization methods can be summarized as follows:
+
+::: {.list-table}
+Table 7.8.8 Comparison of Five Normalization Methods
+
+- - Method
+  - Retained dimensions
+  - Statistical dimensions
+  - Learnable parameter shape
+  - Maintains running statistics?
+
+- - BatchNorm
+  - $C$
+  - $N, H, W$
+  - $(C,)$
+  - Yes
+
+- - LayerNorm `(C,H,W)`
+  - $N$
+  - $C, H, W$
+  - $(C, H, W)$
+  - No
+
+- - InstanceNorm
+  - $N, C$
+  - $H, W$
+  - $(C,)$
+  - No by default, optional
+
+- - GroupNorm
+  - $N, G$
+  - $\frac{C}{G}, H, W$
+  - $(C,)$
+  - No
+
+- - RMSNorm `(D)`
+  - $N, L$
+  - $D$
+  - $(D,)$
+  - No
+:::
+
+This table is the most important summary for understanding normalization methods. The standardization step in the formulas barely changes; what truly changes is **which elements share the same set of statistics**.
+
+## 7.8.9 The Two Boundary Cases of GroupNorm
+
+GroupNorm controls the size of the statistical set through `num_groups`, so it connects LayerNorm and InstanceNorm.
+
+When $G=1$, all channels belong to the same group. GroupNorm computes statistics jointly over all `C, H, W` elements of each sample. This uses the same statistical set as:
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+layer_norm = nn.LayerNorm((4, 3, 3), elementwise_affine=False)
+group_norm = nn.GroupNorm(1, 4, affine=False)
+
+ln_output = layer_norm(x)
+gn_output = group_norm(x)
+
+max_diff = (ln_output - gn_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+However, their default affine parameter shapes differ:
+
+- The `weight` and `bias` shapes of LayerNorm are `(C, H, W)`;
+- The `weight` and `bias` shapes of GroupNorm are `(C,)`.
+
+Therefore, when affine transformations are disabled, their standardization results are the same; after enabling the default affine transformations, they are not completely identical layers.
+
+When each channel forms its own group, namely when $G=C$, GroupNorm fixes the sample and channel and computes statistics only over the spatial dimensions. This uses the same statistical set as the default InstanceNorm.
+
+```{python}
+x = torch.randn(2, 4, 3, 3)
+
+instance_norm = nn.InstanceNorm2d(4)
+group_norm = nn.GroupNorm(4, 4, affine=False)
+
+in_output = instance_norm(x)
+gn_output = group_norm(x)
+
+max_diff = (in_output - gn_output).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+Runtime behavior still deserves attention:
+
+- Default InstanceNorm does not maintain running statistics;
+- GroupNorm never maintains running statistics;
+- If InstanceNorm enables `track_running_stats=True`, it is no longer equivalent to GroupNorm during inference.
+
+## 7.8.10 Which Methods Depend on the Batch?
+
+Whether the batch dimension $N$ is included in the statistical set is the key to determining whether a normalization method depends on the batch.
+
+BatchNorm's statistical dimensions include $N$, so:
+
+- The output of the current sample is affected by other samples;
+- Batch size affects the stability of the statistics;
+- Batch statistics are needed during training;
+- Running statistics are usually needed during inference.
+
+LayerNorm, InstanceNorm, and GroupNorm do not compute statistics along $N$, so:
+
+- Each sample is normalized independently;
+- Changing other samples in the batch does not change the output of the current sample;
+- Running statistics are usually not needed;
+- The statistical rule is the same under `train()` and `eval()`.
+
+Below, we use GroupNorm to verify that the current sample is not affected by other samples:
+
+```{python}
+target = torch.randn(1, 8, 4, 4)
+other_sample1 = torch.randn(3, 8, 4, 4)
+other_sample2 = torch.randn(3, 8, 4, 4) * 100 + 50
+
+group_norm = nn.GroupNorm(4, 8, affine=False)
+
+other_sample1 = torch.concat([target, other_sample1], dim=0)
+other_sample2 = torch.concat([target, other_sample2], dim=0)
+output_sample1 = group_norm(other_sample1)[0]
+output_sample2 = group_norm(other_sample2)[0]
+
+max_diff = (output_sample1 - output_sample2).abs().max()
+print('Maximum difference for target sample:', max_diff.item())
+```
+
+If we replace this with BatchNorm in training mode, the two outputs will usually differ.
+
+## 7.8.11 How Should We Choose a Normalization Method?
+
+There is no absolute ranking among normalization methods. The choice depends on the network architecture, batch size, and task characteristics.
+
+#### **1. CNNs with a sufficiently large batch**
+
+BatchNorm is usually still the classic choice. It performs stably in convolutional networks and can be fused with the convolutional layer during inference.
+
+```python
+nn.Sequential(
+    nn.Conv2d(in_channels, out_channels, kernel_size=3, bias=False),
+    nn.BatchNorm2d(out_channels),
+    nn.ReLU(),
+)
+```
+
+#### **2. CNNs with a very small batch on each device**
+
+GroupNorm is more suitable because it does not depend on batch statistics. Object detection, instance segmentation, and high-resolution vision tasks often fall into this category.
+
+```python
+nn.Sequential(
+    nn.Conv2d(in_channels, out_channels, kernel_size=3, bias=False),
+    nn.GroupNorm(32, out_channels),
+    nn.ReLU(),
+)
+```
+
+In practice, ensure that `num_channels % num_groups == 0` and adjust the number of groups according to the channel count.
+
+#### **3. Transformers and sequence models**
+
+LayerNorm has long been the most common normalization method in Transformers. It usually computes statistics independently over the hidden features of each token, so it does not depend on batch size or the composition of other samples in the batch.
+
+```python
+nn.LayerNorm(hidden_size)
+```
+
+With the development of large language models, RMSNorm has also become a very common choice. By omitting mean centering, RMSNorm has a simpler computational form than LayerNorm while providing good training stability in many modern large language models.
+
+```python
+nn.RMSNorm(hidden_size)
+```
+
+Classic Transformer architectures usually use LayerNorm, whereas many modern large language models tend to use RMSNorm.
+
+#### **4. Style transfer and some image-generation tasks**
+
+InstanceNorm independently removes the spatial mean and variance of each sample and channel, so it is commonly used for tasks that emphasize content structure while weakening instance-level style statistics.
+
+```python
+nn.InstanceNorm2d(num_features, affine=True)
+```
+
+Of course, these are only common heuristics. Modern networks may also use entirely different normalization designs.
+
+## 7.8.12 More Normalization Is Not Always Better
+
+Normalization layers can improve optimization, but they also change how the model represents information and introduce additional constraints.
+
+For example:
+
+- BatchNorm introduces dependence between samples;
+- LayerNorm removes overall mean and scale information over its normalized dimensions;
+- InstanceNorm may remove instance-level contrast information useful for classification;
+- The effect of GroupNorm depends on the number of groups;
+- RMSNorm does not perform mean centering, so it does not remove the overall offset of features.
+
+Therefore, normalization should not be understood as a fixed operation that must be added after every layer. A more reasonable approach is:
+
+1. Clarify the meaning of each dimension in the input tensor;
+2. Decide which elements should share statistics;
+3. Determine whether the model can depend on the batch;
+4. Then select the corresponding normalization method.
+
+The essence of normalization is not memorizing four class names, but designing the statistical set.
+
+## 7.8.13 Summary
+
+This section compared BatchNorm, LayerNorm, InstanceNorm, GroupNorm, and RMSNorm from the perspective of statistical dimensions.
+
+They all first select a statistical set and then adjust feature scale according to statistics from that set:
+
+1. Select the statistical set;
+2. Compute the mean and variance (or root mean square);
+3. Standardize;
+4. Apply a learnable affine transformation.
+
+BatchNorm, LayerNorm, InstanceNorm, and GroupNorm use the mean and variance, while RMSNorm uses only the root mean square.
+
+The real difference is which elements share the same set of statistics:
+
+- BatchNorm: fix the channel and compute statistics over `N, H, W`;
+- LayerNorm: fix the prefix position and compute statistics over the trailing dimensions corresponding to `normalized_shape`;
+- InstanceNorm: fix the sample and channel and compute statistics over the spatial dimensions;
+- GroupNorm: fix the sample and group and compute statistics over the channels within the group and the spatial dimensions;
+- RMSNorm: fix the prefix position and compute the root mean square over the dimensions corresponding to `normalized_shape`.
+
+Among them, only BatchNorm depends on the batch by default and uses statistics from different sources during training and inference. LayerNorm, InstanceNorm, GroupNorm, and RMSNorm usually use statistics from the current input directly.
+
+The two boundary cases of GroupNorm further demonstrate the connections among these methods:
+
+- When `num_groups=1`, the normalization statistics are close to those of LayerNorm covering all non-batch dimensions;
+- When `num_groups=C`, the normalization statistics are close to those of InstanceNorm.
+
+However, the same statistical set does not always mean that the modules are completely equivalent, because the shapes of affine parameters and the running-statistics mechanism may also differ.
+
+At this point, all the main normalization methods in this chapter have been introduced. When facing a new input, do not start with the class name. Instead, first ask:
+
+> **Which elements should share statistics? Do we need mean centering, or do we only need to control feature scale?**
+
+Once this question has been answered, choosing a normalization method is usually much clearer.

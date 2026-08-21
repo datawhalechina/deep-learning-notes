@@ -1,0 +1,613 @@
+---
+author: jshn9515
+date: 2026-06-27
+date-modified: 2026-06-27
+open-graph:
+  title: ch7.4-layer-normalization
+  description: "7.4 LayerNorm: Normalizing Features Within Each Sample"
+title: "7.4 LayerNorm: Normalizing Features Within Each Sample"
+order: 4
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch7-regularization-and-normalization/ch7.4-layer-normalization.ipynb){fig-align="left"}
+
+In the previous section, we introduced Batch Normalization. BatchNorm collects statistics for each feature or channel from the current mini-batch, so the output for one sample is affected by the other samples in the batch.
+
+This approach is highly effective in CNNs, but it is not suitable for every network. For sequence models such as Transformers, sentence lengths, the amount of padding, and token contents may differ across the batch; during inference, the batch size may also change from dozens to 1. If normalization depends on the current batch, the model's behavior changes with the composition of the batch.
+
+**Layer Normalization (LayerNorm)** [@ba2016LayerNorm] takes a different approach: instead of collecting statistics across different samples, it computes the mean and variance within each sample's own features.
+
+In this section, we answer the following questions:
+
+- Over which dimensions does LayerNorm compute the mean and variance?
+- What does the 768 in `nn.LayerNorm(768)` represent?
+- Why can the input shape be `(batch_size, sequence_length, hidden_size)`?
+- Why does LayerNorm not need `running_mean` and `running_var`?
+- Why do Transformers more commonly use LayerNorm rather than BatchNorm?
+
+We begin with the normalization dimensions of LayerNorm, and then introduce its learnable parameters, PyTorch implementation, and limitations.
+
+```{python}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 7.4.1 Over Which Dimensions Does LayerNorm Normalize?
+
+When introducing BatchNorm in the previous section, we focused on the dimensions along which it computes the mean and variance in the input tensor. We can understand LayerNorm in the same way: instead of immediately memorizing the formula, first determine **which elements are grouped together to compute the statistics**.
+
+The standardization formula used by LayerNorm and BatchNorm is actually the same:
+
+$$
+\hat{x} = \frac{x-\mu}{\sqrt{\sigma^2+\epsilon}}
+$$
+
+The real difference is not in the formula, but in which elements are used to compute the mean $\mu$ and variance $\sigma^2$. BatchNorm usually fixes a feature or channel and computes statistics across different samples; LayerNorm fixes one sample and computes statistics over specified feature dimensions within that sample.
+
+First, consider the simplest two-dimensional input:
+
+$$
+X\in\mathbb{R}^{N\times D}
+$$
+
+Here, $N$ denotes the batch size and $D$ denotes the number of features in each sample. For the $n$-th sample, LayerNorm groups its $D$ features together and computes that sample's own mean:
+
+$$
+\mu_n = \frac{1}{D}\sum_{d=1}^{D}x_{n,d}
+$$
+
+and variance:
+
+$$
+\sigma_n^2 = \frac{1}{D}\sum_{d=1}^{D} \left(x_{n,d}-\mu_n\right)^2
+$$
+
+Then, all features in the $n$-th sample use the same $\mu_n$ and $\sigma_n^2$ for standardization:
+
+$$
+\hat{x}_{n,d} = \frac{x_{n,d}-\mu_n} {\sqrt{\sigma_n^2+\epsilon}}
+$$
+
+Therefore, for an input with shape `(N, D)`, LayerNorm computes statistics along the feature dimension `D` without crossing the batch dimension `N`. Each sample has its own independent mean and variance. If the normalized dimension is retained, then $\mu$ and $\sigma^2$ both have shape `(N, 1)`.
+
+In PyTorch, this can be written as:
+
+```{python}
+x = torch.randn(3, 4)
+
+mean = x.mean(dim=-1, keepdim=True)
+var = x.var(dim=-1, correction=0, keepdim=True)
+x_hat = (x - mean) / (var + 1e-5).sqrt()
+
+print('Input shape:', x.shape)
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+Here, `dim=-1` means that statistics are computed along the last dimension, namely dimension `D`; `keepdim=True` keeps the mean and variance shaped as `(N, 1)`, so they can be applied to the original `(N, D)` input through broadcasting.
+
+For higher-dimensional tensors, LayerNorm computes the mean and variance over the last several dimensions according to `normalized_shape`.
+
+Consider a common four-dimensional input in a convolutional network:
+
+$$
+X\in\mathbb{R}^{N\times C\times H\times W}
+$$
+
+Here, $N$ is the batch size, $C$ is the number of channels, and $H$ and $W$ are the spatial dimensions.
+
+If we use:
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+then LayerNorm computes statistics jointly over all $C\times H\times W$ elements within each sample.
+
+For the $n$-th sample, its mean is:
+
+$$
+\mu_n =
+\frac{1}{CHW}
+\sum_{c=1}^{C}
+\sum_{h=1}^{H}
+\sum_{w=1}^{W}
+ x_{n,c,h,w}
+$$
+
+and its variance is:
+
+$$
+\sigma_n^2 =
+\frac{1}{CHW}
+\sum_{c=1}^{C}
+\sum_{h=1}^{H}
+\sum_{w=1}^{W}
+\left(x_{n,c,h,w}-\mu_n\right)^2
+$$
+
+Then, every position in that sample is standardized using the same $\mu_n$ and $\sigma_n^2$:
+
+$$
+\hat{x}_{n,c,h,w} = \frac{x_{n,c,h,w}-\mu_n} {\sqrt{\sigma_n^2+\epsilon}}
+$$
+
+At this point, each sample has only one mean and variance. If the dimensions are retained, their shape is `(N, 1, 1, 1)`.
+
+The corresponding PyTorch computation is:
+
+```{python}
+x = torch.randn(2, 3, 4, 5)
+
+mean = x.mean(dim=(1, 2, 3), keepdim=True)
+var = x.var(dim=(1, 2, 3), correction=0, keepdim=True)
+x_hat = (x - mean) * (var + 1e-5).sqrt()
+
+print('Input shape:', x.shape)
+print('Mean shape:', mean.shape)
+print('Variance shape:', var.shape)
+```
+
+Therefore, for an `(N, C, H, W)` input with `normalized_shape=(C, H, W)`, LayerNorm computes statistics jointly over the `C`, `H`, and `W` dimensions, while the batch dimension `N` does not participate in the statistics.
+
+This also shows that the normalization direction of LayerNorm is not fixed, but is determined by `normalized_shape`. It always starts from the last dimension of the input and matches backward against the dimensions included in `normalized_shape`. For an `(N, D)` input, it usually normalizes `D`; for an `(N, C, H, W)` input, setting it to `(C, H, W)` normalizes the channel and spatial dimensions of the entire sample jointly.
+
+Compared with BatchNorm, the standardization formula is still the same; the only difference is the statistical direction. BatchNorm usually fixes a channel and computes statistics over the batch and spatial dimensions, whereas LayerNorm fixes a sample and computes statistics over the feature dimensions specified by `normalized_shape`.
+
+## 7.4.2 LayerNorm Also Performs a Learnable Affine Transformation
+
+Like BatchNorm, LayerNorm also performs a learnable affine transformation after standardization:
+
+$$
+y_i = \gamma_i\hat{x}_i + \beta_i
+$$
+
+Here, $\gamma$ controls the scaling of each feature, while $\beta$ controls its shift.
+
+If the number of input features is `D`, then $\gamma$ and $\beta$ usually also have shape `D`. They are applied to every sample in the batch through broadcasting.
+
+```{python}
+x = torch.randn(3, 4)
+layer_norm = nn.LayerNorm(4)
+
+print('Weight shape:', layer_norm.weight.shape)
+print('Bias shape:', layer_norm.bias.shape)
+print('Initial weight:', layer_norm.weight, sep='\n')
+print('Initial bias:', layer_norm.bias, sep='\n')
+```
+
+By default, PyTorch initializes `weight` to 1 and `bias` to 0. Therefore, immediately after LayerNorm is created, it does not change the standardized result:
+
+$$
+y = 1\cdot\hat{x}+0 = \hat{x}
+$$
+
+During training, however, the model can learn scaling and shifting suitable for the task. LayerNorm is therefore not simply forcing all intermediate representations to always maintain mean 0 and variance 1. Instead, it first establishes a stable standardized coordinate system and then lets the model learn how to adjust each feature.
+
+## 7.4.3 `normalized_shape`: Determining the Normalization Dimensions and Parameter Shape
+
+The most important parameter of `nn.LayerNorm` is `normalized_shape`:
+
+```python
+nn.LayerNorm(normalized_shape)
+```
+
+It has two meanings that hold simultaneously:
+
+1. LayerNorm computes the mean and variance over the last several dimensions of the input;
+2. The shapes of the learnable parameters `weight` and `bias` equal `normalized_shape`.
+
+The most common case is:
+
+```{python}
+layer_norm = nn.LayerNorm(4)
+x = torch.randn(2, 3, 4)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Output shape:', y.shape)
+print('Normalized shape:', layer_norm.normalized_shape)
+```
+
+Here, the input shape is `(2, 3, 4)` and `normalized_shape=4`. LayerNorm normalizes the last dimension, processing each vector of length 4 independently.
+
+For each position `(n, l)`, LayerNorm independently computes:
+
+$$
+\mu_{n,l} = \frac{1}{D}\sum_{d=1}^{D}x_{n,l,d}
+$$
+
+Therefore, the preceding batch and sequence dimensions are not mixed together.
+
+```{python}
+print('Mean over the last dimension:')
+print(y.mean(dim=-1))
+
+print('Variance over the last dimension:')
+print(y.var(dim=-1, correction=0))
+```
+
+The output mean is close to 0 and the variance is close to 1. Because the default `eps=1e-5`, the results may not be exactly equal to 0 and 1 in floating-point arithmetic.
+
+The rule can be summarized in one sentence:
+
+> **If `normalized_shape` contains $k$ dimensions, LayerNorm normalizes the last $k$ dimensions of the input.**
+
+Of course, `normalized_shape` does not have to be a single integer; it can also be a tuple.
+
+Suppose the input is a batch of images:
+
+$$
+X \in \mathbb{R}^{N\times C\times H\times W}
+$$
+
+If we create:
+
+```python
+nn.LayerNorm((C, H, W))
+```
+
+LayerNorm computes statistics jointly over all channels and spatial positions of each sample.
+
+```{python}
+layer_norm = nn.LayerNorm((3, 4, 5))
+x = torch.randn(2, 3, 4, 5)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Weight shape:', layer_norm.weight.shape)
+print('Output means:', y.mean(dim=(1, 2, 3)))
+print('Output variances:', y.var(dim=(1, 2, 3), correction=0))
+```
+
+Here, `normalized_shape=(3, 4, 5)` contains 3 dimensions, so LayerNorm normalizes the last 3 dimensions of the input, namely `(C, H, W)`, together.
+
+Pay special attention to the fact that `nn.LayerNorm(C)` does not mean normalizing the channel dimension. It means that the last dimension of the input must be `C`, and that the last dimension is normalized. For PyTorch's default image layout `(N, C, H, W)`, the last dimension is `W`, so `nn.LayerNorm(C)` usually cannot be applied directly to the channel dimension. If we want to apply LayerNorm only to the channels, we can first convert the tensor to a channels-last layout:
+
+```{python}
+x = torch.randn(2, 3, 4, 5)
+
+# (N, C, H, W) -> (N, H, W, C)
+x_channels_last = x.permute(0, 2, 3, 1)
+layer_norm = nn.LayerNorm(3)
+y_channels_last = layer_norm(x_channels_last)
+
+# (N, H, W, C) -> (N, C, H, W)
+y = y_channels_last.permute(0, 3, 1, 2)
+
+print('Original shape:', x.shape)
+print('Channels-last shape:', x_channels_last.shape)
+print('Output shape:', y.shape)
+```
+
+This type of channels-last LayerNorm appears in some modern vision models. For ordinary CNNs, however, BatchNorm or GroupNorm is usually more consistent with the default `(N, C, H, W)` layout.
+
+## 7.4.4 LayerNorm in Transformers
+
+The hidden states of a Transformer are usually written as:
+
+$$
+X\in\mathbb{R}^{N\times L\times D}
+$$
+
+Here, $N$ is the batch size, $L$ is the sequence length, and $D$ is the hidden size, also commonly written as $d_{\mathrm{model}}$.
+
+The most common LayerNorm in a Transformer is:
+
+```python
+nn.LayerNorm(D)
+```
+
+It independently normalizes the $D$-dimensional representation of each token:
+
+$$
+x_{n,l,:} \longrightarrow \operatorname{LayerNorm}(x_{n,l,:})
+$$
+
+```{python}
+batch_size = 2
+sequence_length = 5
+hidden_size = 8
+
+layer_norm = nn.LayerNorm(hidden_size)
+x = torch.randn(batch_size, sequence_length, hidden_size)
+y = layer_norm(x)
+
+print('Input shape:', x.shape)
+print('Mean of each token representation:', y.mean(dim=-1), sep='\n')
+```
+
+Each token uses its own mean and variance, so:
+
+- Different samples do not affect one another;
+- Different token positions do not affect one another;
+- When the sequence length changes, the shape of the LayerNorm parameters does not need to change;
+- When the batch size changes, the behavior of LayerNorm does not need to change.
+
+This is exactly why LayerNorm is highly suitable for Transformers.
+
+When introducing the Transformer Encoder in Chapter 8, we already saw LayerNorm appear together with residual connections.
+
+A common Pre-LN structure can be written as:
+
+$$
+Y = X + \operatorname{Sublayer}(\operatorname{LayerNorm}(X))
+$$
+
+Here, LayerNorm stabilizes the feature scale of each token representation, while the residual connection provides a direct information and gradient path. The structural difference between Pre-LN and Post-LN was discussed in the Transformer chapter and will not be expanded on again here.
+
+## 7.4.5 LayerNorm Does Not Depend on Batch Statistics
+
+As we know, BatchNorm uses the mean and variance of the current batch during training and the accumulated running statistics during inference. Therefore, the same sample may produce different results in different batches. LayerNorm, on the other hand, obtains all its statistics from the current sample itself, so its output does not change when the same sample is placed together with other samples.
+
+```{python}
+sample = torch.randn(1, 8, 4, 4)
+other_sample = torch.randn(1, 8, 4, 4) * 100.0 + 500.0
+
+batch1 = sample
+batch2 = torch.concat([sample, other_sample], dim=0)
+
+layer_norm = nn.LayerNorm(4)
+
+output1 = layer_norm(batch1)
+output2 = layer_norm(batch2)[0:1]
+
+max_diff = (output1 - output2).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+The maximum difference should be 0. This is because the normalization of `sample` depends only on its own 4 features and not on the other sample concatenated afterward.
+
+This also means that LayerNorm:
+
+- Does not maintain `running_mean`;
+- Does not maintain `running_var`;
+- Does not need to adjust its statistical procedure according to batch size;
+- Does not lose the meaning of its statistics when the batch size is 1.
+
+## 7.4.6 Training and Inference Behave the Same
+
+As discussed earlier, dropout behaves differently in `train()` and `eval()` modes, and BatchNorm also switches between batch statistics and running statistics in the two modes. LayerNorm in this section, however, uses exactly the same formula during training and inference.
+
+```{python}
+x = torch.randn(2, 3, 4)
+layer_norm = nn.LayerNorm(4)
+
+layer_norm.train()
+y_train = layer_norm(x)
+
+layer_norm.eval()
+y_eval = layer_norm(x)
+
+max_diff = (y_train - y_eval).abs().max()
+print('Maximum difference:', max_diff.item())
+print('State dict keys:', dict(layer_norm.state_dict()))
+```
+
+As we can see, `state_dict` contains only the learnable `weight` and `bias`, not BatchNorm's `running_mean`, `running_var`, and `num_batches_tracked`. `eval()` still recursively sets the `training` attribute of the LayerNorm module, but LayerNorm's forward formula itself does not switch behavior based on this attribute.
+
+## 7.4.7 A PyTorch Implementation of LayerNorm
+
+Based on the discussion above, a simplified LayerNorm can be divided into four steps:
+
+1. Determine the last several dimensions to normalize;
+2. Compute the mean over these dimensions;
+3. Compute the variance over these dimensions and standardize;
+4. Perform an affine transformation using `weight` and `bias`.
+
+```{python}
+def layer_norm(
+    x: Tensor,
+    normalized_shape: int | tuple[int, ...],
+    weight: Tensor | None = None,
+    bias: Tensor | None = None,
+    eps: float = 1e-5,
+) -> Tensor:
+    """A minimal functional implementation of layer normalization."""
+    if isinstance(normalized_shape, int):
+        normalized_shape = (normalized_shape,)
+
+    if x.shape[-len(normalized_shape) :] != normalized_shape:
+        raise AssertionError(
+            f'Expected the trailing input dimensions to match '
+            f'`normalized_shape={normalized_shape}`, '
+            f'but got input shape {tuple(x.shape)}.'
+        )
+
+    dims = tuple(range(x.ndim - len(normalized_shape), x.ndim))
+    layer_mean = x.mean(dim=dims, keepdim=True)
+    layer_var = x.var(dim=dims, correction=0, keepdim=True)
+
+    y = (x - layer_mean) / (layer_var + eps).sqrt()
+
+    if weight is not None:
+        y = y * weight
+    if bias is not None:
+        y = y + bias
+
+    return y
+```
+
+Here, `dims` represents the last `len(normalized_shape)` dimensions of the input. For example:
+
+- When `normalized_shape=(4,)`, the last dimension is normalized;
+- When `normalized_shape=(3, 4, 5)`, the last three dimensions are normalized.
+
+Next, compare it with `F.layer_norm`:
+
+```{python}
+x = torch.randn(2, 3, 4)
+weight = torch.randn(4)
+bias = torch.randn(4)
+
+actual = layer_norm(x, (4,), weight=weight, bias=bias, eps=1e-5)
+expected = F.layer_norm(x, (4,), weight=weight, bias=bias, eps=1e-5)
+
+max_diff = (actual - expected).abs().max()
+print('Maximum difference:', max_diff.item())
+```
+
+The difference between the two should come only from the order of floating-point computations.
+
+Next, we can use this function to implement a simplified `nn.LayerNorm`:
+
+```{python}
+class LayerNorm(nn.Module):
+    """Apply layer normalization over the trailing input dimensions."""
+
+    weight: Tensor | None
+    bias: Tensor | None
+
+    def __init__(
+        self,
+        normalized_shape: int | tuple[int, ...],
+        eps: float = 1e-5,
+        elementwise_affine: bool = True,
+        bias: bool = True,
+    ):
+        super().__init__()
+        if isinstance(normalized_shape, int):
+            normalized_shape = (normalized_shape,)
+
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+        if self.elementwise_affine:
+            self.weight = nn.Parameter(torch.empty(self.normalized_shape))
+            if bias:
+                self.bias = nn.Parameter(torch.empty(self.normalized_shape))
+            else:
+                self.register_parameter('bias', None)
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.weight is not None:
+            nn.init.ones_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return layer_norm(
+            x,
+            self.normalized_shape,
+            weight=self.weight,
+            bias=self.bias,
+            eps=self.eps,
+        )
+
+    def extra_repr(self) -> str:
+        return (
+            f'normalized_shape={self.normalized_shape}, eps={self.eps}, '
+            f'elementwise_affine={self.elementwise_affine}, bias={self.bias is not None}'
+        )
+```
+
+Test whether the custom LayerNorm agrees with PyTorch's implementation:
+
+```{python}
+x = torch.randn(2, 5, 8)
+
+layer_norm1 = LayerNorm(8)
+layer_norm2 = nn.LayerNorm(8)
+
+with torch.no_grad():
+    layer_norm2.weight.copy_(layer_norm1.weight)
+    layer_norm2.bias.copy_(layer_norm1.bias)
+
+actual = layer_norm1(x)
+expected = layer_norm2(x)
+
+max_diff = (actual - expected).abs().max()
+print('Custom output shape:', actual.shape)
+print('Maximum difference:', max_diff.item())
+```
+
+As we can see, the difference between them is within the range of floating-point computation error.
+
+Note that BatchNorm's learnable parameters consist of one set per channel, whereas LayerNorm's learnable parameters consist of one set per position within the normalized range. PyTorch also provides the `elementwise_affine` and `bias` parameters, which can be used to choose whether to use a learnable affine transformation and whether to use a bias.
+
+## 7.4.8 Why Does LayerNorm Use the Population Variance?
+
+PyTorch's LayerNorm uses the population variance, namely:
+
+```python
+x.var(..., correction=0)
+```
+
+The corresponding formula is:
+
+$$
+\sigma^2 = \frac{1}{D}\sum_{i=1}^{D}(x_i-\mu)^2
+$$
+
+rather than the unbiased sample variance with denominator $D-1$.
+
+This agrees with the variance used by BatchNorm to standardize the current batch during training. The goal of normalization is not to estimate an unknown population variance from a finite sample, but to directly describe the numerical scale of the current group of activations, so using the population variance is more natural.
+
+```{python}
+x = torch.tensor([[1.0, 2.0, 3.0, 4.0]])
+
+biased_var = x.var(dim=-1, correction=0, keepdim=True)
+unbiased_var = x.var(dim=-1, correction=1, keepdim=True)
+
+actual = (x - x.mean(dim=-1, keepdim=True)) / (biased_var + 1e-5).sqrt()
+expected = F.layer_norm(x, (4,))
+
+max_diff = (actual - expected).abs().max()
+print('Biased variance:', biased_var.item())
+print('Unbiased variance:', unbiased_var.item())
+print('Maximum difference:', max_diff.item())
+```
+
+## 7.4.9 Limitations of LayerNorm
+
+LayerNorm does not depend on batch size, and its training and inference behavior is consistent, so it is highly suitable for sequence models and small-batch settings. This does not mean, however, that it is better than BatchNorm for every task.
+
+First, LayerNorm removes the overall mean and scale within an individual sample. If these statistics are useful for the task, the network needs to represent them again through other means.
+
+Second, the normalization dimensions of LayerNorm must match `normalized_shape`. For Transformers, the hidden size is usually fixed, so `nn.LayerNorm(hidden_size)` is natural; but for CNNs with frequently changing spatial dimensions, `nn.LayerNorm((C, H, W))` binds the layer to fixed `H` and `W`, making it less convenient to use.
+
+Finally, the noise introduced by BatchNorm's use of batch statistics can sometimes provide a degree of regularization, while LayerNorm does not behave in exactly the same way. In large-batch image classification tasks, BatchNorm remains a very common and effective choice.
+
+Therefore, the choice of normalization method is usually related to the data layout and model architecture:
+
+- CNNs with large batches: BatchNorm is usually considered first;
+- Transformers and other sequence models: LayerNorm or one of its variants is usually used;
+- CNNs with small batches: GroupNorm is usually considered;
+- Image-generation tasks such as style transfer: InstanceNorm may be used.
+
+## 7.4.10 Summary
+
+This section introduced Layer Normalization.
+
+LayerNorm and BatchNorm use similar standardization formulas:
+
+$$
+y = \gamma\frac{x-\mu}{\sqrt{\sigma^2+\epsilon}}+\beta
+$$
+
+But the dimensions over which they compute the mean and variance differ. BatchNorm usually computes statistics for the same feature or channel across samples, whereas LayerNorm computes statistics within the features of an individual sample.
+
+In PyTorch, `normalized_shape` simultaneously determines two things:
+
+1. How many of the final dimensions of the input participate in normalization;
+2. The shapes of `weight` and `bias`.
+
+For Transformer inputs `(N, L, D)`, the most common form is:
+
+```python
+nn.LayerNorm(D)
+```
+
+It independently normalizes the `D`-dimensional representation of each token. Because LayerNorm does not depend on batch statistics, it does not need running statistics and uses the same computation during training and inference.
+
+In the next section, we introduce **Instance Normalization** [@ulyanov2017InstanceNorm]. It likewise does not collect statistics across samples, but normalizes each channel of each sample separately over the spatial dimensions.
