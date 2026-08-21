@@ -69,11 +69,11 @@ $$
 语言模型并不是把整句话当成一个单独的分类任务，而是把它拆成多个连续的预测任务：
 
 $$
-\begin{aligned}
+\begin{align}
 &p(x_2 \mid x_1) \\
 &p(x_3 \mid x_1, x_2) \\
 &p(x_4 \mid x_1, x_2, x_3)
-\end{aligned}
+\end{align}
 $$
 
 也就是：
@@ -146,10 +146,10 @@ labels    = [25, 31, 7, 42]
 也就是：
 
 $$
-\begin{aligned}
+\begin{align}
 \text{input\_ids}_t &= x_t \\
 \text{labels}_t &= x_{t+1}
-\end{aligned}
+\end{align}
 $$
 
 ```{python}

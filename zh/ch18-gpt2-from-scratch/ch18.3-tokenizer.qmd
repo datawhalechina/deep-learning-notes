@@ -75,10 +75,10 @@ print('PyTorch version:', torch.__version__)
 写成函数就是：
 
 $$
-\begin{aligned}
+\begin{align}
 \operatorname{encode}(\text{text}) &= [x_1, x_2, \dots, x_T] \\
 \operatorname{decode}([x_1, x_2, \dots, x_T]) &= \text{text}
-\end{aligned}
+\end{align}
 $$
 
 对语言模型来说，`encode` 的结果才是真正进入模型的输入：
