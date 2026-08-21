@@ -162,7 +162,7 @@ $$
 整体流程可以概括为：
 
 $$
-\begin{aligned}
+\begin{align}
 \text{image}
 & \rightarrow \text{patches} \\
 & \rightarrow \text{patch embedding} \\
@@ -171,7 +171,7 @@ $$
 & \rightarrow \text{Transformer Encoder} \\
 & \rightarrow \text{class token output} \\
 & \rightarrow \text{classification head}
-\end{aligned}
+\end{align}
 $$
 
 ![图 11.1.5：ViT 模型结构 [@dosovitskiy2021ViT, fig. 1]](figures/ch11.1-vit.png){width=70%}
