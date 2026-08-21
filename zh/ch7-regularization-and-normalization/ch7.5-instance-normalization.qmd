@@ -518,10 +518,10 @@ $$
 InstanceNorm 会固定样本和通道，沿空间维度计算：
 
 $$
-\begin{aligned}
+\begin{align}
 \mu_{n,c} = \frac{1}{HW} \sum_{h,w}x_{n,c,h,w} \\
 \sigma_{n,c}^2 = \frac{1}{HW} \sum_{h,w}(x_{n,c,h,w}-\mu_{n,c})^2
-\end{aligned}
+\end{align}
 $$
 
 它的几个核心特点是：
