@@ -1,0 +1,457 @@
+---
+author: jshn9515
+date: 2026-06-18
+date-modified: 2026-06-21
+open-graph:
+  title: ch18.1-next-token-prediction
+  description: "18.1 What Language Models Predict: Next-Token Prediction"
+title: "18.1 What Language Models Predict: Next-Token Prediction"
+order: 1
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch18-gpt2-from-scratch/ch18.1-next-token-prediction.ipynb){fig-align="left"}
+
+In Chapter 8, we went from attention all the way to the Transformer decoder. We know that masked self-attention in the decoder has a crucial limitation:
+
+> **The current position can see itself and previous positions, but not future positions.**
+
+At the time, we mainly understood this limitation from the perspective of model architecture: to generate autoregressively, the decoder cannot peek at the answer in advance. But if we keep asking questions, we soon encounter a more fundamental one:
+
+> **What is a language model such as GPT actually training?**
+
+The most basic training objective of a language model is **next-token prediction**: given the tokens that have already appeared, predict the next token that immediately follows.
+
+This sounds simple, perhaps even overly simple. If the model only predicts the next token, why can it eventually write articles, write code, answer questions, and even exhibit some reasoning ability? In this section, we will not rush to implement a complete GPT. Instead, we will connect this training objective, data representation, and loss function into one complete chain.
+
+The content of the rest of this chapter essentially revolves around the same conditional probability:
+
+$$
+p(x_{t+1} \mid x_{\le t})
+$$
+
+```{python}
+import torch
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+## 18.1.1 From a Text Sequence to Next-Token Prediction
+
+Suppose we have a very short piece of text:
+
+```text
+I love deep learning
+```
+
+Before being sent into the model, the text first passes through a tokenizer and is split into a sequence of tokens. To temporarily ignore the details of tokenization, we will treat each word as a token:
+
+```text
+[I, love, deep, learning]
+```
+
+Denote them as:
+
+$$
+x_1, x_2, x_3, x_4
+$$
+
+where:
+
+$$
+x_1 = \text{I}, \quad
+x_2 = \text{love}, \quad
+x_3 = \text{deep}, \quad
+x_4 = \text{learning}
+$$
+
+A language model does not treat the entire sentence as a single classification task. Instead, it breaks the sentence into multiple consecutive prediction tasks:
+
+$$
+\begin{align}
+&p(x_2 \mid x_1) \\
+&p(x_3 \mid x_1, x_2) \\
+&p(x_4 \mid x_1, x_2, x_3)
+\end{align}
+$$
+
+That is:
+
+```text
+I                 -> love
+I love            -> deep
+I love deep       -> learning
+```
+
+At each step, the model reads a prefix and predicts the next token after it.
+
+For a sequence of length $T$, a single forward pass usually produces more than one supervision signal; it can train multiple positions at the same time:
+
+$$
+x_1 \to x_2, \quad
+x_{1:2} \to x_3, \quad
+\dots, \quad
+x_{1:T-1} \to x_T
+$$
+
+Therefore, a text sequence is not just one training example. Almost every position in the sequence can contribute one next-token prediction training signal.
+
+From a probabilistic perspective, an autoregressive language model is learning the joint probability of the entire sequence. For the token sequence:
+
+$$
+x_1, x_2, \dots, x_T
+$$
+
+by the chain rule of probability:
+
+$$
+p(x_1, x_2, \dots, x_T)
+= \prod_{t=1}^{T} p(x_t \mid x_{<t})
+$$
+
+where:
+
+$$
+x_{<t} = x_1, x_2, \dots, x_{t-1}
+$$
+
+The first token has no preceding context in the ordinary sense, so some models explicitly add a beginning-of-sequence token:
+
+$$
+x_{<1} = \langle \mathrm{bos} \rangle
+$$
+
+Some training pipelines instead extract segments directly from continuous text without explicitly using `<bos>`. Regardless of the specific implementation, the core objective does not change:
+
+> **Use previous tokens to predict later tokens.**
+
+## 18.1.2 Inputs and Labels: Shift the Same Sequence by One Position
+
+The most direct expression of next-token prediction in code is that the inputs and labels come from the same token sequence, but are shifted by one position overall.
+
+Suppose a sequence of token ids is:
+
+```text
+[10, 25, 31, 7, 42]
+```
+
+During training, it can be split into:
+
+```text
+input_ids = [10, 25, 31, 7]
+labels    = [25, 31, 7, 42]
+```
+
+That is:
+
+$$
+\begin{align}
+\text{input\_ids}_t &= x_t \\
+\text{labels}_t &= x_{t+1}
+\end{align}
+$$
+
+```{python}
+token_ids = torch.tensor([10, 25, 31, 7, 42])
+
+input_ids = token_ids[:-1]
+labels = token_ids[1:]
+
+print('Input_ids:', input_ids)
+print('Labels:', labels)
+```
+
+The model is not asked to predict the current input $x_t$ at position $t$. Instead, it uses the context up to the current position to predict $x_{t+1}$.
+
+If the target were still the current token, the Transformer could easily copy the answer directly from the token embedding at the current position. Such a task would not force the model to learn how text continues. What a language model truly needs to learn is:
+
+> **Given the context so far, what is most likely to appear next?**
+
+Therefore, the $t$-th hidden state can use:
+
+$$
+x_1, x_2, \dots, x_t
+$$
+
+but its corresponding supervision target is:
+
+$$
+x_{t+1}
+$$
+
+This also explains why the causal mask is indispensable. Without a causal mask, the position $t$ could directly see the future $x_{t+1}$. The training loss might be very low, but the model would actually just be peeking at the answer rather than learning genuine autoregressive generation.
+
+## 18.1.3 From Logits to Cross Entropy
+
+At each position, a language model does not directly output a token id. Instead, it assigns a set of scores to every token in the vocabulary.
+
+Suppose the vocabulary size is $V$. The output at position $t$ is:
+
+$$
+z_t \in \mathbb{R}^{V}
+$$
+
+This vector is called **logits**. Logits can be any real numbers and are not probabilities themselves. Only after applying softmax do we obtain a probability distribution for the next token:
+
+$$
+p(x_{t+1} = v \mid x_{\le t})
+= \frac{\exp(z_{t,v})}{\sum_{j=1}^{V} \exp(z_{t,j})}
+$$
+
+For example, given the context `I love`, the model might output:
+
+```text
+P(deep)     = 0.60
+P(machine)  = 0.20
+P(neural)   = 0.08
+P(cat)      = 0.0001
+...
+```
+
+If the true next token is `deep`, training will push the model to increase the probability of `deep` further.
+
+Thus, language-model training can be viewed as performing one vocabulary classification task at each sequence position. The negative log-likelihood loss at position $t$ is:
+
+$$
+\ell_t = -\log p(x_{t+1} \mid x_{\le t})
+$$
+
+Taking the average over the entire sequence gives:
+
+$$
+\mathcal{L}
+= -\frac{1}{T-1}
+\sum_{t=1}^{T-1}
+\log p(x_{t+1} \mid x_{\le t})
+$$
+
+For a batch, the shapes of the inputs and labels are usually:
+
+$$
+X, Y \in \mathbb{R}^{B \times T}
+$$
+
+where $B$ is the batch size and $T$ is the context length. The model outputs logits:
+
+$$
+Z \in \mathbb{R}^{B \times T \times V}
+$$
+
+where $V$ is the vocabulary size.
+
+When computing cross entropy, we can flatten the first two dimensions:
+
+$$
+(B, T, V) \to (BT, V)
+$$
+
+The labels then become:
+
+$$
+(B, T) \to (BT)
+$$
+
+```{python}
+B, T, V = 2, 4, 10
+
+logits = torch.randn(B, T, V)
+labels = torch.randint(V, (B, T))
+
+loss = F.cross_entropy(
+    logits.reshape(B * T, V),
+    labels.reshape(B * T),
+)
+print('Loss:', loss.item())
+```
+
+This is already very close to the training process of a real GPT. The only thing the complete model does is replace this part:
+
+```text
+input_ids -> logits
+```
+
+with multiple layers of a decoder-only Transformer. The way labels are shifted and cross entropy is computed remains essentially unchanged.
+
+## 18.1.4 How a Token Stream Becomes a Training Batch
+
+During actual training, we usually do not input only one natural-language sentence with clear boundaries at a time. A more common approach is to encode many documents into tokens, organize them into a longer token stream, and finally cut fixed-length training segments from it.
+
+Suppose the token stream is:
+
+```text
+[3, 8, 1, 4, 9, 2, 6, 5, 7, 0, 11, 13, ...]
+```
+
+When the block size is 4, we can cut out the following segment from one position:
+
+```text
+input:  [3, 8, 1, 4]
+label:  [8, 1, 4, 9]
+```
+
+We can also cut out the following segment from another position:
+
+```text
+input:  [2, 6, 5, 7]
+label:  [6, 5, 7, 0]
+```
+
+Stacking multiple windows gives:
+
+$$
+X =
+\begin{bmatrix}
+3 & 8 & 1 & 4 \\
+2 & 6 & 5 & 7
+\end{bmatrix}
+$$
+
+$$
+Y =
+\begin{bmatrix}
+8 & 1 & 4 & 9 \\
+6 & 5 & 7 & 0
+\end{bmatrix}
+$$
+
+The shapes of $X$ and $Y$ are both $(B, T)$. The only difference is that $Y$ is a window shifted one position to the right relative to $X$ in the original token stream.
+
+::: {.callout-tip}
+The block size here is what we commonly call the **context length**. GPT-2 has a block size of 1024, GPT-3 has a block size of 2048, and GPT-4 has a block size of 8192. During training, a larger block size allows the model to learn longer-range dependencies, but it also increases computational cost and memory usage.
+:::
+
+Next, let us write a minimal batch-sampling function:
+
+```{python}
+def get_batch(
+    token_ids: Tensor,
+    block_size: int,
+    batch_size: int,
+) -> tuple[Tensor, Tensor]:
+    """Randomly sample next-token prediction windows."""
+    max_start = len(token_ids) - block_size - 1
+    starts = torch.randint(max_start + 1, (batch_size,))
+
+    x = torch.stack([token_ids[i : i + block_size] for i in starts])
+    y = torch.stack([token_ids[i + 1 : i + block_size + 1] for i in starts])
+    return x, y
+
+
+token_stream = torch.arange(20)
+x, y = get_batch(token_stream, block_size=5, batch_size=3)
+
+print('Input batch:', x, sep='\n')
+print()
+print('Label batch:', y, sep='\n')
+```
+
+Here we need to distinguish two easily confused concepts:
+
+- `batch_size` determines how many sequence windows to take at once, corresponding to dimension 0 of the tensor;
+- `block_size` determines how many tokens each window contains, corresponding to dimension 1 of the tensor.
+
+Therefore, when `batch_size=3` and `block_size=5`, both `x.shape` and `y.shape` are:
+
+```text
+torch.Size([3, 5])
+```
+
+Although this function is small, it already contains the core structure of language-model data:
+
+```text
+x: 当前 token 窗口
+y: 同一窗口在原始 token stream 中向右移动一位
+```
+
+## 18.1.5 Using the True Answer During Training and Model Output During Generation
+
+During training, we already know the true next token, so we can directly compute cross entropy:
+
+```text
+I love deep -> learning
+```
+
+If the model does not assign `learning` a sufficiently high probability, the loss increases, and backpropagation pushes the parameters to update.
+
+During generation, there are no ready-made labels. The model can only produce a probability distribution from the current context and then choose a token from it. For example:
+
+```text
+context: I love
+
+P(deep)     = 0.45
+P(machine)  = 0.25
+P(neural)   = 0.15
+P(cats)     = 0.01
+...
+```
+
+We can directly choose the token with the highest probability, which is greedy decoding:
+
+```text
+I love deep
+```
+
+We can also sample from the probability distribution to obtain more diverse results:
+
+```text
+I love machine
+```
+
+After generating one token, we append it to the end of the sequence and continue predicting:
+
+```text
+I love                  -> deep
+I love deep             -> learning
+I love deep learning    -> because
+...
+```
+
+In formula form:
+
+$$
+x_{t+1}
+\sim p_\theta(x_{t+1} \mid x_{\le t})
+$$
+
+Here, $\theta$ denotes the model parameters. During training, we update $\theta$ so that the next token in the true text receives a higher probability. During generation, we fix $\theta$ and continuously append the tokens generated by the model itself back to the context.
+
+Next-token prediction looks like a local objective, but to predict the next token well, the model must learn patterns at different levels in text, such as:
+
+- Local word combinations and grammatical structures;
+- Contextual relationships between sentences;
+- Long-distance references and topic continuity;
+- Parentheses, indentation, and variable dependencies in code;
+- Knowledge and reasoning patterns that recur in text.
+
+Therefore, the local objective of next-token prediction forces the model to compress and use rich statistical structure from large-scale text.
+
+However, we should also note that a pretrained language model first learns how to continue text; it does not directly learn how to become an AI with the ability to think. Post-training methods such as instruction tuning, RLHF, and DPO further change the model's interaction style and behavioral preferences.
+
+## 18.1.6 Summary
+
+This section connected the training objective, data representation, and loss function of a language model.
+
+For the token sequence:
+
+$$
+x_1, x_2, \dots, x_T
+$$
+
+an autoregressive language model uses the chain rule to model it:
+
+$$
+p(x_1, x_2, \dots, x_T)
+= \prod_{t=1}^{T} p(x_t \mid x_{<t})
+$$
+
+The training data is obtained by shifting the same sequence by one position:
+
+```text
+input_ids = [x_1, x_2, ..., x_{T-1}]
+labels    = [x_2, x_3, ..., x_T]
+```
+
+At each position, the model outputs logits with a dimension equal to the vocabulary size and uses cross entropy to learn to increase the probability of the true next token. During generation, the model appends each newly generated token to the context and repeatedly performs the prediction process.
+
+At this point, we have clarified GPT's training objective. In the next section, we will implement a minimal GPT from scratch and see how it converts input token ids into logits.

@@ -1,0 +1,468 @@
+---
+author: jshn9515
+date: 2026-06-18
+date-modified: 2026-06-18
+open-graph:
+  title: ch18.6-generation
+  description: "18.6 From Training to Generation: Temperature, Top-k, and Top-p"
+title: "18.6 From Training to Generation: Temperature, Top-k, and Top-p"
+order: 6
+eval: false
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch18-gpt2-from-scratch/ch18.6-generation.ipynb){fig-align="left"}
+
+In the previous section, we trained MiniGPT.
+
+During training, the model sees a batch of token ids:
+
+```text
+input_ids: (B, T)
+```
+
+It then outputs vocabulary logits at every position:
+
+```text
+logits: (B, T, V)
+```
+
+The training objective is for `logits[:, t]` to predict `labels[:, t]` as accurately as possible. In other words, we compute the loss over all positions during training.
+
+But generation is different.
+
+Given a prefix:
+
+$$
+x_0, x_1, \ldots, x_t
+$$
+
+the model only needs to answer one question:
+
+> **What should the next token be?**
+
+Therefore, during generation we usually take only the logits at the last position:
+
+```text
+next_token_logits = logits[:, -1, :]
+```
+
+We then turn these logits into the next token.
+
+This section explains this step: once the model has produced logits, how do we generate a token from them?
+
+```{python}
+from typing import cast
+
+import dnnlpy
+import dnnlpy.models.gpt as gpt
+import dnnlpy.nn.functional as dF
+import tokenizers as tk
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+```{python}
+dnnlpy.set_seed(42)
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+## 18.6.1 From Logits to a Probability Distribution
+
+We know that the model's final output is logits, not probabilities.
+
+Suppose the vocabulary contains 5 tokens and the logits at one step are:
+
+```{python}
+logits = torch.tensor([[2.0, 1.0, 0.1, -1.0, -2.0]])
+probs = dF.softmax(logits, dim=-1)
+
+print('Logits:', logits)
+print('Probs:', probs)
+```
+
+Softmax converts logits into a probability distribution:
+
+$$
+p_i = \frac{\exp(z_i)}{\sum_j \exp(z_j)}
+$$
+
+where $z_i$ is the logit of token $i$.
+
+The simplest generation method is to select the token with the highest probability directly:
+
+```{python}
+greedy_token = probs.argmax(dim=-1, keepdim=True)
+print('Greedy token:', greedy_token.item())
+```
+
+This is called greedy decoding. It is stable and deterministic: given the same prompt, it produces the same result every time. But it also has an obvious weakness: if we always select the highest-probability token, the generation may become too conservative or even fall into repetition.
+
+The logits of a language model essentially describe a distribution rather than a single correct answer. For example, after seeing:
+
+```text
+I like to eat
+```
+
+the continuation could be:
+
+```text
+apples
+rice
+pizza
+...
+```
+
+All of these may be reasonable. If generation always selects the single highest-probability token, it loses this diversity.
+
+Therefore, we often sample from the probability distribution:
+
+```{python}
+sampled_token = probs.multinomial(num_samples=1)
+print('Sampled token:', sampled_token.item())
+```
+
+`torch.multinomial` randomly samples according to the probability distribution. A token with a higher probability is more likely to be selected, but it is not guaranteed to be selected every time.
+
+## 18.6.2 Temperature: Controlling How Sharp the Distribution Is
+
+Temperature is one of the most common generation parameters.
+
+It works simply: before softmax, divide the logits by a temperature coefficient $\tau$.
+
+$$
+p_i = \frac{\exp(z_i / \tau)}{\sum_j \exp(z_j / \tau)}
+$$
+
+where $\tau$ is the temperature.
+
+- $\tau < 1$: The distribution is sharper, making high-probability tokens more likely to be selected;
+- $\tau = 1$: The original distribution is retained;
+- $\tau > 1$: The distribution is flatter, making low-probability tokens more likely to be selected.
+
+See what this looks like in code:
+
+```{python}
+def greedy_sampling(logits: Tensor, temperature: float) -> Tensor:
+    """Sample the next token greedily from the logits."""
+    if temperature <= 0:
+        raise AssertionError('`temperature` must be positive.')
+    return dF.softmax(logits / temperature, dim=-1)
+
+
+for temperature in [0.5, 1.0, 2.0]:
+    probs = greedy_sampling(logits, temperature)
+    print('Temperature:', temperature)
+    print(probs)
+```
+
+As we can see, temperature does not directly remove tokens; it changes the shape of the entire distribution. When the temperature is very low, the model approaches greedy decoding. When it is very high, sampling becomes more random.
+
+One intuitive way to think about it is:
+
+> **Temperature controls how willing the model is to take risks.**
+
+A low temperature is more stable, while a high temperature is more diverse.
+
+## 18.6.3 Top-k: Sampling Only from the k Highest-Probability Tokens
+
+Temperature adjusts the distribution, but it does not completely eliminate low-probability tokens. If the vocabulary is large, some tokens may have very small probabilities but still have a chance of being sampled. During long-text generation, occasionally selecting one of these low-probability tokens may cause the text to suddenly go off track.
+
+The idea of top-k is:
+
+> **At each step, keep only the $k$ tokens with the highest logits and mask all other tokens.**
+
+For example, with `top_k=3`, sampling occurs only among the 3 tokens with the highest probabilities.
+
+```{python}
+def top_k_sampling(logits: Tensor, top_k: int) -> Tensor:
+    """Sample the next token from the logits using top-k sampling."""
+    if top_k <= 0:
+        return logits
+
+    top_k = min(top_k, logits.size(-1))
+    values = logits.topk(top_k, dim=-1).values
+    threshold = values[..., -1]
+
+    logits = logits.masked_fill(logits < threshold, -torch.inf)
+    return logits
+
+
+logits = top_k_sampling(logits, top_k=3)
+probs = dF.softmax(logits, dim=-1)
+print('Original logits:', logits)
+print('Top-k sampling probs:', probs)
+```
+
+Positions set to `-inf` have probability 0 after softmax.
+
+Thus, top-k reduces the sampling range from $V$ tokens to $k$ tokens, reducing the chance of sampling an extremely implausible token. However, top-k also has a problem: `k` is fixed. Some positions may have only 2 reasonable tokens, while others may have 100 reasonable tokens. A fixed `k` is not always appropriate.
+
+## 18.6.4 Top-p: Keeping the Smallest Set Whose Cumulative Probability Reaches p
+
+Top-p is also called nucleus sampling. Instead of keeping a fixed number of `k` tokens, it sorts tokens from highest to lowest probability and keeps the smallest set whose cumulative probability reaches `p`.
+
+For example, `top_p=0.9` means:
+
+> **Keep a set of the most likely tokens whose total probability is at least 0.9.**
+
+If the current distribution is very sharp, only a few tokens may need to be kept. If the distribution is relatively flat, more tokens will be kept. This makes top-p more adaptive than top-k.
+
+Here is a minimal implementation:
+
+```{python}
+def top_p_sampling(logits: Tensor, top_p: float) -> Tensor:
+    """Sample the next token from the logits using top-p sampling."""
+    if not 0 < top_p <= 1:
+        raise AssertionError('`top_p` must be in (0, 1].')
+
+    if top_p == 1.0:
+        return logits
+
+    sorted_logits, sorted_indices = logits.sort(dim=-1, descending=True)
+    sorted_probs = dF.softmax(sorted_logits, dim=-1)
+    cumulative_probs = sorted_probs.cumsum(dim=-1)
+
+    # Remove tokens whose cumulative probability is above top_p.
+    mask = cumulative_probs > top_p
+    # Keep the first token above the threshold as well, so the kept set reaches top_p.
+    mask = F.pad(mask[..., :-1], (1, 0), value=False)
+
+    remove_mask = torch.zeros_like(logits, dtype=torch.bool)
+    remove_mask.scatter_(dim=-1, index=sorted_indices, src=mask)
+
+    logits = logits.masked_fill(remove_mask, -torch.inf)
+    return logits
+
+
+logits = top_p_sampling(logits, top_p=0.9)
+probs = logits.softmax(dim=-1)
+print('Original logits:', logits)
+print('Top-p sampling probs:', probs)
+```
+
+The intuition behind top-p is:
+
+> **Instead of asking how many tokens to keep, ask how much probability mass to keep.**
+
+This is why top-p is often used in open-ended text-generation tasks.
+
+## 18.6.5 Combining Temperature, Top-k, and Top-p
+
+In actual generation, these operations are usually combined. A common order is:
+
+```text
+next_token_logits
+    -> divide by temperature
+    -> top-k filter
+    -> top-p filter
+    -> softmax
+    -> sample
+```
+
+Next, write a general sampling function:
+
+```{python}
+def sample_next_token(
+    logits: Tensor,
+    temperature: float = 1.0,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    greedy: bool = False,
+) -> Tensor:
+    """Sample next token ids from logits with temperature, top-k, and top-p."""
+    if logits.ndim != 2:
+        raise AssertionError('`logits` must have shape (B, V).')
+    if temperature <= 0:
+        raise AssertionError('`temperature` must be positive.')
+
+    if greedy:
+        next_token = logits.argmax(dim=-1, keepdim=True)
+        return next_token
+
+    logits = logits / temperature
+
+    if top_k is not None:
+        logits = top_k_sampling(logits, top_k=top_k)
+
+    if top_p is not None:
+        logits = top_p_sampling(logits, top_p=top_p)
+
+    probs = dF.softmax(logits, dim=-1)
+    next_token = probs.multinomial(num_samples=1)
+    return next_token
+
+
+print('Sample 5 tokens:', end=' ')
+for i in range(5):
+    token = sample_next_token(logits, temperature=1.0, top_k=3, top_p=0.9)
+    print(token.item(), end=', ')
+```
+
+This function returns a tensor with shape `(B, 1)`, meaning that it generates one new token for every batch sample.
+
+## 18.6.6 A Complete `generate` Function
+
+We can now write the complete `generate` function. It does the following:
+
+1. Takes a sequence of token ids as input;
+2. If the sequence is longer than the context length, keeps only the last `context_length` tokens;
+3. Runs a forward pass;
+4. Takes the logits from the last position;
+5. Samples the next token;
+6. Concatenates it to the end of the original sequence;
+7. Repeats this process `max_new_tokens` times.
+
+```{python}
+@torch.inference_mode()
+def generate(
+    model: nn.Module,
+    input_ids: Tensor,
+    block_size: int,
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    do_sample: bool = True,
+) -> Tensor:
+    """Generate new token ids autoregressively."""
+    model.eval()
+
+    for _ in range(max_new_tokens):
+        model_input = input_ids[:, -block_size:]
+        logits = model(model_input)
+
+        next_token = sample_next_token(
+            logits[:, -1, :],
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            greedy=not do_sample,
+        )
+        input_ids = torch.concat([input_ids, next_token], dim=1)
+
+    return input_ids
+```
+
+There is one detail here:
+
+```python
+model_input = input_ids[:, -block_size:]
+```
+
+If a long text has already been generated and exceeds the model's context length, MiniGPT cannot see the entire history at once; it can only see the final segment of context. This is not a tokenizer limitation, but a maximum-context-length limitation of the model architecture.
+
+## 18.6.7 Generating Text with MiniGPT
+
+Here we directly load the MiniGPT model trained in the previous section and see what text it can generate.
+
+```{python}
+tokenizer = tk.Tokenizer.from_file('models/tokenizer.json')
+tokenizer = cast(tk.Tokenizer, tokenizer)
+model = gpt.MiniGPT(
+    vocab_size=tokenizer.get_vocab_size(),
+    block_size=128,
+    embed_dim=256,
+    num_layers=4,
+    num_heads=4,
+    dropout=0.1,
+).to(device)
+state_dict = torch.load('models/minigpt.pt', map_location=device)
+flag = model.load_state_dict(state_dict)
+```
+
+Now generate with different strategies:
+
+```{python}
+prompt = 'Once upon a time, there was a little girl'
+prompt_ids = tokenizer.encode(prompt).ids
+prompt_ids = torch.tensor([prompt_ids], device=device)
+
+greedy = generate(
+    model,
+    prompt_ids.clone(),
+    block_size=128,
+    max_new_tokens=150,
+    do_sample=False,
+)
+sample = generate(
+    model,
+    prompt_ids.clone(),
+    block_size=128,
+    max_new_tokens=150,
+    temperature=0.8,
+    top_k=5,
+    top_p=0.9,
+)
+
+print('Greedy:')
+print(tokenizer.decode(greedy[0].tolist()))
+print()
+print('Sample:')
+print(tokenizer.decode(sample[0].tolist()))
+```
+
+As we can see, greedy decoding produces a more conservative output, while sampling produces more diversity.
+
+## 18.6.8 Choosing Generation Parameters
+
+There is no single correct choice of generation parameters; it depends on the task.
+
+If you want stable output, such as for code completion, factual question answering, or formatted summarization, use more conservative settings:
+
+```text
+temperature: 0.2 ~ 0.8
+top_k:       较小或不用
+top_p:       0.8 ~ 0.95
+```
+
+If you want more diverse output, such as for story writing, brainstorming, or generating multiple candidates, you can increase the temperature appropriately:
+
+```text
+temperature: 0.8 ~ 1.2
+top_p:       0.9 ~ 0.98
+```
+
+However, a temperature that is too high makes the model more likely to produce nonsense, while a top-p that is too low can make generation monotonous.
+
+Thus, you can think of them as three different control knobs:
+
+- **Temperature**: Changes the sharpness of the entire probability distribution;
+- **Top-k**: Keeps only the $k$ highest-probability tokens;
+- **Top-p**: Keeps a dynamic set of tokens whose cumulative probability reaches $p$.
+
+In practice, you do not necessarily need all three. In many cases, `temperature + top_p` is sufficient.
+
+## 18.6.9 Summary
+
+In this section, we moved from training to generation.
+
+During training, the model predicts the next token at every position in parallel:
+
+```text
+logits: (B, T, V)
+loss over B * T positions
+```
+
+During generation, the model uses only the logits from the last position each time:
+
+```text
+next_token_logits = logits[:, -1, :]
+```
+
+It then chooses the next token through a decoding strategy.
+
+The key points are:
+
+- Greedy decoding selects the highest-probability token each time; it is stable but can be conservative;
+- Sampling draws from the probability distribution and produces more diversity;
+- Temperature controls how sharp the distribution is;
+- Top-k restricts the sampling range to the $k$ highest-probability tokens;
+- Top-p dynamically determines how many tokens to keep based on cumulative probability;
+- Autoregressive generation is a repeated `forward -> sample -> append` loop.
+
+At this point, we have gone from training to generation. In the next section, we will look back at the structure of GPT-2 and examine the differences between the real GPT-2 and our MiniGPT.
