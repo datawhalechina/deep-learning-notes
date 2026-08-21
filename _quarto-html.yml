@@ -5,7 +5,7 @@ project:
     - "*.qmd"
   post-render:
     - "utils/clean_checkpoints.py"
-    - "utils/clean_cache.py"
+    - "utils/clean_quarto_cache.py"
     - "utils/html_generate_toc.py"
 
 execute:
@@ -119,6 +119,12 @@ website:
               contents: "en/ch3-multi-layer-perceptron/*.qmd"
             - section: "Chapter 4: Optimization Algorithms: How Neural Networks Update Parameters"
               contents: "en/ch4-optimization-algorithms/*.qmd"
+        - section: "Part 2: Convolutional Neural Networks"
+          contents:
+            - section: "Chapter 5: Convolutional Neural Networks: From Local Perception to Global Modeling"
+              contents: "en/ch5-convolutional-neural-network/*.qmd"
+            - section: "Chapter 7: Regularization and Normalization: Making Deep Networks More Stable"
+              contents: "en/ch7-regularization-and-normalization/*.qmd"
         - section: "Part 4: Attention Mechanism and Transformer"
           contents:
             - section: "Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
@@ -135,3 +141,9 @@ website:
               contents: "en/ch13-autoencoders-and-vaes/*.qmd"
             - section: "Chapter 14: Diffusion Models: From Denoising to Generation"
               contents: "en/ch14-diffusion-models/*.qmd"
+        - section: "Part 8: LLM Fundamentals: Using GPT-2 as an Example"
+          contents:
+            - section: "Chapter 18: Implementing GPT-2 from Scratch: Core Structures for Language Model Training"
+              contents: "en/ch18-gpt2-from-scratch/*.qmd"
+            - section: "Chapter 19: LLM Training Engineering: Memory, Computation, and Parallel Training"
+              contents: "en/ch19-llm-training-engineering/*.qmd"
