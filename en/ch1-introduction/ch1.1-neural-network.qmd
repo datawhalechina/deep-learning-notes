@@ -11,7 +11,7 @@ order: 1
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch1-introduction/ch1.1-neural-network.ipynb){fig-align="left"}
 
-Welcome to the world of deep learning! Before formally entering the various models of deep learning, we have to take a step back and ask a more fundamental question: **what exactly is a neural network?**
+Welcome to the world of deep learning! Before formally entering the various models of deep learning, we have to take a step back and ask a more fundamental question: **What exactly is a neural network?**
 
 I believe that many beginners, when they first start learning deep learning, are scared by terms like neurons, backpropagation, and gradient descent, or think that a neural network is a mysterious black box that is hard to understand. But actually, putting aside these complicated details, the essence of a neural network is much simpler than we imagine: it is just a function. It is just that, like traditional machine learning models, this function is **learnable**, which means its behavior can be adjusted through data.
 

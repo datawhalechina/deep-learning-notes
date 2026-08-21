@@ -9,6 +9,8 @@ title: "1.5 为什么神经网络能够被训练：高维空间中的优化直�
 order: 5
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch1-introduction/ch1.5-why-neural-networks-can-be-trained.ipynb){fig-align="left"}
+
 在前面的章节中，我们已经把神经网络的训练过程拆开来看了一遍。模型首先通过前向传播得到预测，再用损失函数衡量预测和目标之间的差距；反向传播负责计算梯度，而梯度下降则根据这些梯度更新参数。于是，一次最基本的训练可以写成：
 
 $$
@@ -97,7 +99,7 @@ $$
 
 二维空间里的鞍点可以想象成马鞍：沿一个方向看，它像最低点；换一个方向看，它却像最高点。
 
-![图 1.5.1.2：二维空间中的鞍点 [@enwiki:SaddlePoint]](figures/ch1.5-saddle-point.svg){width=60%}
+![图 1.5.1.2：二维空间中的鞍点 [@enwiki:SaddlePoint]](figures/ch1.5-saddle-point.svg){width=65%}
 
 当参数维度非常高时，一个临界点需要在**所有方向**上都没有下降方向，才可能成为严格的局部极小值。只要还有某个方向的曲率为负，就仍然存在可以离开的方向。
 
@@ -116,11 +118,11 @@ $$
 为了理解这一点，我们先考虑一个非常简单的问题。假设我们只有两个参数 $\theta_1$ 和 $\theta_2$，但是训练数据要求它们满足三个彼此独立的条件。那么这三个条件可能根本无法同时满足：
 
 $$
-\begin{aligned}
+\begin{align}
 f_1(\theta_1,\theta_2) &= 0,\\
 f_2(\theta_1,\theta_2) &= 0,\\
 f_3(\theta_1,\theta_2) &= 0,
-\end{aligned}
+\end{align}
 $$
 
 参数自由度太少，我们只能在几个条件之间做妥协。反过来，如果我们有很多参数，却只需要满足相对较少的约束，那么满足这些约束的参数配置可能不再只有一个点，而是一整片区域。

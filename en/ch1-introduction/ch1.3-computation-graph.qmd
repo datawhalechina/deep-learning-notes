@@ -596,4 +596,6 @@ $$
 
 This process will appear again and again. Whether we are training an MLP, CNN, Transformer, or a much larger language model, the underlying training logic does not fundamentally change.
 
-At this point, we have answered the conceptual question of “why deep learning can be trained.” In the next chapter, we will formally move into PyTorch and see what these concepts correspond to in code: how computation graphs are built, how gradients are stored, what `backward()` actually does, and how we can control the behavior of automatic differentiation.
+At this point, we have seen how forward propagation produces predictions, how the loss function measures errors, and how backpropagation computes gradients for the model parameters. But gradients alone do not change the model. What actually enables the model to "learn" is the process of updating its parameters based on those gradients.
+
+In the next section, we'll begin with gradient descent, the simplest optimization algorithm, and see how a neural network gradually adjusts its parameters to reduce the loss.
