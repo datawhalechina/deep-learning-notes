@@ -4,10 +4,10 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="t0yjY63KKONZOQmhbcDP-17" connectable="0" parent="1" style="group;strokeColor=none;html=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="" vertex="1">
+        <mxCell id="t0yjY63KKONZOQmhbcDP-17" connectable="0" parent="1" style="group;html=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="" vertex="1">
           <mxGeometry height="240" width="420" x="190" y="230" as="geometry" />
         </mxCell>
-        <mxCell id="t0yjY63KKONZOQmhbcDP-13" connectable="0" parent="t0yjY63KKONZOQmhbcDP-17" style="group;strokeColor=none;container=0;html=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="" vertex="1">
+        <mxCell id="t0yjY63KKONZOQmhbcDP-13" connectable="0" parent="t0yjY63KKONZOQmhbcDP-17" style="group;strokeColor=none;container=0;html=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;fillColor=none;gradientColor=none;" value="" vertex="1">
           <mxGeometry height="240" width="420" as="geometry" />
         </mxCell>
         <mxCell id="t0yjY63KKONZOQmhbcDP-2" parent="t0yjY63KKONZOQmhbcDP-17" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=20;fontFamily=Consolas;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="reserved" vertex="1">
