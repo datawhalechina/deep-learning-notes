@@ -68,7 +68,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv python install ${{ matrix.python-version }}
-          uv venv --python ${{ matrix.python-version }} .venv
+          uv venv --no-project --python ${{ matrix.python-version }} .venv
           uv pip install --python .venv -e "dnnlpy[test]"
 
       - name: Test dnnlpy package
