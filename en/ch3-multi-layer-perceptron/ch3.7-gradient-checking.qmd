@@ -182,11 +182,11 @@ $$
 then the backward pass gives:
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial X} &= GW^\top \\
 \frac{\partial L}{\partial W} &= X^\top G \\
 \frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
-\end{aligned}
+\end{align}
 $$
 
 To check the gradient of `W`, we need to construct a scalar loss. Here we use a very simple function:

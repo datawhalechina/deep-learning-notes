@@ -26,10 +26,10 @@ As shown in the figure, adjacent layers in an MLP are usually fully connected. E
 For a two-layer MLP, the linear layer appears twice:
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 Y &= HW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 Although their input and output dimensions are different, they are essentially doing the same thing:
@@ -64,10 +64,10 @@ $$
 A linear layer has two learnable parameters: the weight $W$ and the bias $b$:
 
 $$
-\begin{aligned}
+\begin{align}
 W &\in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}} \\
 b &\in \mathbb{R}^{D_{\text{out}}}
-\end{aligned}
+\end{align}
 $$
 
 The forward propagation is:
@@ -156,12 +156,12 @@ $$
 where:
 
 $$
-\begin{aligned}
+\begin{align}
 X &\in \mathbb{R}^{B \times D_{\text{in}}} \\
 W &\in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}} \\
 b &\in \mathbb{R}^{D_{\text{out}}} \\
 Y &\in \mathbb{R}^{B \times D_{\text{out}}}
-\end{aligned}
+\end{align}
 $$
 
 The $j$-th component of the $i$-th output sample can be written as:
@@ -173,12 +173,12 @@ $$
 If we fix one input component $X_{i,k}$, it appears in the formula for every output component $Y_{i,j}$ of the same sample:
 
 $$
-\begin{aligned}
+\begin{align}
 Y_{i,1} &= \cdots + X_{i,k} W_{k,1} + \cdots \\
 Y_{i,2} &= \cdots + X_{i,k} W_{k,2} + \cdots \\
 &\vdots \\
 Y_{i,D_{\text{out}}} &= \cdots + X_{i,k} W_{k,D_{\text{out}}} + \cdots
-\end{aligned}
+\end{align}
 $$
 
 Therefore, if we want to know how the $k$-th input component $X_{i,k}$ of the $i$-th sample affects the loss, we need to sum its effects over all output dimensions of that sample:
@@ -234,12 +234,12 @@ $$
 If we fix the weight $W_{k,j}$, it appears in the $j$-th output of every sample:
 
 $$
-\begin{aligned}
+\begin{align}
 Y_{1,j} &= \cdots + X_{1,k} W_{k,j} + \cdots \\
 Y_{2,j} &= \cdots + X_{2,k} W_{k,j} + \cdots \\
 &\vdots \\
 Y_{B,j} &= \cdots + X_{B,k} W_{k,j} + \cdots
-\end{aligned}
+\end{align}
 $$
 
 Therefore, if we want to know how the weight $W_{k,j}$ affects the loss, we need to sum the effects over all samples in the batch:
@@ -327,11 +327,11 @@ $$
 Then the backward propagation is:
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial X} &= G W^\top \\
 \frac{\partial L}{\partial W} &= X^\top G \\
 \frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
-\end{aligned}
+\end{align}
 $$
 
 In NumPy, this can be written as:
@@ -457,10 +457,10 @@ This shows that the `Linear` layer can already be used like a real neural networ
 The backward method of a linear layer is only responsible for computing gradients. It does not directly update the parameters. Parameter updates are usually handled by an optimizer. The simplest optimizer is SGD:
 
 $$
-\begin{aligned}
+\begin{align}
 W &\leftarrow W - \eta \frac{\partial L}{\partial W} \\
 b &\leftarrow b - \eta \frac{\partial L}{\partial b}
-\end{aligned}
+\end{align}
 $$
 
 where $\eta$ is the learning rate.
@@ -524,11 +524,11 @@ $$
 the backward propagation of the linear layer is:
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial X} &= G W^\top \\
 \frac{\partial L}{\partial W} &= X^\top G \\
 \frac{\partial L}{\partial b} &= \sum_{i=1}^{B} G_i
-\end{aligned}
+\end{align}
 $$
 
 From the implementation perspective, a linear layer needs to save the input during forward, because $X$ is needed when backward computes $\frac{\partial L}{\partial W}$. This also reflects a basic rule of backpropagation: each layer saves the necessary information during forward, and uses this information together with the upstream gradient during backward to compute its own gradients.

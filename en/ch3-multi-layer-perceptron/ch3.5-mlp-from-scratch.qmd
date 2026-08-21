@@ -42,12 +42,12 @@ $$
 That is:
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \operatorname{ReLU}(H) \\
 Z &= AW_2 + b_2 \\
 L &= \operatorname{CrossEntropyLoss}(Z, y)
-\end{aligned}
+\end{align}
 $$
 
 Here, $X$ is the input, $y$ is the label, $H$ is the hidden-layer output, $A$ is the hidden representation after ReLU, $Z$ is the final logits, and $L$ is the classification loss.
@@ -210,11 +210,11 @@ $$
 The corresponding gradients are:
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial W_2} &= A^\top G_Z \\
 \frac{\partial L}{\partial b_2} &= \sum_{i=1}^{B} (G_Z)_i \\
 \frac{\partial L}{\partial A} &= G_Z W_2^\top
-\end{aligned}
+\end{align}
 $$
 
 Next, it passes through ReLU. Since:
@@ -246,11 +246,11 @@ $$
 The corresponding gradients are:
 
 $$
-\begin{aligned}
+\begin{align}
 \frac{\partial L}{\partial W_1} &= X^\top G_H \\
 \frac{\partial L}{\partial b_1} &= \sum_{i=1}^{B} (G_H)_i \\
 \frac{\partial L}{\partial X} &= G_H W_1^\top
-\end{aligned}
+\end{align}
 $$
 
 If we are only training the model, we usually do not need to continue using $\frac{\partial L}{\partial X}$, because the input image is not a parameter that needs to be learned. But from the perspective of backpropagation, the linear layer still passes the gradient back to the previous layer.

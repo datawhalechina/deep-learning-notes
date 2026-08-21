@@ -22,11 +22,11 @@ In other words, even though the number of layers increases, the model is still f
 For a two-layer MLP, we can write:
 
 $$
-\begin{aligned}
+\begin{align}
 H &= XW_1 + b_1 \\
 A &= \phi(H) \\
 Z &= AW_2 + b_2
-\end{aligned}
+\end{align}
 $$
 
 Here, $\phi$ is the activation function. It usually acts element-wise on $H$, meaning that every element in $H$ passes through the same function.
