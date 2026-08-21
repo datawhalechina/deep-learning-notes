@@ -34,7 +34,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: render-website
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:

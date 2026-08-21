@@ -21,8 +21,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: render-website-manually
-  cancel-in-progress: false
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
   render-website-manually:

@@ -21,8 +21,8 @@ permissions:
   attestations: write
 
 concurrency:
-  group: render-pdfs-manually
-  cancel-in-progress: false
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
   render-pdfs-manually:

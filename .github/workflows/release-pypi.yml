@@ -8,6 +8,10 @@ on:
 env:
   UV_TORCH_BACKEND: cpu
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   test-dnnlpy:
     name: Test dnnlpy package (Python ${{ matrix.python-version }})

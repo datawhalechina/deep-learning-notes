@@ -29,8 +29,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: quarto-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   quarto-ci:
