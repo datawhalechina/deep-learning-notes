@@ -16,6 +16,16 @@ authors = [{ name = "jshn9515", email = "jshn9510@gmail.com" }]
 readme = "README.md"
 license = "CC-BY-NC-4.0"
 requires-python = ">=3.14,<3.15"
+classifiers = [
+    "Development Status :: 5 - Stable",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+]
 dependencies = [
     # Deep learning core libraries
     "accelerate>=1.14.0,<1.15.0",
