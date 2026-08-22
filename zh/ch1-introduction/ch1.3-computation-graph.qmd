@@ -347,14 +347,14 @@ $$
 所以：
 
 $$
-\frac{\partial L}{\partial b} = 2e =4
+\frac{\partial L}{\partial b} = 2e = 4
 $$
 
 最终，我们得到了当前两个参数对应的梯度：
 
 $$
-\frac{\partial L}{\partial w}=8, \qquad
-\frac{\partial L}{\partial b}=4
+\frac{\partial L}{\partial w} = 8, \qquad
+\frac{\partial L}{\partial b} = 4
 $$
 
 这就是反向传播最核心的思想：
@@ -370,7 +370,7 @@ $$
 例如，从 $L=e^2$ 这个节点开始，损失对自己的梯度是：
 
 $$
-\frac{\partial L}{\partial L}=1
+\frac{\partial L}{\partial L} = 1
 $$
 
 平方操作接收到上游梯度 1，乘上自己的局部导数 $2e$，就得到：
@@ -397,7 +397,7 @@ $$
 关键在于，神经网络通常有一个标量损失，却有大量参数：
 
 $$
-L=L(w_1,w_2,\ldots,w_n)
+L = L(w_1,w_2,\ldots,w_n)
 $$
 
 我们希望一次得到：
@@ -432,13 +432,13 @@ $$
 这里还有一个非常重要的细节：如果一个变量通过多条路径影响最终损失，那么来自这些路径的梯度需要**相加**。例如：
 
 $$
-L=w^2+3w
+L = w^2 + 3w
 $$
 
 参数 $w$ 通过两条不同路径影响 $L$：一条经过 $w^2$，另一条经过 $3w$。因此：
 
 $$
-\frac{dL}{dw} = \frac{d(w^2)}{dw} + \frac{d(3w)}{dw} =2w+3
+\frac{dL}{dw} = \frac{d(w^2)}{dw} + \frac{d(3w)}{dw} = 2w + 3
 $$
 
 在更复杂的神经网络中，同一个张量经常会被送到多个分支中。反向传播遇到这种情况时，会把不同路径传回来的梯度累加起来。
@@ -450,7 +450,7 @@ $$
 现在，我们已经计算出了：
 
 $$
-\frac{\partial L}{\partial w}=8, \qquad \frac{\partial L}{\partial b}=4
+\frac{\partial L}{\partial w} = 8, \qquad \frac{\partial L}{\partial b} = 4
 $$
 
 是不是到这里模型就已经“学习”了？还没有。
@@ -479,15 +479,15 @@ $$
 
 $$
 \begin{align}
-w_{\text{new}} =3-0.1\times 8 &= 2.2 \\
-b_{\text{new}} =1-0.1\times 4 &= 0.6
+w_{\text{new}} = 3 - 0.1\times 8 &= 2.2 \\
+b_{\text{new}} = 1 - 0.1\times 4 &= 0.6
 \end{align}
 $$
 
 使用新的参数重新进行前向传播：
 
 $$
-\hat{y}_{\text{new}} =2.2 \times 2 + 0.6 = 5
+\hat{y}_{\text{new}} = 2.2 \times 2 + 0.6 = 5
 $$
 
 于是新的损失变成：
