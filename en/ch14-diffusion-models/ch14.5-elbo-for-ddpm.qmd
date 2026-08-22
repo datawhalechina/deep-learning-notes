@@ -32,7 +32,7 @@ $$
 \log p_\theta(x_0)
 $$
 
-Here, $x_0$ denotes the real sample, and $\theta$ denotes the model parameters[^14.5.1].
+Here, $x_0$ denotes the real sample, and $\theta$ denotes the model parameters [^14.5.1].
 
 [^14.5.1]: For why this can be written as maximizing log-likelihood rather than minimizing KL divergence, you can refer to the derivation in Section 13.2.2.
 

@@ -90,6 +90,7 @@ x0 = ds[idx][0].squeeze(0)  # shape: (28, 28)
 
 
 def add_noise_v1(x0: Tensor, betas: Tensor) -> Tensor:
+    """Add noise to `x0` step by step using the recursive formula."""
     xt = x0.clone()
     for beta in betas:
         noise = torch.randn_like(x0)
@@ -226,6 +227,7 @@ x0 = ds[idx][0].squeeze(0)  # shape: (28, 28)
 
 
 def add_noise_v2(x0: Tensor, betas: Tensor, timestep: int) -> Tensor:
+    """Add noise to `x0` at a specific timestep using the closed-form formula."""
     noise = torch.randn_like(x0)
     t = timestep
     alphas = 1.0 - betas

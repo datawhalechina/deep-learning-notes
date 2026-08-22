@@ -82,8 +82,8 @@ $$
 The forward distribution $q(x_t \mid x_{t-1})$ is designed by ourselves, so this part is easy. But what about $q(x_{t-1})$ and $q(x_t)$? They correspond to the marginal distributions of samples at step $t-1$ and step $t$, respectively. That is:
 
 $$
-q(x_{t-1}) = \int q(x_{t-1} \mid x_0) q(x_0) dx_0, \qquad q(x_t) =
-\int q(x_t \mid x_0) q(x_0) dx_0
+q(x_{t-1}) = \int q(x_{t-1} \mid x_0) q(x_0) dx_0, \qquad
+q(x_t) = \int q(x_t \mid x_0) q(x_0) dx_0
 $$
 
 You see, both of them involve the real data distribution $q(x_0)$, and the real data distribution is something we cannot directly model. If we already knew it, why would we need DDPM? So this reverse conditional distribution $q(x_{t-1} \mid x_t)$ is a very complex distribution, and we cannot directly compute it at all.
@@ -122,13 +122,12 @@ $$
 where:
 
 $$
-\tilde{\mu}_t(x_t,x_0) =
+\begin{align}
+\tilde{\mu}_t(x_t,x_0) &=
 \frac{\sqrt{\bar{\alpha}_{t-1}}\,\beta_t}{1-\bar{\alpha}_t}\,x_0 +
-\frac{\sqrt{\alpha_t}\,(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}\,x_t
-$$
-
-$$
-\tilde{\beta}_t = \frac{1-\bar{\alpha}_{t-1}}{1-\bar{\alpha}_t}\,\beta_t
+\frac{\sqrt{\alpha_t}\,(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}\,x_t \\
+\tilde{\beta}_t &= \frac{1-\bar{\alpha}_{t-1}}{1-\bar{\alpha}_t}\,\beta_t
+\end{align}
 $$
 
 For the full proof, see [@luo2022UnderstandingDiffusionModels, eq. 71-84]. Note that the result here is a little different from the result in the paper. The paper ignores some constant terms, so it writes “proportional to”; here we have written the constant terms as well.
@@ -145,6 +144,9 @@ x0 = ds[idx][0].squeeze(0)  # shape: (28, 28)
 
 
 def denoise_v1(x0: Tensor, xt: Tensor, timestep: int, betas: Tensor) -> Tensor:
+    """Remove noise from the noisy image `xt` at a given timestep using original
+    image `x0`.
+    """
     t = timestep
     alphas = 1.0 - betas
     alpha_t = alphas[t]
@@ -297,7 +299,7 @@ Here, $x_0$ is sampled from the real data $p_{\text{data}}$, $t$ is a randomly s
 
 However, although it looks like just MSE on the surface, behind it is actually probabilistic modeling of the reverse diffusion process. In other words, this simple MSE loss function actually starts from a rigorous probabilistic model, goes through a series of equivalent or approximately equivalent transformations, and finally becomes a training objective that is very easy to optimize. Unlike many deep learning networks, it has theoretical support behind it. We use a piece of pseudocode to describe this process:
 
-![Algorithm 14.3.4: DDPM training process pseudocode [@ho2020DDPM, alg. 1]](figures/ch14.3-ddpm-training.png){width=60%}
+![Algorithm 14.3.4 DDPM training process pseudocode [@ho2020DDPM, alg. 1]](figures/ch14.3-ddpm-training.png){width=60%}
 
 You see, isn't it simple? Don't be fooled by it. Later, we will explain in detail where this training objective comes from and how it relates to probabilistic modeling.
 
