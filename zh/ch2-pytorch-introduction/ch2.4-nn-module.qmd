@@ -430,7 +430,7 @@ print('State dict keys:', cache.state_dict())
 总结一下，parameter 和 buffer 的区别是：
 
 ::: {.list-table}
-表 1：Parameter 和 Buffer 的区别
+表 2.4.5 Parameter 和 Buffer 的区别
 
 - - 类型
   - 是否是模型状态
@@ -965,6 +965,12 @@ except RuntimeError as err:
 
 ```{python}
 class DemoNet(nn.Module):
+    """A demo network to illustrate nn.Module concepts."""
+
+    mean: Tensor
+    std: Tensor
+    cache_mask: Tensor
+
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int):
         super().__init__()
         self.register_buffer('mean', torch.zeros(input_dim))
