@@ -16,6 +16,9 @@
 
 所以我想，干脆把自己学过的内容系统地整理下来。从最基础的 PyTorch，到 Attention、Transformer，再到 GAN、CLIP、Stable Diffusion、SAM3，我会尽量把每个主题的核心思想、公式推导、代码实现和常见问题都写清楚。这个仓库就是这份笔记的公开版。如果你也在自学深度学习，希望它能给你一些帮助。
 
+> [!NOTE]
+> **AI 辅助写作：** 本教程的写作过程中使用了 LLM 辅助生成初稿。每次生成后，我都会自行 review，并根据自己的理解对内容、逻辑和表述进行修改。发布前，我也会进一步检查相关代码和技术细节。尽管如此，内容中仍可能存在疏漏或错误，欢迎指出并提出修改建议。
+
 ## 📌 关于这份笔记
 
 本项目目前主要使用 **Quarto Markdown** 进行维护和发布，并构建为静态网站。Quarto Markdown 是一种基于 Markdown 的纯文本格式，适合版本控制和持续更新。
@@ -84,7 +87,7 @@ uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirec
 
 ## 📄 许可证
 
-- 本仓库中的笔记内容采用 **CC BY-NC 4.0 协议**。
+- 本仓库中的笔记内容采用 **CC BY-NC 4.0 协议**
 - `dnnlpy` 库采用 **MIT 协议**。
 
 ## ⭐ Star History

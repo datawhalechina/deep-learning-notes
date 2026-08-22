@@ -16,6 +16,9 @@ _Dive into Deep Learning_ is an excellent introductory book, but its update pace
 
 So I decided to systematically organize what I have learned. From the fundamentals of PyTorch, to Attention and Transformers, and then to GANs, CLIP, Stable Diffusion, and SAM3, I try to explain the core ideas, mathematical derivations, code implementations, and common pitfalls of each topic as clearly as possible. This repository is the public version of those notes. If you are also learning deep learning on your own, I hope it can be helpful to you.
 
+> [!NOTE]
+> **AI-assisted writing:** LLMs were used during the writing process of this tutorial to assist with drafting. After each generated draft, I review it myself and revise the content, logic, and wording based on my own understanding. Before publication, I also further check the relevant code and technical details. Despite this, the tutorial may still contain omissions or errors, and corrections and suggestions are always welcome.
+
 ## 📌 About These Notes
 
 This project is primarily maintained and published in **Quarto Markdown**, and built as a static website. Quarto Markdown is a plain-text format based on Markdown, which makes it well suited for version control and continuous updates.
