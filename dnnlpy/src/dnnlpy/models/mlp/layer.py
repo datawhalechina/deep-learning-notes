@@ -62,26 +62,26 @@ class Linear(Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        W = rng.standard_normal((in_features, out_features))
-        W = W * math.sqrt(2.0 / in_features)
-        b = np.zeros(out_features)
+        weight = rng.standard_normal((in_features, out_features))
+        weight = weight * math.sqrt(2.0 / in_features)
+        bias = np.zeros(out_features)
 
-        self.W = Parameter(W)
-        self.b = Parameter(b)
+        self.weight = Parameter(weight)
+        self.bias = Parameter(bias)
 
     @override
     def forward(self, x: np.ndarray) -> np.ndarray:
         """Return `x @ W + b` and cache `x` for backpropagation."""
         self.ctx = x
-        return x @ self.W + self.b
+        return x @ self.weight + self.bias
 
     @override
     def backward(self, grad: np.ndarray) -> np.ndarray:
         """Store parameter gradients and return input gradients."""
         assert self.ctx is not None, 'Must call forward before backward.'
-        self.W.grad = self.ctx.T @ grad  # dW
-        self.b.grad = np.sum(grad, axis=0)  # db
-        return grad @ self.W.T  # dx
+        self.weight.grad = self.ctx.T @ grad  # dW
+        self.bias.grad = np.sum(grad, axis=0)  # db
+        return grad @ self.weight.T  # dx
 
     @override
     def extra_repr(self) -> str:
