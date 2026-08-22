@@ -37,7 +37,7 @@ There is still no simple, unified answer to these questions today. Deep-learning
 
 We often draw gradient descent as a small ball rolling downward along a curve:
 
-![Figure 1.5.1.1: Two-dimensional intuition for gradient descent](figures/ch1.5-loss-landscape.png){width=70%}
+![Figure 1.5.1.1 Two-dimensional intuition for gradient descent](figures/ch1.5-loss-landscape.png){width=70%}
 
 This picture is useful, but it can easily create a mistaken intuition: it may seem that training a neural network means searching for the lowest point on a rippled curve or surface. The actual situation is completely different.
 
@@ -77,8 +77,8 @@ $$
 
 They can be roughly understood as indicating whether the loss function curves upward or downward when we move from the current position along different directions.
 
-::: list-table
-Table 1.5.1: Local Curvature at Different Critical Points
+::: {.list-table}
+Table 1.5.1 Local Curvature at Different Critical Points
 
 - - Critical point
   - Typical Hessian condition
@@ -99,7 +99,7 @@ Table 1.5.1: Local Curvature at Different Critical Points
 
 A saddle point in two-dimensional space can be imagined as a horse saddle: viewed along one direction, it looks like a low point; viewed along another, it looks like a high point.
 
-![Figure 1.5.1.2: A saddle point in two-dimensional space [@enwiki:SaddlePoint]](figures/ch1.5-saddle-point.svg){width=65%}
+![Figure 1.5.1.2 A saddle point in two-dimensional space [@enwiki:SaddlePoint]](figures/ch1.5-saddle-point.svg){width=65%}
 
 When the parameter dimension is extremely high, a critical point must have no descent direction in **every direction** before it can be a strict local minimum. As long as there is a direction with negative curvature, there is still a direction in which we can leave.
 
@@ -219,7 +219,7 @@ This leads to an influential intuition in machine learning: the **Manifold Hypot
 
 > **Although real-world data is represented in a very high-dimensional space, useful data is often concentrated near a structure with much lower dimensionality.**
 
-![Figure 1.5.4: Illustration of the manifold hypothesis](figures/ch1.5-manifold-hypothesis.png){width=70%}
+![Figure 1.5.4 Illustration of the manifold hypothesis](figures/ch1.5-manifold-hypothesis.png){width=70%}
 
 If this intuition holds for a task, the model does not actually need to learn how to handle every possible point in the high-dimensional input space. It mainly needs to learn the correct mapping in the small region where real data commonly occurs. This makes "learning a high-dimensional function" less frightening than it appears on the surface.
 

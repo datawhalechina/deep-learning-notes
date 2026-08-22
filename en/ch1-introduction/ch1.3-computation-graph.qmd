@@ -347,14 +347,14 @@ $$
 we get:
 
 $$
-\frac{\partial L}{\partial b} = 2e =4
+\frac{\partial L}{\partial b} = 2e = 4
 $$
 
 Finally, we obtain the gradients corresponding to the two current parameters:
 
 $$
-\frac{\partial L}{\partial w}=8, \qquad
-\frac{\partial L}{\partial b}=4
+\frac{\partial L}{\partial w} = 8, \qquad
+\frac{\partial L}{\partial b} = 4
 $$
 
 This is the central idea of backpropagation:
@@ -370,7 +370,7 @@ Upstream Gradient × Local Derivative = Gradient Passed to the Previous Node
 For example, starting from the node $L=e^2$, the gradient of the loss with respect to itself is:
 
 $$
-\frac{\partial L}{\partial L}=1
+\frac{\partial L}{\partial L} = 1
 $$
 
 The squaring operation receives the upstream gradient 1 and multiplies it by its local derivative $2e$, giving:
@@ -438,7 +438,7 @@ $$
 The parameter $w$ affects $L$ through two different paths: one through $w^2$, and the other through $3w$. Therefore:
 
 $$
-\frac{dL}{dw} = \frac{d(w^2)}{dw} + \frac{d(3w)}{dw} = 2w+3
+\frac{dL}{dw} = \frac{d(w^2)}{dw} + \frac{d(3w)}{dw} = 2w + 3
 $$
 
 In more complex neural networks, the same tensor is often sent into multiple branches. When backpropagation encounters this situation, it accumulates the gradients propagated back from the different paths.
@@ -450,7 +450,7 @@ So backpropagation is not simply "passing one gradient all the way backward." Mo
 Now we have computed:
 
 $$
-\frac{\partial L}{\partial w}=8, \qquad \frac{\partial L}{\partial b}=4
+\frac{\partial L}{\partial w} = 8, \qquad \frac{\partial L}{\partial b} = 4
 $$
 
 Does this mean the model has already "learned"? Not yet.
@@ -479,15 +479,15 @@ Continuing the previous example, if the learning rate is $\eta=0.1$, then:
 
 $$
 \begin{align}
-w_{\text{new}} =3-0.1\times 8 &= 2.2 \\
-b_{\text{new}} =1-0.1\times 4 &= 0.6
+w_{\text{new}} = 3 - 0.1\times 8 &= 2.2 \\
+b_{\text{new}} = 1 - 0.1\times 4 &= 0.6
 \end{align}
 $$
 
 Using the new parameters for another forward pass:
 
 $$
-\hat{y}_{\text{new}} =2.2 \times 2 + 0.6 = 5
+\hat{y}_{\text{new}} = 2.2 \times 2 + 0.6 = 5
 $$
 
 The new loss becomes:
