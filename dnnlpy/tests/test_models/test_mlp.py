@@ -35,8 +35,8 @@ def test_linear_forward_backward_and_parameters():
     grad = np.array([[1.0, 2.0, -1.0], [0.5, -0.5, 3.0]])
 
     module = mlp.Linear(in_features=2, out_features=3)
-    module.W[:] = np.array([[1.0, -2.0, 0.5], [3.0, 0.0, -1.0]])
-    module.b[:] = np.array([0.5, -0.5, 1.0])
+    module.weight[:] = np.array([[1.0, -2.0, 0.5], [3.0, 0.0, -1.0]])
+    module.bias[:] = np.array([0.5, -0.5, 1.0])
 
     actual = module(x)
     actual_grad = module.backward(grad)
@@ -48,13 +48,13 @@ def test_linear_forward_backward_and_parameters():
     expected_grad = np.array([[-3.5, 4.0], [3.0, -1.5]])
 
     assert_allclose(actual, expected)
-    assert module.W.grad is not None
-    assert_allclose(module.W.grad, expected_W_grad)
-    assert module.b.grad is not None
-    assert_allclose(module.b.grad, expected_b_grad)
+    assert module.weight.grad is not None
+    assert_allclose(module.weight.grad, expected_W_grad)
+    assert module.bias.grad is not None
+    assert_allclose(module.bias.grad, expected_b_grad)
     assert_allclose(actual_grad, expected_grad)
-    assert params[0] is module.W
-    assert params[1] is module.b
+    assert params[0] is module.weight
+    assert params[1] is module.bias
     assert 'in_features=2' in repr(module)
 
 
@@ -150,10 +150,10 @@ def test_mlp_forward_backward_yields_recursive_parameter_gradients():
     grad = np.array([[0.2, -0.3], [0.5, 0.1]])
 
     model = mlp.MLP(input_dim=2, hidden_dim=3, num_classes=2)
-    model.fc1.W[:] = np.array([[1.0, -1.0, 0.5], [0.0, 2.0, -0.5]])
-    model.fc1.b[:] = np.array([0.0, 0.5, -0.25])
-    model.fc2.W[:] = np.array([[1.0, -1.0], [0.5, 0.25], [-0.5, 2.0]])
-    model.fc2.b[:] = np.array([0.1, -0.2])
+    model.fc1.weight[:] = np.array([[1.0, -1.0, 0.5], [0.0, 2.0, -0.5]])
+    model.fc1.bias[:] = np.array([0.0, 0.5, -0.25])
+    model.fc2.weight[:] = np.array([[1.0, -1.0], [0.5, 0.25], [-0.5, 2.0]])
+    model.fc2.bias[:] = np.array([0.1, -0.2])
 
     logits = model(x)
     dx = model.backward(grad)
@@ -189,10 +189,10 @@ def test_mlp_training_step_reduces_cross_entropy_loss():
     targets = np.array([0, 1])
 
     model = mlp.MLP(input_dim=2, hidden_dim=3, num_classes=2)
-    model.fc1.W[:] = np.array([[1.0, -1.0, 0.5], [0.0, 2.0, -0.5]])
-    model.fc1.b[:] = np.array([0.0, 0.5, -0.25])
-    model.fc2.W[:] = np.array([[1.0, -1.0], [0.5, 0.25], [-0.5, 2.0]])
-    model.fc2.b[:] = np.array([0.1, -0.2])
+    model.fc1.weight[:] = np.array([[1.0, -1.0, 0.5], [0.0, 2.0, -0.5]])
+    model.fc1.bias[:] = np.array([0.0, 0.5, -0.25])
+    model.fc2.weight[:] = np.array([[1.0, -1.0], [0.5, 0.25], [-0.5, 2.0]])
+    model.fc2.bias[:] = np.array([0.1, -0.2])
 
     loss_fn = mlp.CrossEntropyLoss()
     optimizer = mlp.SGD(model.parameters(), lr=0.1)
