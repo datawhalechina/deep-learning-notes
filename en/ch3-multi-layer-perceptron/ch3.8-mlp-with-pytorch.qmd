@@ -456,7 +456,7 @@ plt.show()
 At this point, we have implemented the same MLP in two ways. Their correspondence can be summarized as follows:
 
 ::: {.list-table}
-Table 1: Correspondence between the handwritten NumPy version and the PyTorch version
+Table 3.8.8 Correspondence between the handwritten NumPy version and the PyTorch version
 
 - - Handwritten NumPy version
   - PyTorch version

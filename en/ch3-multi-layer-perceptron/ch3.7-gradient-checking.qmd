@@ -93,11 +93,8 @@ $$
 We can use numerical gradients to verify this.
 
 ```{python}
-def numerical_gradient(
-    func: Func,
-    x: np.ndarray,
-    eps: float = 1e-5,
-) -> np.ndarray:
+def numerical_gradient(func: Func, x: np.ndarray, eps: float = 1e-5) -> np.ndarray:
+    """Compute the numerical gradient of a function at a given point."""
     grad = np.zeros_like(x)
 
     it = np.nditer(x, flags=['multi_index'], op_flags=['readwrite'])
@@ -147,13 +144,10 @@ $$
 $$
 
 ```{python}
-def relative_error(
-    grad_analytic: np.ndarray,
-    grad_numeric: np.ndarray,
-    eps: float = 1e-12,
-):
-    a = npl.norm(grad_analytic - grad_numeric)
-    b = npl.norm(grad_analytic) + npl.norm(grad_numeric) + eps
+def relative_error(analytic: np.ndarray, numeric: np.ndarray, eps: float = 1e-12):
+    """Compute the relative error between analytic and numeric gradients."""
+    a = npl.norm(analytic - numeric)
+    b = npl.norm(analytic) + npl.norm(numeric) + eps
     return a / b
 
 
@@ -216,25 +210,25 @@ loss = np.sum(np.square(out))
 dout = 2 * out
 grad_x_analytic = linear.backward(dout)
 
-grad_W_analytic = linear.W.grad.copy()
-grad_b_analytic = linear.b.grad.copy()
+grad_W_analytic = linear.weight.grad.copy()
+grad_b_analytic = linear.bias.grad.copy()
 ```
 
 Then use numerical gradients to check `W`:
 
 ```{python}
-def loss_fn_weights(W: np.ndarray) -> float:
-    old_W = linear.W
-    linear.W = W
+def loss_fn_weights(weight: np.ndarray) -> float:
+    old_weight = linear.weight
+    linear.weight = weight
     out = linear(x)
     loss = np.sum(np.square(out))
-    linear.W = old_W
+    linear.weight = old_weight
     return loss
 
 
-grad_W_numeric = numerical_gradient(loss_fn_weights, linear.W.copy())
+grad_W_numeric = numerical_gradient(loss_fn_weights, linear.weight.copy())
 error = relative_error(grad_W_analytic, grad_W_numeric)
-print('Relative Error for W:', error)
+print('Relative Error for weight:', error)
 ```
 
 If the relative error is very small, then `dW` is most likely correct.
@@ -242,18 +236,18 @@ If the relative error is very small, then `dW` is most likely correct.
 We can check `b` in the same way:
 
 ```{python}
-def loss_fn_bias(b: np.ndarray) -> float:
-    old_b = linear.b
-    linear.b = b
+def loss_fn_bias(bias: np.ndarray) -> float:
+    old_bias = linear.bias
+    linear.bias = bias
     out = linear(x)
     loss = np.sum(np.square(out))
-    linear.b = old_b
+    linear.bias = old_bias
     return loss
 
 
-grad_b_numeric = numerical_gradient(loss_fn_bias, linear.b.copy())
+grad_b_numeric = numerical_gradient(loss_fn_bias, linear.bias.copy())
 error = relative_error(grad_b_analytic, grad_b_numeric)
-print('Relative Error for b:', error)
+print('Relative Error for bias:', error)
 ```
 
 We can also check the gradient with respect to the input `x`:
@@ -373,7 +367,7 @@ Finally, we can apply this method to the full MLP. The structure of a two-layer 
 X -> Linear -> ReLU -> Linear -> CrossEntropyLoss -> L
 ```
 
-We can check one parameter in it, such as the weight `fc1.W` of the first layer. To make numerical gradient checking faster, we only use a very small model:
+We can check one parameter in it, such as the weight `fc1.weight` of the first layer. To make numerical gradient checking faster, we only use a very small model:
 
 ```{python}
 x = rng.standard_normal((5, 4))
@@ -391,27 +385,27 @@ loss = loss_fn(logits, y)
 dlogits = loss_fn.backward()
 dx = model.backward(dlogits)
 
-grad_fc1_W_analytic = model.fc1.W.grad.copy()
+grad_fc1_W_analytic = model.fc1.weight.grad.copy()
 ```
 
-Then use numerical gradients to estimate the gradient of `fc1.W`:
+Then use numerical gradients to estimate the gradient of `fc1.weight`:
 
 ```{python}
-def loss_fn_fc1_weights(W: np.ndarray) -> float:
-    old_W = model.fc1.W
-    model.fc1.W = W
+def loss_fn_fc1_weights(weight: np.ndarray) -> float:
+    old_weight = model.fc1.weight
+    model.fc1.weight = weight
     logits = model(x)
     loss = loss_fn(logits, y)
-    model.fc1.W = old_W
+    model.fc1.weight = old_weight
     return loss
 
 
-grad_fc1_W_numeric = numerical_gradient(loss_fn_fc1_weights, model.fc1.W.copy())
+grad_fc1_W_numeric = numerical_gradient(loss_fn_fc1_weights, model.fc1.weight.copy())
 error = relative_error(grad_fc1_W_analytic, grad_fc1_W_numeric)
-print('Relative Error for fc1.W:', error)
+print('Relative Error for fc1.weight:', error)
 ```
 
-Similarly, we can also check `fc1.b`, `fc2.W`, and `fc2.b`.
+Similarly, we can also check `fc1.bias`, `fc2.weight`, and `fc2.bias`.
 
 In practice, however, we usually do not need to run a full gradient check every time we train. It is mainly useful right after you finish writing a backward pass, using a tiny model and a tiny dataset to check whether the implementation is correct.
 

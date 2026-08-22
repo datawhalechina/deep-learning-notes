@@ -120,8 +120,8 @@ $$
 
 According to the chain rule, $\frac{\partial L}{\partial x}$ is made from two parts:
 
-1. the gradient of $L$ with respect to $y$, namely the upstream gradient;
-2. the derivative of $y$ with respect to $x$, namely the Jacobian matrix of the current module.
+1. The gradient of $L$ with respect to $y$, namely the upstream gradient;
+2. The derivative of $y$ with respect to $x$, namely the Jacobian matrix of the current module.
 
 If we view the gradient as a row vector, we can write:
 
@@ -152,7 +152,7 @@ $$
 y_i = \phi(x_i)
 $$
 
-The phrase “**element-wise**” is crucial here: the $i$-th output depends only on the $i$-th input, and not on any other input component. Therefore:
+The phrase **"element-wise"** is crucial here: the $i$-th output depends only on the $i$-th input, and not on any other input component. Therefore:
 
 $$
 \frac{\partial y_i}{\partial x_j} = 0, \quad i \ne j
@@ -254,10 +254,7 @@ $$
 So the VJP in backpropagation can be simplified to element-wise multiplication:
 
 $$
-\frac{\partial L}{\partial H}
-=
-\frac{\partial L}{\partial A}
-\odot \phi'(H)
+\frac{\partial L}{\partial H} = \frac{\partial L}{\partial A} \odot \phi'(H)
 $$
 
 where $\odot$ denotes element-wise multiplication.
@@ -278,6 +275,7 @@ Let us implement sigmoid with NumPy:
 
 ```{python}
 def sigmoid(x: np.ndarray) -> np.ndarray:
+    """Apply the logistic sigmoid elementwise."""
     return 1 / (1 + np.exp(-x))
 
 
@@ -333,16 +331,15 @@ $$
 So if the upstream gradient is $\frac{\partial L}{\partial Y}$, then backpropagation is:
 
 $$
-\frac{\partial L}{\partial X}
-=
-\frac{\partial L}{\partial Y}
-\odot Y \odot (1 - Y)
+\frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} \odot Y \odot (1 - Y)
 $$
 
 Written as a NumPy module:
 
 ```{python}
 class Sigmoid(Module):
+    """Elementwise sigmoid activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -379,6 +376,7 @@ It squashes the input into the interval $(-1, 1)$.
 
 ```{python}
 def tanh(x: np.ndarray) -> np.ndarray:
+    """Apply hyperbolic tangent elementwise."""
     return np.tanh(x)
 
 
@@ -436,16 +434,15 @@ $$
 Therefore, backpropagation is:
 
 $$
-\frac{\partial L}{\partial X}
-=
-\frac{\partial L}{\partial Y}
-\odot (1 - Y^2)
+\frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} \odot (1 - Y^2)
 $$
 
 The corresponding NumPy implementation is:
 
 ```{python}
 class Tanh(Module):
+    """Elementwise hyperbolic tangent activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -486,6 +483,7 @@ In NumPy, it is implemented as:
 
 ```{python}
 def relu(x: np.ndarray) -> np.ndarray:
+    """Apply rectified linear activation elementwise."""
     return np.maximum(0, x)
 
 
@@ -549,16 +547,15 @@ $$
 where $\mathbb{1}(X_{b,d} > 0)$ is the indicator function. It is 1 when $X_{b,d}>0$, and 0 otherwise. Therefore, backpropagation is:
 
 $$
-\frac{\partial L}{\partial X}
-=
-\frac{\partial L}{\partial Y}
-\odot \mathbb{1}(X > 0)
+\frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} \odot \mathbb{1}(X > 0)
 $$
 
 The corresponding module implementation is:
 
 ```{python}
 class ReLU(Module):
+    """Elementwise rectified linear activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -579,6 +576,8 @@ Of course, we can also save a mask:
 
 ```{python}
 class ReLUWithMask(Module):
+    """Elementwise rectified linear activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -625,8 +624,8 @@ $$
 
 However, we need to distinguish two concepts here:
 
-1. whether the shape is preserved;
-2. whether the operation is element-wise.
+1. Whether the shape is preserved;
+2. Whether the operation is element-wise.
 
 For activation functions such as sigmoid, tanh, and ReLU, they both preserve shape and act element-wise. That is:
 
@@ -651,16 +650,13 @@ $$
 But preserving shape does not necessarily mean acting element-wise. For example, softmax usually also preserves shape:
 
 $$
-A = \mathrm{softmax}(H)
+A = \operatorname{softmax}(H)
 $$
 
 If softmax is applied along the last dimension, then:
 
 $$
-A_{bj}
-=
-\frac{\exp(H_{bj})}
-{\sum_k \exp(H_{bk})}
+A_{bj} = \frac{\exp(H_{bj})} {\sum_k \exp(H_{bk})}
 $$
 
 In this case, $A_{bj}$ does not depend only on $H_{bj}$; it also depends on other elements $H_{bk}$ in the same row. Therefore, although softmax does not change the tensor shape, it is not an element-wise function, and its corresponding Jacobian matrix is not diagonal.
@@ -676,9 +672,7 @@ In this section, we first explained the relationship between the Jacobian matrix
 For a function from a vector to a vector, the derivative is no longer a scalar, but a Jacobian matrix. Each module in backpropagation is essentially computing:
 
 $$
-\frac{\partial L}{\partial x}
-=
-\frac{\partial L}{\partial y}J_f(x)
+\frac{\partial L}{\partial x} = \frac{\partial L}{\partial y}J_f(x)
 $$
 
 which is the VJP between the upstream gradient and the Jacobian matrix of the current module.
@@ -692,16 +686,13 @@ $$
 Therefore, each output position depends only on the corresponding input position and not on other positions:
 
 $$
-\frac{\partial A_{b,d}}{\partial H_{b',d'}} = 0,
-\quad (b,d) \ne (b',d')
+\frac{\partial A_{b,d}}{\partial H_{b',d'}} = 0, \quad (b,d) \ne (b',d')
 $$
 
 So the Jacobian matrix of an activation function is diagonal, and `backward` can be simplified to element-wise multiplication:
 
 $$
-\frac{\partial L}{\partial H}
-=
-\frac{\partial L}{\partial A}\odot \phi'(H)
+\frac{\partial L}{\partial H} = \frac{\partial L}{\partial A}\odot \phi'(H)
 $$
 
 We introduced sigmoid, tanh, and ReLU. They are all element-wise activation functions, so all off-diagonal elements of their Jacobian matrices are 0. The difference lies in their local derivatives on the diagonal. Sigmoid and tanh squash the input into finite intervals, but when the input has a large absolute value, they easily saturate, making the diagonal elements of the Jacobian matrix close to 0 and causing gradients to shrink. ReLU is simpler: when the input is positive, its local derivative is 1, so it is more commonly used in deep networks. However, when the input stays negative for a long time, the gradient may also remain 0 for a long time, leading to the dead ReLU problem.

@@ -275,6 +275,8 @@ $$
 
 ```{python}
 class MLP(mlp.Module):
+    """Fully connected affine layer for batched NumPy inputs."""
+
     def __init__(self, input_dim: int, hidden_dim: int, num_classes: int):
         self.fc1 = mlp.Linear(input_dim, hidden_dim)
         self.relu = mlp.ReLU()
@@ -282,10 +284,10 @@ class MLP(mlp.Module):
 
     @override
     def forward(self, x: np.ndarray) -> np.ndarray:
-        h = self.fc1(x)
-        a = self.relu(h)
-        logits = self.fc2(a)
-        return logits
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        return x
 
     @override
     def backward(self, grad: np.ndarray) -> np.ndarray:
