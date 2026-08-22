@@ -57,11 +57,10 @@ print('Using device:', device)
 写成公式就是：
 
 $$
-z = f_\theta(x)
-$$
-
-$$
-\hat{x} = g_\phi(z)
+\begin{align}
+z &= f_\theta(x) \\
+\hat{x} &= g_\phi(z)
+\end{align}
 $$
 
 合起来也可以写成：
@@ -80,7 +79,7 @@ $$
 x \rightarrow \text{Encoder} \rightarrow z \rightarrow \text{Decoder} \rightarrow \hat{x}
 $$
 
-![图 13.1.1：AutoEncoder 网络结构 [@Mathworks2026AutoEncoder]](figures/ch13.1-autoencoder.svg){height=225px}
+![图 13.1.1 AutoEncoder 网络结构 [@Mathworks2026AutoEncoder]](figures/ch13.1-autoencoder.svg){height=225px}
 
 到这里你可能会问，既然目标只是让输出尽量接近输入，那模型直接学一个恒等映射不就行了吗？
 
@@ -167,7 +166,7 @@ PCA 做的是，把数据投影到一个低维线性子空间，并且尽量保�
 
 ```{python}
 class AutoEncoder(nn.Module):
-    """A fully connected autoencoder for small image tensors."""
+    """A fully connected AutoEncoder for small image tensors."""
 
     def __init__(
         self,
@@ -175,7 +174,6 @@ class AutoEncoder(nn.Module):
         hidden_dim: int = 256,
         latent_dim: int = 32,
     ):
-        """Initialize encoder and decoder networks."""
         super().__init__()
         self.latent_dim = latent_dim
 

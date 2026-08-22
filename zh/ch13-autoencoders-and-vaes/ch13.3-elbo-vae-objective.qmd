@@ -103,7 +103,7 @@ $$
 \log \mathbb{E}[Y] \ge \mathbb{E}[\log Y]
 $$
 
-把这里的 $Y$ 替换成
+把这里的 $Y$ 替换成：
 
 $$
 \frac{p_\theta(x,z)}{q_\phi(z\mid x)}
@@ -298,13 +298,13 @@ $$
 \mathbb{E}_{q_\phi(z\mid x)}[\log p_\theta(x\mid z)]
 $$
 
-它是一个 **对数似然项**。但代码里常看到的是 MSE 或 BCE，这两者怎么对应起来？
+它是一个**对数似然项**。但代码里常看到的是 MSE 或 BCE，这两者怎么对应起来？
 
 关键在于：
 
-> 我们如何假设 $p_\theta(x\mid z)$ 的形式。
+> **我们如何假设 $p_\theta(x\mid z)$ 的形式。**
 
-**情况一：把输出看成高斯分布**
+#### **情况一：把输出看成高斯分布**
 
 如果假设：
 
@@ -320,7 +320,7 @@ $$
 
 所以连续值重建时，经常使用 MSE。
 
-**情况二：把输出看成 Bernoulli 分布**
+#### **情况二：把输出看成 Bernoulli 分布**
 
 如果假设像素值是 0 到 1 之间的概率，并令：
 
@@ -369,6 +369,7 @@ $$
 
 ```{python}
 def vae_bce_loss(x_hat: Tensor, x: Tensor, mu: Tensor, logvar: Tensor) -> Tensor:
+    """Compute the VAE loss using binary cross-entropy for reconstruction."""
     # Reconstruction loss using binary cross-entropy
     re_loss = F.binary_cross_entropy(x_hat, x, reduction='sum')
     # KL divergence loss between the approximate posterior and the prior
@@ -380,6 +381,7 @@ def vae_bce_loss(x_hat: Tensor, x: Tensor, mu: Tensor, logvar: Tensor) -> Tensor
 
 ```{python}
 def vae_mse_loss(x_hat: Tensor, x: Tensor, mu: Tensor, logvar: Tensor) -> Tensor:
+    """Compute the VAE loss using mean squared error for reconstruction."""
     # Reconstruction loss using mean squared error
     re_loss = F.mse_loss(x_hat, x, reduction='sum')
     # KL divergence loss between the approximate posterior and the prior
@@ -394,8 +396,6 @@ def vae_mse_loss(x_hat: Tensor, x: Tensor, mu: Tensor, logvar: Tensor) -> Tensor
 ## 13.3.8 本章小结
 
 现在，我们终于可以回答这一节开头的问题：VAE 的目标函数从哪里来？
-
-答案是：
 
 第一，VAE 本质上仍然想最大化数据的对数似然：
 
@@ -414,9 +414,9 @@ $$
 
 到这里，VAE 最核心的数学已经齐了：
 
-- 为什么引入 latent variable
-- 为什么要近似后验
-- 为什么可以用重参数化训练
-- 为什么目标函数会变成 ELBO
+- 为什么引入 latent variable？
+- 为什么要近似后验？
+- 为什么可以用重参数化训练？
+- 为什么目标函数会变成 ELBO？
 
 在下一节里，我们来看看，这个目标函数在训练中会带来什么现象？为什么 VAE 生成的图像往往更平滑，但有时会偏模糊？KL 太强或太弱时会发生什么？

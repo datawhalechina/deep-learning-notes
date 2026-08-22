@@ -71,7 +71,7 @@ VAE 的 encoder 不再直接输出一个 latent vector，而是输出两个量�
 
 以下是 VAE 的网络结构示意图：
 
-![图 13.2.1：VAE 网络结构 [@IBM2026VAE]](figures/ch13.2-vae.png){width=70%}
+![图 13.2.1 VAE 网络结构 [@IBM2026VAE]](figures/ch13.2-vae.png){width=70%}
 
 所以，普通 AutoEncoder 的潜空间是每张图片对应一个精确坐标；而 VAE 想做的是，让这些坐标点的周围都带有一定的概率密度，让每张图片对应一个小云团。同时，这些云团之间要尽量连接、平滑，并整体贴近一个简单的先验分布（通常是标准正态）。这样一来，潜空间就不再是零碎的，而变得更连续、更适合采样。
 
@@ -127,7 +127,8 @@ $$
 
 $$
 \begin{align}
-D_{\text{KL}}(p_{\text{data}}(x) \parallel p_\theta(x)) &= \mathbb{E}_{x \sim p_{\text{data}}} \left[\log \frac{p_{\text{data}}(x)}{p_\theta(x)}\right] \\
+D_{\text{KL}}(p_{\text{data}}(x) \parallel p_\theta(x))
+&= \mathbb{E}_{x \sim p_{\text{data}}} \left[\log \frac{p_{\text{data}}(x)}{p_\theta(x)}\right] \\
 &= \mathbb{E}_{x \sim p_{\text{data}}} [\log p_{\text{data}}(x)] - \mathbb{E}_{x \sim p_{\text{data}}} [\log p_\theta(x)] \\
 \end{align}
 $$
@@ -265,7 +266,7 @@ $$
 z \sim q_\phi(z \mid x)
 $$
 
-也就是说，我们不再像 AE 那样，把 encoder 输出的 latent vector 直接送进 decoder，而是把 encoder 输出的分布当成一个概率模型，从中 **采样** 一个 $z$，再把这个 $z$ 送进 decoder。
+也就是说，我们不再像 AE 那样，把 encoder 输出的 latent vector 直接送进 decoder，而是把 encoder 输出的分布当成一个概率模型，从中**采样**一个 $z$，再把这个 $z$ 送进 decoder。
 
 例如，如果 encoder 输出的是 $\mu(x)$ 和 $\sigma(x)$，也就对应以下正态分布：
 
@@ -286,18 +287,14 @@ $$
 也就是说，VAE 并没有直接从 $\mathcal{N}(\mu, \sigma^2)$ 里硬采样，而是把采样改写成：
 
 $$
-\epsilon \sim \mathcal{N}(0, I)
-$$
-
-$$
-z = \mu + \sigma \odot \epsilon
+z = \mu + \sigma \odot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I)
 $$
 
 它的思想非常简单：
 
-- 随机性来自一个与参数无关的噪声 $\epsilon$
-- $\mu$ 和 $\sigma$ 由 encoder 网络输出
-- $z$ 是 $\mu,\sigma,\epsilon$ 的一个确定性函数
+- 随机性来自一个与参数无关的噪声 $\epsilon$；
+- $\mu$ 和 $\sigma$ 由 encoder 网络输出；
+- $z$ 是 $\mu,\sigma,\epsilon$ 的一个确定性函数。
 
 于是，原来不可导的采样就变成了可导的变换。经过变换以后，$\epsilon$ 可以直接随机采样，而 $\mu$ 和 $\sigma$ 仍然处在计算图中，损失函数可以顺利对 encoder 参数求梯度。也就是说，我们并不是直接让网络输出一个随机变量，而是让网络输出如何把标准噪声变换成目标分布。
 
@@ -315,8 +312,9 @@ class VAE(nn.Module):
         hidden_dim: int = 256,
         latent_dim: int = 32,
     ):
-        """Initialize encoder, latent heads, and decoder."""
         super().__init__()
+        self.latent_dim = latent_dim
+
         input_dim = math.prod(input_shape)
         self.encoder = nn.Sequential(
             dnn.Flatten(),
