@@ -137,7 +137,7 @@ print('Output:', y, sep='\n')
 This implementation already captures the two most important ideas in convolution:
 
 - Each output element depends only on a local input window;
-- exactly the same kernel parameters are used at every position.
+- Exactly the same kernel parameters are used at every position.
 
 Padding, stride, and multi-channel convolution later do not change this core. They only determine how the window moves and which dimensions are included in each window.
 
@@ -488,7 +488,7 @@ The $1\times 1$ convolution may seem strange the first time you encounter it. It
 
 The key point is:
 
-> **Although the spatial size of the kernel is** $1\times 1$, it still covers all input channels.
+> **Although the spatial size of the kernel is $1\times 1$, it still covers all input channels.**
 
 Suppose the channel vector at a particular input position is:
 

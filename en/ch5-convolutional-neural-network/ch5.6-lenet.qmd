@@ -300,7 +300,7 @@ LeNet is therefore not merely a classic model to memorize. It is more like the s
 
 > **First extract spatial features layer by layer with convolution, then pass the final representation to a classifier.**
 
-## 5.6.8 Chapter Summary
+## 5.6.8 Summary
 
 Using LeNet, this section combined the convolution, activation, pooling, and fully connected layers introduced earlier into a complete classic CNN.
 

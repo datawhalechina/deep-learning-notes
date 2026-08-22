@@ -15,7 +15,7 @@ In the previous sections on multilayer perceptrons, we learned how to pass an in
 
 Images may seem to be suitable for the same approach. A grayscale image is essentially a collection of pixel values, so as long as we flatten the two-dimensional pixel matrix into a long vector, we can send it directly into an MLP. In fact, on small datasets such as MNIST, an ordinary MLP can indeed classify handwritten digits successfully.
 
-But there is a problem: **an image is not merely a very long vector.**
+But there is a problem: **An image is not merely a very long vector.**
 
 The arrangement of pixels in an image has a clear spatial meaning. Neighboring pixels usually belong to the same local structure, an edge may appear anywhere in an image, and more complex textures and objects are built by combining these local patterns layer by layer. If we flatten an image directly, an MLP can still see all the pixel values, but it does not explicitly take advantage of these structures.
 
@@ -131,9 +131,9 @@ More importantly, these many parameters do not take advantage of the most obviou
 When looking at a natural image, we usually do not begin by understanding all the pixels together. Much of the most basic visual information comes from local regions, for example:
 
 - A change in brightness between neighboring regions forms an edge;
-- two edges intersect to form a corner;
-- edges repeat in a particular way to form a texture;
-- multiple local textures and contours continue to combine into an object part.
+- Two edges intersect to form a corner;
+- Edges repeat in a particular way to form a texture;
+- Multiple local textures and contours continue to combine into an object part.
 
 In other words, visual features have an obvious hierarchical structure, but the information at the lowest level usually comes from a very small neighborhood.
 
@@ -207,7 +207,7 @@ In contrast, a fully connected layer learns independent parameters for every inp
 Local connectivity and weight sharing together form the core design of CNNs:
 
 - Process only one local region at a time;
-- reuse the same local computation at every spatial position.
+- Reuse the same local computation at every spatial position.
 
 ## 5.1.4 From Weight Sharing to Translation Equivariance
 
@@ -221,7 +221,7 @@ $$
 
 Here, $T$ denotes a translation operation and $f$ denotes the convolution computation.
 
-“Equivariant” does not mean that the output remains completely unchanged. After an edge in the input moves, the corresponding edge response in the output also moves. What is preserved is the correspondence between the change in the input and the change in the output.
+"Equivariant" does not mean that the output remains completely unchanged. After an edge in the input moves, the corresponding edge response in the output also moves. What is preserved is the correspondence between the change in the input and the change in the output.
 
 We can process two images that differ only in position with the same convolutional kernel.
 
@@ -297,9 +297,9 @@ print(f'Conv2d layer: {conv2d_params:,} parameters.')
 The difference between the two comes from their connectivity:
 
 - A fully connected layer stores independent parameters between every output neuron and every input pixel;
-- a convolutional layer learns only a small number of local weights and shares them across the entire image.
+- A convolutional layer learns only a small number of local weights and shares them across the entire image.
 
-This does not mean that convolutional layers are necessarily more powerful than linear layers. On the contrary, convolutional layers actively constrain the connectivity pattern. This restriction is precisely what makes them more suitable for images: the network does not need to learn from scratch that “local pixels are more related” and “the same pattern can appear at different positions,” because these principles have already been written into the model architecture.
+This does not mean that convolutional layers are necessarily more powerful than linear layers. On the contrary, convolutional layers actively constrain the connectivity pattern. This restriction is precisely what makes them more suitable for images: the network does not need to learn from scratch that "local pixels are more related" and "the same pattern can appear at different positions," because these principles have already been written into the model architecture.
 
 ## 5.1.6 How CNNs Form Hierarchical Features
 
@@ -311,7 +311,7 @@ After a kernel slides across the input, it generates a two-dimensional output in
 
 This process can be roughly understood as:
 
-![CNN Hierarchical Feature Learning](figures/ch5.1-hierarchical-learning.png){width=80%}
+![Figure 5.1.6 CNN Hierarchical Feature Learning](figures/ch5.1-hierarchical-learning.png){width=80%}
 
 This layer-by-layer combination from local to global and from simple patterns to complex patterns is CNNs' **hierarchical feature learning**. Although an individual convolution output depends only on a local window, after multiple convolutional layers are stacked, features in later layers can indirectly see an increasingly large region of the input.
 
@@ -326,9 +326,9 @@ For time series or audio, we can use one-dimensional convolution along the time 
 CNNs have been particularly successful for images, however, because their structure matches the characteristics of images so well:
 
 - Images have a regular grid structure;
-- neighboring pixels are usually strongly correlated;
-- local patterns such as edges and textures repeat at different positions;
-- complex visual concepts can be formed by combining simple local features layer by layer.
+- Neighboring pixels are usually strongly correlated;
+- Local patterns such as edges and textures repeat at different positions;
+- Complex visual concepts can be formed by combining simple local features layer by layer.
 
 CNNs encode these principles as local connectivity, weight sharing, and translation equivariance. Compared with a fully general MLP, they therefore usually have a more suitable inductive bias for visual tasks.
 

@@ -425,7 +425,7 @@ Do not modify these settings uniformly in every project just for optimization. T
 
 These engineering details do not change the mathematical definition of convolution: regardless of which kernel the backend selects, `nn.Conv2d` still implements the same tensor transformation externally. The educational implementation helps us understand the operator, while the high-performance backend makes the same operator run efficiently on real hardware.
 
-## 5.5.9 Chapter Summary
+## 5.5.9 Summary
 
 This section connected the basic CNN operators learned earlier into a complete image-classification model.
 
