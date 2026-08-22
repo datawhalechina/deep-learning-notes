@@ -1,7 +1,7 @@
 ---
 author: jshn9515
 date: 2026-03-29
-date-modified: 2026-04-04
+date-modified: 2026-08-22
 open-graph:
   title: ch14.1-ddpm-basics
   description: "14.1 DDPM: From Denoising to Generation"
@@ -11,15 +11,24 @@ order: 1
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/en/ch14-diffusion-models/ch14.1-ddpm-basics.ipynb){fig-align="left"}
 
-Previously, we have already seen several types of generative models. GAN is like an adversarial game, letting the generator produce realistic samples in one step; AutoEncoder learns compression and reconstruction; VAE starts to explicitly model probability distributions and can sample from latent variables; and when it comes to Diffusion Model, its idea is quite different again:
+We have already encountered several types of generative models. A GAN resembles an adversarial game in which the generator produces realistic samples in a single step; an autoencoder learns compression and reconstruction; and a VAE explicitly models a probability distribution from which we can sample latent variables. A DDPM takes a different approach:
 
-> **It does not draw the image in one step, but starts from a ball of noise and washes the image out little by little.**
+> **Rather than drawing an image in one step, it starts with noise and gradually "washes out" the image through denoising.**
 
-This may sound a bit strange the first time you hear it: denoising, isn't it just making a dirty image clean? What does this have to do with generation? Why can we start from pure noise, denoise repeatedly, and finally get a real image?
+This may sound strange at first. Isn't denoising simply a way to clean up a corrupted image? What does that have to do with generation? Why does repeatedly denoising pure noise eventually produce a realistic image?
 
-In this section, we will not rush into the complete derivation first, but first explain this core intuition clearly. You will see that the starting point of DDPM is actually very simple: if one-step generation is too difficult, then split it into many simple small steps.
+The name DDPM [@ho2020DDPM], short for **Denoising Diffusion Probabilistic Model**, already identifies its three most important components:
+
+- Diffusion: Real data is first diffused gradually into noise;
+- Denoising: The model then learns how to recover the data from noise one step at a time;
+- Probabilistic: Rather than a fixed deterministic transformation, the entire procedure is a stochastic process connected by a sequence of probability distributions.
+
+Rather than deriving the complete DDPM immediately, this section first builds a map of the overall method. Sections 14.2, 14.3, and 14.4 will separately examine the forward noising process, reverse denoising process, training objective, and sampling procedure. For now, the central question is:
+
+> **How can a generation problem be reformulated as a denoising problem?**
 
 ```{python}
+import math
 import random
 
 import dnnlpy
@@ -32,25 +41,47 @@ dnnlpy.set_matplotlib_format('highdpi')
 print('PyTorch version:', torch.__version__)
 ```
 
-## 14.1.1 Generation: The Reverse Process of Adding Noise
+## 14.1.1 Generation: Reversing the Noising Process
 
-Let's first think about a very simple process. Suppose we have a real image $x_0$. Now we continuously add a little bit of Gaussian noise to it:
+Let us begin with a very simple process.
 
-- In the first step, add a little, and the image becomes a little blurry;
-- In the second step, add a little more, and there are fewer details;
-- In the third step, add a little more, and even the contours start to disappear;
-- ...
-- After adding for many, many steps, it will eventually become an almost pure Gaussian noise image.
+Suppose we have a real image $x_0$. If we continuously add Gaussian noise to it, the image gradually loses its original structure. At first, its edges may only become slightly blurry. As more noise is added, local textures begin to disappear, followed by the overall outline. When the noise is sufficiently strong, the final $x_T$ can become very close to a standard Gaussian random variable.
 
-This tells us one thing: between the real data distribution and the Gaussian noise distribution, maybe they can be connected through many very small changes. Then, since we can slowly push a real image toward the noise side, a natural idea is:
+In other words, we can construct the following path:
 
-> **Can we do it in reverse?**
+$$
+x_0 \rightarrow x_1 \rightarrow x_2 \rightarrow \cdots \rightarrow x_T
+$$
 
-That is, can we start from pure noise, make only a small correction at each step, and finally slowly walk back to the real image distribution?
+The left side represents real data, while the right side follows a simple, familiar Gaussian distribution.
 
-This is the most core idea of DDPM.
+This direction is not difficult. We do not even need to train a neural network: by prescribing the amount of noise added at each step, we can gradually corrupt any image. The more interesting question is:
 
-Below, we first do not train any model. We just take one image and do a simple thing: every few steps, add some Gaussian noise to it, and gradually increase the noise level. Let's look at how the image gradually loses its structure.
+> **If a real image can gradually become noise along this path, can we travel the same path in reverse?**
+
+If so, we do not need to learn the difficult mapping
+
+$$
+\text{noise} \rightarrow \text{image}
+$$
+
+directly. Instead, we can learn a sequence of smaller changes:
+
+$$
+\text{noise}
+\rightarrow \text{slightly less noisy}
+\rightarrow \text{slightly less noisy}
+\rightarrow \cdots
+\rightarrow \text{image}
+$$
+
+Let us first conduct an intuitive experiment. To ensure that the last step is genuinely close to pure Gaussian noise, instead of simply writing `x0 + sigma * noise`, we mix the image signal and noise using different weights:
+
+$$
+x_t = \sqrt{s_t}\,x_0 + \sqrt{1-s_t}\,\epsilon, \qquad \epsilon\sim\mathcal N(0,I)
+$$
+
+For now, we can interpret $s_t$ simply as the amount of the original image signal that remains. When $s_t=1$, the result is entirely the original image; when $s_t=0$, it is entirely Gaussian noise. We will later see that $\bar\alpha_t$ plays a similar role in a DDPM.
 
 ```{python}
 root = dnnlpy.get_data_root()
@@ -58,158 +89,269 @@ transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
 ds = datasets.MNIST(root, train=False, download=True, transform=transform)
 
 idx = random.randrange(len(ds))
-x0 = ds[idx][0].squeeze(0)  # shape: (28, 28)
+x0 = ds[idx][0].squeeze(0)
+x0 = x0 * 2.0 - 1.0  # [0, 1] -> [-1, 1]
 
-noise_levels = [0.0, 0.1, 0.25, 0.5, 0.8, 1.0]
+signal_levels = [1.0, 0.8, 0.5, 0.25, 0.1, 0.0]
 
 fig = plt.figure(1, figsize=(8, 2))
-axes = fig.subplots(1, len(noise_levels))
-for ax, sigma in zip(axes, noise_levels, strict=True):
+axes = fig.subplots(1, len(signal_levels))
+for ax, level in zip(axes, signal_levels, strict=True):
     noise = torch.randn_like(x0)
-    xt = x0 + sigma * noise
-    xt = xt.clamp(0.0, 1.0)
-    ax.imshow(xt, cmap='gray')
+    xt = math.sqrt(level) * x0 + math.sqrt(1.0 - level) * noise
+    ax.imshow(xt, cmap='gray', vmin=-1.0, vmax=1.0)
     ax.axis('off')
-    ax.set_title(f'sigma={sigma:.2f}', fontsize=10)
+    ax.set_title(f'Signal Level: {level:.2f}', fontsize=10)
 fig.tight_layout(pad=0.5)
 plt.show()
 ```
 
-From the figure above, we can find that when the noise is small, the general structure of the image is still there; when the noise gradually increases, the model needs to recover more and more information; when the noise becomes large enough, the image almost only has random pixels left.
+What matters most here is not the appearance of any particular intermediate image, but the overall trend. As the signal level decreases, the image retains less information while the noise grows stronger. When $s_t=0$, the result is a sample of Gaussian noise.
 
-So, going from a clear image to pure noise is not completed with a snap, but can be divided into many small steps. Then in reverse, from noise back to image, is it also possible to divide it into many small steps? In other words, we are completing a reverse process of adding noise. Then, why do we add noise step by step, instead of doing it all at once?
+Thus, a DDPM does not assume that pure noise still contains an image that a human could recognize. At a sufficiently large time step, an individual $x_T$ contains almost no visible trace of its corresponding $x_0$. The model can nevertheless generate an image from noise because, after training, it has learned which local adjustments gradually move a sample back toward the real data distribution.
 
-## 14.1.2 Why Is Step by Step Easy, While One Step Is Hard?
+This distinction is important. A diffusion model is not performing image restoration in the sense of "recovering a particular corrupted image." It is learning a generative process. The initial noise used during generation never corresponded to a particular training image, and the final sample is gradually constructed by following the learned reverse process.
 
-Suppose now you are asked to do two tasks.
+## 14.1.2 Why Are Small Steps Easier Than One Large Step?
 
-**Task A: generate a cat image in one step**
+Suppose the model is given two tasks.
 
-The input is a ball of random noise, and the output is directly a complete, natural, structurally reasonable, and detail-rich cat image.
+**Task A: Generate an image of a cat in one step.**
 
-This is very hard. Because the model has to decide many things at once: what is the cat's pose? Which direction is the face pointing? What is the background? How should the fur texture be drawn? How should the lighting be arranged? Is the overall structure natural? That is to say, one-step generation is essentially learning a very complex global mapping. So this task is very difficult for the model.
+The input is random noise, and the output must be a complete, natural, structurally coherent, and detailed image of a cat. In a single step, the model must decide many interdependent factors: What is the cat's pose? Which way is its face pointing? What is the geometric relationship among its body and limbs? What is in the background? How should the fur be rendered? How should the lighting and shadows remain consistent? How should local details conform to the overall structure?
 
-**Task B: give you an image with a little noise, and ask you to remove the noise a little**
+From the perspective of probability distributions, this asks the model to transform a simple Gaussian distribution directly into a highly complex data distribution. Learning this mapping is not impossible—GANs do something similar—but the required transformation is substantial.
 
-This task is much simpler. Because at this time, part of the structure has already been preserved in the image, the rough contour is still there, the local shapes are still there, and the noise is just covering these structures. Just like the experiment above, even if 100% noise is added, we can still roughly distinguish the digit in the image. The model is the same. At this time, the model does not need to create everything from scratch. It only needs to know, in this image, which parts are more like noise? In which direction should it be corrected a little? This is much easier than generating the whole image in one step.
+**Task B: Given an image that retains some structure but has been corrupted by noise, make only a small correction.**
 
-Therefore, the core strategy of Diffusion Model is: do not force the model to learn to generate an image directly from random numbers in one go, but split this hard problem into many simple small problems, and remove only a little noise at each step. This is very similar to a common idea in deep learning: if a complex mapping is split into many simple mappings, it is often easier to learn.
+This task is usually more local. The model does not need to decide every detail of the final image in a single computation. It only needs to determine which direction the current sample should move slightly, at its current noise level, to become more like real data.
 
-## 14.1.3 The Core Idea of DDPM: First Learn Destruction, Then Learn Recovery
+If we imagine generation as traveling from the foot of a mountain to its summit, one-step generation asks the model to jump directly from the starting point to the destination. A DDPM instead divides the route into many short segments and decides only how to take the next small step. No individual step involves such a dramatic change.
 
-DDPM actually does two things.
+There is also a deeper reason. If the current $x_t$ contains only slightly more noise than $x_{t-1}$, the two adjacent distributions are also relatively similar. Rather than asking a neural network to learn a complete mapping between two vastly different distributions in one step, a DDPM learns many reverse transitions between adjacent noise levels.
 
-**First step: design a forward noising process**
+As a result, a difficult global generation problem is decomposed into many comparatively simple local denoising problems:
 
-We manually specify a simple and fixed process, adding noise to the real image step by step until it finally becomes standard Gaussian noise:
+$$
+p_\theta(x_{t-1}\mid x_t)
+$$
+
+This expression means:
+
+> **Given the current sample $x_t$, what distribution should the slightly cleaner $x_{t-1}$ follow?**
+
+Strictly speaking, the reverse process does not simply subtract the noise predicted by the network from the image. The network's prediction is inserted into a reverse-update formula determined by the noise schedule, and the original DDPM sampling process usually also contains a stochastic term. More precisely, the network supplies the information required for the reverse transition, while the sampling formula uses that information to obtain $x_{t-1}$ from $x_t$. We will develop the exact form in Section 14.3.
+
+Therefore, what a diffusion model truly exploits is the idea of **iterative generation**. The complexity of the task does not disappear; it is distributed across many time steps. The cost is equally direct: if the reverse process contains $T$ steps, generating one image may require calling the network many times. DDPMs are stable to train, but their original sampling procedure is slow. This limitation motivated later developments such as DDIM, distillation, and many other fast sampling methods.
+
+## 14.1.3 The Core Idea of DDPM: Define Corruption, Then Learn Recovery
+
+The overall structure of a DDPM consists of two processes that move in opposite directions.
+
+**The first is the forward noising process.**
+
+Starting with real data $x_0\sim p_{\text{data}}(x)$, we gradually add Gaussian noise according to a predefined rule:
 
 $$
 x_0 \rightarrow x_1 \rightarrow x_2 \rightarrow \cdots \rightarrow x_T
 $$
 
-Here, $x_0$ is the real image; $x_t$ is the result after adding noise at step $t$; $x_T$ is basically pure noise.
+This process is typically denoted by $q$. It is not a neural network and has no trainable parameters; it is a probability process that we define ourselves. Each step depends only on the preceding step, so we can write
 
-This process does not need learning. It is defined by ourselves. Its role is to gradually turn a complex data distribution into a Gaussian distribution that we are very familiar with and very easy to sample from.
+$$
+q(x_{1:T}\mid x_0) = \prod_{t=1}^{T}q(x_t\mid x_{t-1})
+$$
 
-**Second step: learn a reverse denoising process**
+This is a Markov chain. To produce the current $x_t$, we only need to know $x_{t-1}$; we do not need to revisit the earlier states $x_{t-2},x_{t-3},\ldots$.
 
-Since the forward process turns the image into noise, we train a neural network to learn the process in the reverse direction:
+As $t$ increases, Gaussian noise obscures more and more of the data's structure. If the noise schedule is designed appropriately, the final marginal distribution $q(x_T)$ approaches a simple standard Gaussian distribution:
+
+$$
+q(x_T)\approx\mathcal N(0,I)
+$$
+
+Why deliberately choose a Gaussian distribution as the endpoint? Because it is extremely easy to sample from. During generation, we cannot begin by drawing $x_0$ from the real data distribution; doing so would defeat the purpose of generation. We can, however, create a random tensor at any time:
+
+```python
+xT = torch.randn(1, 28, 28)
+```
+
+The forward process therefore accomplishes something essential: it deliberately constructs a path from a **complex but unknown data distribution** to a **simple Gaussian distribution that is easy to sample from**.
+
+**The second is the reverse denoising process.**
+
+We now want to travel this path in reverse:
 
 $$
 x_T \rightarrow x_{T-1} \rightarrow x_{T-2} \rightarrow \cdots \rightarrow x_0
 $$
 
-That is, input the current noisy image, predict how much noise should be removed in this step, and get an image that is slightly cleaner; repeat this many times, and finally get a clear image.
+If every true reverse conditional distribution $q(x_{t-1}\mid x_t)$ were known, we could theoretically start with $x_T\sim\mathcal N(0,I)$ and sample backward until we reached the data distribution. The problem is that this true reverse process depends on the unknown data distribution, so it is not directly available to us.
 
-Then, when we want to generate an image, it is very simple: start from random Gaussian noise, repeatedly call the denoising network, and finally generate a sample. So, DDPM's generation is not direct generation like GAN, but starts from noise and denoises gradually.
-
-![Figure 14.1.3: Schematic diagram of the DDPM generation process [@ho2020DDPM, fig. 2]](figures/ch14.1-ddpm-chain.png){width=80%}
-
-Intuitively, we already feel that this makes sense. From the perspective of probabilistic modeling, it is actually also very natural.
-
-We know that no matter what kind of generative model it is, what it ultimately wants to learn is the data distribution $p_{\text{data}}(x)$. Traditional generative models directly or indirectly approximate this distribution, while DDPM first manually defines a forward process, slowly turning the data distribution into a Gaussian distribution; then it learns its reverse process, letting the model learn how to go from the Gaussian distribution back to the data distribution.
-
-That is, it does not directly force itself to learn:
+A DDPM therefore uses a parameterized model to approximate it:
 
 $$
-\text{noise} \rightarrow \text{image}
+p_\theta(x_{t-1}\mid x_t)
 $$
 
-but learns:
+Connecting all the reverse steps gives the generative process defined by the model:
 
 $$
-\text{noise} \rightarrow \text{slightly less noisy image}
-\rightarrow\cdots \rightarrow \text{clean image}
+p_\theta(x_{0:T}) = p(x_T) \prod_{t=1}^{T}p_\theta(x_{t-1}\mid x_t)
 $$
 
-Each step only makes a small modification, so the learning difficulty is lower and it is more stable.
-
-So, DDPM successfully turns an image generation problem into a denoising problem. We first manually make the image worse (adding noise), and then teach the network how to make the image better (denoising). This is its core idea. The output of the network at each step is how much noise we should remove from the image in this step.
-
-## 14.1.4 The Training Objective of DDPM: Guess the Noise
-
-In the most common DDPM notation, we write the noisy sample at step $t$ as:
+where the starting distribution is typically chosen as
 
 $$
-x_t = \sqrt{\bar{\alpha}_t}\,x_0 + \sqrt{1 - \bar{\alpha}_t}\,\epsilon,
-\qquad \epsilon \sim \mathcal{N}(0, I)
+p(x_T)=\mathcal N(0,I)
 $$
 
-There is no need to fully understand this formula right now. We only need to first grasp what it expresses:
+From this perspective, the generative logic of a DDPM is straightforward:
 
-- Part of the original image $x_0$ is still kept;
-- Part of the Gaussian noise $\epsilon$ is added;
-- As $t$ increases, the noise part becomes stronger and stronger;
-- When $t$ is large enough, $x_t$ becomes closer and closer to pure noise.
+1. We know how to sample from a Gaussian distribution;
+2. We train a model to approximate each reverse transition;
+3. Chaining these reverse transitions together produces a generative path from Gaussian noise back to the data distribution.
 
-Here, $\bar{\alpha}_t$ is a coefficient that changes over time, controlling the ratio between the original image and the noise. It monotonically decreases over time, so as $t$ increases, the original image component gradually decreases and the noise component gradually increases. We will talk about its specific form later. For now, do not rush.
+![Figure 14.1.3 Forward diffusion and reverse generation in a DDPM [@ho2020DDPM, fig. 2]](figures/ch14.1-ddpm-chain.png)
 
-During training, the model's task is usually:
+This is also why a diffusion model should not be understood merely as a powerful image denoiser. At any individual time step, it is indeed performing denoising; once all the time steps are connected, however, they define a complete probabilistic generative model.
 
-$$
-\epsilon_\theta(x_t, t) \approx \epsilon
-$$
-
-That is, give it a noisy image at some time, and let it guess the noise mixed into it. This is why in many DDPM papers and code implementations, the final loss function looks like a very simple mean squared error:
+Another easily overlooked point is that, although the forward process is drawn as a long chain, training does not require us to compute $x_1$, then $x_2$, and so on until reaching a randomly chosen $x_t$. The DDPM forward process has a convenient closed form that lets us sample any $x_t$ directly from $x_0$ in one step:
 
 $$
-\mathcal{L} = \mathbb{E}\left[\left\|\epsilon - \epsilon_\theta(x_t, t)\right\|^2\right]
+x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon,
+\qquad \epsilon\sim\mathcal N(0,I)
 $$
 
-On the surface, it is only guessing noise, but in essence, it is learning how to slowly pull the sample from the noise direction back to the data distribution.
+During training, we therefore usually sample a time step $t$ at random and directly construct $x_t$ at the corresponding noise level. Although the forward process conceptually contains $T$ steps, producing a single training example does not require executing all $T$ noising operations. This allows DDPM training to use minibatch parallelism as efficiently as ordinary supervised learning.
+
+The next section derives this equation and explains the relationships among $\alpha_t$, $\bar\alpha_t$, and the commonly used $\beta_t$.
+
+## 14.1.4 The DDPM Training Objective: Predict Noise at Any Noise Level
+
+Let us now examine what the neural network learns during training.
+
+Using the closed form above, we first draw a real sample $x_0$ from the dataset, choose a random time step $t$, and sample Gaussian noise $\epsilon$:
+
+$$
+\epsilon\sim\mathcal N(0,I)
+$$
+
+We then directly construct
+
+$$
+x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon
+$$
+
+Now $x_t$ is a noisy sample that we deliberately created. Because we sampled the noise ourselves, the true $\epsilon$ is also known. A DDPM therefore requires no manual labels indicating which noise appears in each image; its training targets are generated automatically.
+
+The classic DDPM parameterization asks the network to predict this noise:
+
+$$
+\epsilon_\theta(x_t,t)\approx\epsilon
+$$
+
+We can therefore use an ordinary mean squared error:
+
+$$
+\mathcal L_{\text{simple}} = \mathbb E_{x_0,t,\epsilon}
+\left[ \left\| \epsilon- \epsilon_\theta(x_t,t) \right\|_2^2 \right]
+$$
+
+At first glance, this objective hardly looks like one for training a generative model: the input is a noisy image, the target is random noise, and the loss is MSE. What makes the network a generative model is that these denoising tasks cover every time step, from an almost clean image to almost pure noise.
+
+The time step $t$ is not an optional input. Consider two extremes:
+
+- When $t$ is small, $x_t$ remains close to a real image, and the model only needs to make a slight correction;
+- When $t$ is large, strong noise may obscure $x_t$, presenting the model with a task of an entirely different difficulty.
+
+Giving the network only $x_t$ without telling it the current noise level would be like asking the same network to solve many different denoising tasks without revealing how difficult each one is. In practice, the model therefore encodes the time step $t$ as a vector and combines it with the image features. When we introduce the DDPM network architecture, we will see exactly how this timestep embedding enters the U-Net.
+
+From the perspective of the training loop, one DDPM training example can be summarized as
+
+$$
+x_0
+\xrightarrow{\text{sample }t,\epsilon}
+x_t
+\xrightarrow{\epsilon_\theta(x_t,t)}
+\hat\epsilon
+\xrightarrow{\text{MSE with }\epsilon}
+\mathcal L
+$$
+
+The pseudocode is almost this simple:
+
+```python
+x0 = sample_real_data()
+t = sample_timestep()
+eps = sample_gaussian_noise()
+
+xt = add_noise(x0, t, eps)
+eps_pred = model(xt, t)
+loss = mse(eps_pred, eps)
+```
+
+There is also an important asymmetry between training and generation. During training, we can randomly select any $t$ and construct $x_t$ directly, so different time steps can appear in parallel within the same batch. During generation, however, we must begin with $x_T$ and obtain each subsequent state in the order $T,T-1,\ldots,1$.
+
+::: {.list-table}
+Table 14.1.4 Training and Generation in a DDPM
+
+- - Stage
+  - Starting point
+  - Time step
+  - Network task
+  - Sequential execution required?
+
+- - Training
+  - Real sample $x_0$
+  - Randomly sample $t$
+  - Predict noise from $(x_t,t)$
+  - No; any $x_t$ can be constructed directly
+
+- - Generation
+  - Gaussian noise $x_T$
+  - Move from $T$ to $1$
+  - Provide a prediction for each reverse sampling step
+  - Yes; each step depends on the result of the previous step
+:::
+
+This explains a characteristic feature of diffusion models: **training is highly parallelizable, but the original sampling process is sequential.** Each $x_{t-1}$ depends on the newly obtained $x_t$, so all time steps cannot be computed in parallel as they can during training.
+
+Finally, a note about notation is important. This chapter primarily follows the original DDPM's common $\epsilon$-prediction parameterization, in which the network predicts noise. However, "a diffusion model must predict noise" is not a universal rule. A model may instead predict $x_0$ directly or predict $v$, which combines $x_0$ and $\epsilon$. For this section, focusing on the classic $\epsilon$-prediction parameterization is enough to establish the basic DDPM framework.
 
 ## 14.1.5 Summary
 
-Now we can summarize the overall process of DDPM.
+Although we have not yet derived all the mathematical details of a DDPM, we can now connect the pieces of its overall logic.
 
-**Training stage**
+A DDPM first defines a forward diffusion process. Gaussian noise is gradually added to a real sample $x_0$ over time, eventually making $x_T$ approach a simple standard Gaussian distribution:
 
-During training, we take a real image $x_0$, randomly choose a time step $t$, and then:
+$$
+x_0 \xrightarrow{q} \cdots \xrightarrow{q} x_T\approx\mathcal N(0,I)
+$$
 
-1. According to the predefined rule, add noise of the corresponding strength to it and get $x_t$;
-2. Input $x_t$ and the time step $t$ into the neural network;
-3. Let the network predict the noise added in this step;
-4. Use the predicted noise and the real noise to compute the loss and train the network.
+This process does not need to be learned. What the neural network must learn is the reverse direction: given $x_t$ at a particular noise level, estimate the information required for the reverse transition so that the sample gradually moves toward cleaner regions that better match the real data distribution:
 
-So the essence of training is to let the model learn to identify and estimate noise under any noise level.
+$$
+x_T \xrightarrow{p_\theta} \cdots \xrightarrow{p_\theta} x_0
+$$
 
-**Generation stage**
+In the classic DDPM parameterization, the network accomplishes this task by predicting the Gaussian noise added to $x_t$:
 
-During generation, we no longer input a real image, but directly start from pure Gaussian noise $x_T$:
+$$
+\epsilon_\theta(x_t,t)\approx\epsilon
+$$
 
-1. Input Gaussian noise;
-2. The network predicts the noise in it;
-3. Remove a little noise and get a cleaner image;
-4. Repeat this, walking from $T$ to $0$.
+Thus, an apparently complex image generation problem is transformed into many denoising-learning problems at different noise levels.
 
-The final $x_0$ is the generated sample we want.
+The essential logic of a DDPM can be condensed into four steps:
 
-The essence of DDPM can be understood in three sentences:
+1. Gradually add noise to real data, connecting it to a Gaussian distribution that is easy to sample from;
+2. Have a neural network learn the reverse correction at every noise level;
+3. During training, randomly select a time step, directly construct $x_t$, and predict the noise;
+4. During generation, begin with pure Gaussian noise and sample backward sequentially through time.
 
-1. First add noise to real data step by step until it reaches a Gaussian distribution;
-2. Then train the model to learn the reverse process of this process;
-3. Therefore, during generation, as long as we start from Gaussian noise and walk back in reverse, we can get samples.
+The crucial shift is that a DDPM does not ask a model to learn how to generate an entire image in one step. Instead, at every noise level, the model learns how to take the next small step toward the data distribution. Connecting many such steps produces the complete generative process.
 
-Overall, the idea of DDPM is that if the complex generation task is too hard, then split it into many simple small tasks. Of course, although the core idea of DDPM is very simple, its mathematical derivation and detailed design are still very headache-inducing. Later, we will slowly unfold and discuss them.
+Several questions remain unanswered. We have repeatedly said that Gaussian noise is "gradually added," but how exactly is it added at each step? What are $\beta_t$, $\alpha_t$, and $\bar\alpha_t$? Why can we obtain $x_t$ directly from $x_0$ without passing through $x_1,x_2,\ldots,x_{t-1}$?
 
-In the next section, we will formally enter the mathematical form and look at how DDPM's forward noising and reverse denoising are defined, as well as the relationship between them. In the end, you will find that DDPM's training objective and generation process are both derived from a very natural probabilistic modeling perspective, rather than being designed arbitrarily.
+The next section begins with the forward process and expresses these ideas formally as probability distributions and equations. Once we understand forward noising, the reasons why reverse denoising can be written as a Gaussian distribution-and where the final noise-prediction objective comes from-will follow much more naturally.
