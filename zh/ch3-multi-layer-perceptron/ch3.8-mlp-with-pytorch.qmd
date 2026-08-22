@@ -456,7 +456,7 @@ plt.show()
 到这里，我们已经用两种方式实现了同一个 MLP。它们的对应关系可以总结如下：
 
 ::: {.list-table}
-表 1：NumPy 手写版本和 PyTorch 版本的对应关系
+表 3.8.8 NumPy 手写版本和 PyTorch 版本的对应关系
 
 - - NumPy 手写版本
   - PyTorch 版本

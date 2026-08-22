@@ -254,10 +254,7 @@ $$
 所以反向传播中的 VJP 可以简化成逐元素乘法：
 
 $$
-\frac{\partial L}{\partial H}
-=
-\frac{\partial L}{\partial A}
-\odot \phi'(H)
+\frac{\partial L}{\partial H} = \frac{\partial L}{\partial A} \odot \phi'(H)
 $$
 
 其中，$\odot$ 表示逐元素相乘。
@@ -278,6 +275,7 @@ $$
 
 ```{python}
 def sigmoid(x: np.ndarray) -> np.ndarray:
+    """Apply the logistic sigmoid elementwise."""
     return 1 / (1 + np.exp(-x))
 
 
@@ -333,16 +331,15 @@ $$
 所以，如果上游梯度是 $\frac{\partial L}{\partial Y}$，那么反向传播为：
 
 $$
-\frac{\partial L}{\partial X}
-=
-\frac{\partial L}{\partial Y}
-\odot Y \odot (1 - Y)
+\frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} \odot Y \odot (1 - Y)
 $$
 
 写成 NumPy 模块：
 
 ```{python}
 class Sigmoid(Module):
+    """Elementwise sigmoid activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -379,6 +376,7 @@ $$
 
 ```{python}
 def tanh(x: np.ndarray) -> np.ndarray:
+    """Apply hyperbolic tangent elementwise."""
     return np.tanh(x)
 
 
@@ -436,16 +434,15 @@ $$
 因此，反向传播为：
 
 $$
-\frac{\partial L}{\partial X}
-=
-\frac{\partial L}{\partial Y}
-\odot (1 - Y^2)
+\frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} \odot (1 - Y^2)
 $$
 
 对应的 NumPy 实现为：
 
 ```{python}
 class Tanh(Module):
+    """Elementwise hyperbolic tangent activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -486,6 +483,7 @@ $$
 
 ```{python}
 def relu(x: np.ndarray) -> np.ndarray:
+    """Apply rectified linear activation elementwise."""
     return np.maximum(0, x)
 
 
@@ -549,16 +547,15 @@ $$
 其中，$\mathbb{1}(X_{b,d} > 0)$ 是指示函数。当 $X_{b,d}>0$ 时为 1，否则为 0。因此反向传播为：
 
 $$
-\frac{\partial L}{\partial X}
-=
-\frac{\partial L}{\partial Y}
-\odot \mathbb{1}(X > 0)
+\frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} \odot \mathbb{1}(X > 0)
 $$
 
 对应的模块实现为：
 
 ```{python}
 class ReLU(Module):
+    """Elementwise rectified linear activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -579,6 +576,8 @@ class ReLU(Module):
 
 ```{python}
 class ReLUWithMask(Module):
+    """Elementwise rectified linear activation layer."""
+
     def __init__(self):
         super().__init__()
 
@@ -651,16 +650,13 @@ $$
 但是，保持形状不变并不一定意味着逐元素作用。比如 softmax 通常也保持形状不变：
 
 $$
-A = \mathrm{softmax}(H)
+A = \operatorname{softmax}(H)
 $$
 
 如果沿最后一维做 softmax，那么：
 
 $$
-A_{bj}
-=
-\frac{\exp(H_{bj})}
-{\sum_k \exp(H_{bk})}
+A_{bj} = \frac{\exp(H_{bj})} {\sum_k \exp(H_{bk})}
 $$
 
 这时 $A_{bj}$ 不只依赖 $H_{bj}$，还依赖同一行里的其他元素 $H_{bk}$。因此 softmax 虽然不改变张量形状，但它不是逐元素函数，对应的雅可比矩阵也不是对角矩阵。
@@ -676,9 +672,7 @@ $$
 对于向量到向量的函数，导数不再是一个标量，而是一个雅可比矩阵。反向传播中的每个模块，本质上都在计算：
 
 $$
-\frac{\partial L}{\partial x}
-=
-\frac{\partial L}{\partial y}J_f(x)
+\frac{\partial L}{\partial x} = \frac{\partial L}{\partial y}J_f(x)
 $$
 
 也就是上游梯度和当前模块雅可比矩阵的 VJP。
@@ -692,16 +686,13 @@ $$
 因此，每个输出位置只依赖对应输入位置，不依赖其他位置：
 
 $$
-\frac{\partial A_{b,d}}{\partial H_{b',d'}} = 0,
-\quad (b,d) \ne (b',d')
+\frac{\partial A_{b,d}}{\partial H_{b',d'}} = 0, \quad (b,d) \ne (b',d')
 $$
 
 所以激活函数的雅可比矩阵是对角矩阵，backward 可以简化成逐元素乘法：
 
 $$
-\frac{\partial L}{\partial H}
-=
-\frac{\partial L}{\partial A}\odot \phi'(H)
+\frac{\partial L}{\partial H} = \frac{\partial L}{\partial A}\odot \phi'(H)
 $$
 
 我们分别介绍了 sigmoid、tanh 和 ReLU。它们都是逐元素激活函数，因此雅可比矩阵的非对角元素都为 0；不同点在于对角线上的局部导数不同。Sigmoid 和 tanh 会把输入压缩到有限区间，但在输入绝对值较大时容易饱和，使雅可比矩阵对角线元素接近 0，导致梯度变小。ReLU 更简单，当输入为正时局部导数为 1，因此在深度网络中更常用；但当输入长期为负时，梯度也可能长期为 0，产生 dead ReLU 问题。

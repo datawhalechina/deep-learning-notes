@@ -135,7 +135,7 @@ $$
 Z = XW + b
 $$
 
-![图 3.1.3：线性分类器模型 [@zhang2023d2l, fig. 3.1.2]](figures/ch3.1-single-neuron.svg)
+![图 3.1.3 线性分类器模型 [@zhang2023d2l, fig. 3.1.2]](figures/ch3.1-single-neuron.svg)
 
 其中，$X$ 是输入图片的特征矩阵，$W$ 是权重矩阵，$b$ 是偏置向量。就上面的图来说，输入层就是 $X$，输出层就是 $Z$，中间的线条表示权重矩阵 $W$。同时，输出节点还有一个对应的偏置 $b$，上面的图没有画出来。
 
@@ -282,7 +282,7 @@ H_2
 Z
 $$
 
-![图 3.1.6：MLP 模型 [@zhang2023d2l, fig. 4.1.1]](figures/ch3.1-mlp.svg)
+![图 3.1.6 MLP 模型 [@zhang2023d2l, fig. 4.1.1]](figures/ch3.1-mlp.svg)
 
 其中，$\operatorname{Linear}_1$ 表示第一个线性层，$\operatorname{ReLU}$ 是激活函数，$\operatorname{Linear}_2$ 是第二个线性层，$H_1, H_2$ 是隐藏层的 pre-activation 和 post-activation 表示，$Z$ 是输出的 logits。
 

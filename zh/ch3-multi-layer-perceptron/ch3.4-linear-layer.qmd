@@ -389,31 +389,33 @@ class Parameter(np.ndarray):
 
 ```{python}
 class Linear(Module):
+    """A linear layer that performs a linear transformation on the input data."""
+
     def __init__(self, in_features: int, out_features: int):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
 
-        W = rng.standard_normal((in_features, out_features))
-        W = W * math.sqrt(2.0 / in_features)
-        b = np.zeros(out_features)
+        weight = rng.standard_normal((in_features, out_features))
+        weight = weight * math.sqrt(2.0 / in_features)
+        bias = np.zeros(out_features)
 
-        self.W = Parameter(W)
-        self.b = Parameter(b)
+        self.weight = Parameter(weight)
+        self.bias = Parameter(bias)
 
     @override
     def forward(self, x: np.ndarray) -> np.ndarray:
         self.ctx = x  # save input for backward
-        return x @ self.W + self.b
+        return x @ self.weight + self.bias
 
     @override
     def backward(self, grad: np.ndarray) -> np.ndarray:
         assert self.ctx is not None, 'Must call forward before backward.'
         x = self.ctx  # recover saved input
 
-        self.W.grad = x.T @ grad  # dW
-        self.b.grad = np.sum(grad, axis=0)  # db
-        return grad @ self.W.T  # dx
+        self.weight.grad = x.T @ grad  # dW
+        self.bias.grad = np.sum(grad, axis=0)  # db
+        return grad @ self.weight.T  # dx
 
     @override
     def parameters(self) -> Iterator[Parameter]:
@@ -446,8 +448,8 @@ dx = linear.backward(dout)
 
 print('out.shape:', out.shape)
 print('dx.shape:', dx.shape)
-print('dW.shape:', linear.W.grad.shape)
-print('db.shape:', linear.b.grad.shape)
+print('dW.shape:', linear.weight.grad.shape)
+print('db.shape:', linear.bias.grad.shape)
 ```
 
 这说明 `Linear` 层已经可以像一个真正的神经网络模块一样使用：前向传播时接收输入，反向传播时接收上游梯度，并把梯度继续传回前一层。
@@ -487,14 +489,14 @@ class SGD(Optimizer):
 ```{python}
 optimizer = SGD(linear.parameters(), lr=0.1)
 
-print('Original W:\n', linear.W)
-print('Original b:', linear.b)
+print('Original W:\n', linear.weight)
+print('Original b:', linear.bias)
 
 print('\n', end='')
 optimizer.step()
 
-print('Updated W:\n', linear.W)
-print('Updated b:', linear.b)
+print('Updated W:\n', linear.weight)
+print('Updated b:', linear.bias)
 ```
 
 其中，`parameters()` 方法会返回该层的所有可学习参数（用 `Parameter` 封装），也就是权重 `W` 和偏置 `b`。如果某个模块中还包含子模块，那么 `parameters()` 会递归地返回这些子模块中的参数。

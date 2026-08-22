@@ -93,11 +93,8 @@ $$
 我们可以用数值梯度验证这一点。
 
 ```{python}
-def numerical_gradient(
-    func: Func,
-    x: np.ndarray,
-    eps: float = 1e-5,
-) -> np.ndarray:
+def numerical_gradient(func: Func, x: np.ndarray, eps: float = 1e-5) -> np.ndarray:
+    """Compute the numerical gradient of a function at a given point."""
     grad = np.zeros_like(x)
 
     it = np.nditer(x, flags=['multi_index'], op_flags=['readwrite'])
@@ -147,13 +144,10 @@ $$
 $$
 
 ```{python}
-def relative_error(
-    grad_analytic: np.ndarray,
-    grad_numeric: np.ndarray,
-    eps: float = 1e-12,
-):
-    a = npl.norm(grad_analytic - grad_numeric)
-    b = npl.norm(grad_analytic) + npl.norm(grad_numeric) + eps
+def relative_error(analytic: np.ndarray, numeric: np.ndarray, eps: float = 1e-12):
+    """Compute the relative error between analytic and numeric gradients."""
+    a = npl.norm(analytic - numeric)
+    b = npl.norm(analytic) + npl.norm(numeric) + eps
     return a / b
 
 
@@ -216,25 +210,25 @@ loss = np.sum(np.square(out))
 dout = 2 * out
 grad_x_analytic = linear.backward(dout)
 
-grad_W_analytic = linear.W.grad.copy()
-grad_b_analytic = linear.b.grad.copy()
+grad_W_analytic = linear.weight.grad.copy()
+grad_b_analytic = linear.bias.grad.copy()
 ```
 
 再用数值梯度检查 `W`：
 
 ```{python}
-def loss_fn_weights(W: np.ndarray) -> float:
-    old_W = linear.W
-    linear.W = W
+def loss_fn_weights(weight: np.ndarray) -> float:
+    old_weight = linear.weight
+    linear.weight = weight
     out = linear(x)
     loss = np.sum(np.square(out))
-    linear.W = old_W
+    linear.weight = old_weight
     return loss
 
 
-grad_W_numeric = numerical_gradient(loss_fn_weights, linear.W.copy())
+grad_W_numeric = numerical_gradient(loss_fn_weights, linear.weight.copy())
 error = relative_error(grad_W_analytic, grad_W_numeric)
-print('Relative Error for W:', error)
+print('Relative Error for weight:', error)
 ```
 
 如果相对误差很小，说明 `dW` 大概率是对的。
@@ -242,18 +236,18 @@ print('Relative Error for W:', error)
 同样可以检查 `b`：
 
 ```{python}
-def loss_fn_bias(b: np.ndarray) -> float:
-    old_b = linear.b
-    linear.b = b
+def loss_fn_bias(bias: np.ndarray) -> float:
+    old_bias = linear.bias
+    linear.bias = bias
     out = linear(x)
     loss = np.sum(np.square(out))
-    linear.b = old_b
+    linear.bias = old_bias
     return loss
 
 
-grad_b_numeric = numerical_gradient(loss_fn_bias, linear.b.copy())
+grad_b_numeric = numerical_gradient(loss_fn_bias, linear.bias.copy())
 error = relative_error(grad_b_analytic, grad_b_numeric)
-print('Relative Error for b:', error)
+print('Relative Error for bias:', error)
 ```
 
 也可以检查对输入 `x` 的梯度：
@@ -373,7 +367,7 @@ print('Relative Error for logits gradient:', error)
 X -> Linear -> ReLU -> Linear -> CrossEntropyLoss -> L
 ```
 
-我们可以检查其中某一个参数，例如第一层的权重 `fc1.W`。为了让数值梯度检查更快，我们只用一个很小的模型：
+我们可以检查其中某一个参数，例如第一层的权重 `fc1.weight`。为了让数值梯度检查更快，我们只用一个很小的模型：
 
 ```{python}
 x = rng.standard_normal((5, 4))
@@ -391,27 +385,27 @@ loss = loss_fn(logits, y)
 dlogits = loss_fn.backward()
 dx = model.backward(dlogits)
 
-grad_fc1_W_analytic = model.fc1.W.grad.copy()
+grad_fc1_W_analytic = model.fc1.weight.grad.copy()
 ```
 
-再用数值梯度估计 `fc1.W` 的梯度：
+再用数值梯度估计 `fc1.weight` 的梯度：
 
 ```{python}
-def loss_fn_fc1_weights(W: np.ndarray) -> float:
-    old_W = model.fc1.W
-    model.fc1.W = W
+def loss_fn_fc1_weights(weight: np.ndarray) -> float:
+    old_weight = model.fc1.weight
+    model.fc1.weight = weight
     logits = model(x)
     loss = loss_fn(logits, y)
-    model.fc1.W = old_W
+    model.fc1.weight = old_weight
     return loss
 
 
-grad_fc1_W_numeric = numerical_gradient(loss_fn_fc1_weights, model.fc1.W.copy())
+grad_fc1_W_numeric = numerical_gradient(loss_fn_fc1_weights, model.fc1.weight.copy())
 error = relative_error(grad_fc1_W_analytic, grad_fc1_W_numeric)
-print('Relative Error for fc1.W:', error)
+print('Relative Error for fc1.weight:', error)
 ```
 
-同理，也可以检查 `fc1.b`、`fc2.W` 和 `fc2.b`。
+同理，也可以检查 `fc1.bias`、`fc2.weight` 和 `fc2.bias`。
 
 不过实际使用时，一般不需要每次训练都做完整 gradient check。它主要适合在你刚写完 backward 的时候，用一个很小的模型和很小的数据检查实现是否正确。
 
