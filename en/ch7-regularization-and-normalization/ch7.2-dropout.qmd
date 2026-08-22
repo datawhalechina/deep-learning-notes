@@ -435,7 +435,7 @@ Ordinary `Dropout` produces scattered 0s within each feature map. `Dropout2d`, o
 These modules can be roughly understood as follows:
 
 ::: {.list-table}
-Table 1: Typical Inputs for Different Dropout Modules in PyTorch
+Table 7.2.8 Typical Inputs for Different Dropout Modules in PyTorch
 
 - - Module
   - Typical input
@@ -507,7 +507,7 @@ Finally, more dropout is not always better. It is a regularization method, and i
 The core content of this section can be summarized as follows:
 
 ::: {.list-table}
-Table 2: Core Properties of Dropout
+Table 7.2.10 Core Properties of Dropout
 
 - - Question
   - Conclusion
