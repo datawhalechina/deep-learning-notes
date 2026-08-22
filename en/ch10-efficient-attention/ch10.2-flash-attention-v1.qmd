@@ -79,7 +79,7 @@ In other words, even if we compute $QK^\top$ block by block, we still cannot imm
 - The exponential sum of the current block also depends on the choice of maximum;
 - The output that has already been accumulated earlier may also need to be rescaled according to the new maximum.
 
-This is the root reason why standard attention cannot directly perform “compute while normalizing.”
+This is the root reason why standard attention cannot directly perform "compute while normalizing".
 
 But from another angle, what do we really need to keep?
 
@@ -135,7 +135,7 @@ $$
 \tilde{P}_{ij} = \exp(S_{ij} - \tilde{m}_{ij})
 $$
 
-then the “unnormalized output” contributed by this block is
+then the "unnormalized output" contributed by this block is
 
 $$
 \tilde{O}_i = \tilde{P}_{ij} V_j
@@ -165,9 +165,9 @@ $$
 
 Suppose that before processing this block, we have already maintained three quantities for the current $Q$ block:
 
-- $m_i$: the global maximum of each row seen so far
-- $l_i$: the normalized sum of each row seen so far
-- $O_i$: the accumulated output of each row seen so far
+- $m_i$: the global maximum of each row seen so far;
+- $l_i$: the normalized sum of each row seen so far;
+- $O_i$: the accumulated output of each row seen so far.
 
 Then after processing the new block, the new maximum should be:
 
@@ -220,13 +220,13 @@ The overall idea is:
 5. After all $K, V$ blocks have been scanned, obtain the final output corresponding to this $Q_i$ block;
 6. Repeat this process until all $Q$ blocks have been processed.
 
-![Figure 10.2.3: FlashAttention v1 forward pass flow [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.2-fa1-loop.png){width=50%}
+![Figure 10.2.3 FlashAttention v1 forward pass flow [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.2-fa1-loop.png){width=50%}
 
-The biggest difference between this process and standard attention is that standard attention is “first obtain the full $S$, then obtain the full $P$, and finally obtain $O$”; while FlashAttention v1 is “scan one block, update the statistics once, and at the same time accumulate part of the output.” In other words, it no longer treats softmax as a separate stage that must be completed on the whole matrix, but instead integrates softmax into the tiled scanning process.
+The biggest difference between this process and standard attention is that standard attention is "first obtain the full $S$, then obtain the full $P$, and finally obtain $O$"; while FlashAttention v1 is "scan one block, update the statistics once, and at the same time accumulate part of the output." In other words, it no longer treats softmax as a separate stage that must be completed on the whole matrix, but instead integrates softmax into the tiled scanning process.
 
 This has two benefits. First, the intermediate matrices do not need to be written to HBM. $S$ and $P$ only exist briefly in on-chip SRAM during the computation of the current block, and can be discarded immediately after computation, without being written back to memory as full tensors. Second, the HBM access pattern becomes closer to a streaming scan. After each $K_j, V_j$ block is loaded into on-chip SRAM, it immediately participates in score computation, softmax update, and output accumulation, rather than first producing a bunch of intermediate results to be handled in the next stage. This improves data reuse and reduces unnecessary reads and writes. Moreover, in terms of the final result, the forward pass of FlashAttention v1 still computes the exact standard attention, not approximate attention. What it changes is the execution strategy, not the mathematical definition.
 
-![Algorithm 10.2.3: Pseudocode of the FlashAttention v1 forward pass [@dao2022FlashAttentionv1, alg. 2]](figures/ch10.2-fa1-forward.png){width=100%}
+![Algorithm 10.2.3 Pseudocode of the FlashAttention v1 forward pass [@dao2022FlashAttentionv1, alg. 2]](figures/ch10.2-fa1-forward.png)
 
 Next, let us implement it in PyTorch.
 
@@ -255,7 +255,7 @@ At this point, the forward problem has already been solved: we can compute the o
 
 In standard attention, the backward pass usually directly uses intermediate results saved during the forward stage, such as $S$ and $P$. Since the gradient formulas often depend on these quantities, one of the most direct implementations is to save them during the forward pass and then read them back in the backward pass. But FlashAttention v1 intentionally does not save these $N\times N$ intermediate matrices in the forward pass. As a result, although the backward pass saves memory and IO, it loses the readily available intermediate results.
 
-The solution of FlashAttention v1 is also simple and straightforward: just compute them again. This is the so-called **Recomputation**.
+The solution of FlashAttention v1 is also simple and straightforward: just compute them again. This is the so-called **recomputation**.
 
 For standard attention,
 
@@ -304,9 +304,9 @@ $$
 
 This formula shows that as long as we can recompute the current block’s $P_{ij}$, together with one scalar $\delta_i$ for each row, we can recover the gradient of softmax, without having to save the full $P$ during the forward pass. This is exactly the key that allows FlashAttention v1 to make the backward pass blockwise as well.
 
-![Algorithm 10.2.4: Pseudocode of the FlashAttention v1 backward pass [@dao2022FlashAttentionv1, alg. 4]](figures/ch10.2-fa1-backward.png){width=100%}
+![Algorithm 10.2.4 Pseudocode of the FlashAttention v1 backward pass [@dao2022FlashAttentionv1, alg. 4]](figures/ch10.2-fa1-backward.png)
 
-On the surface, recomputing $S_{ij}$ and $P_{ij}$ during the backward pass seems to add extra computation; but from a systems perspective, this is usually worthwhile. Compared with “save in forward, read back in backward,” recomputation does more FLOPs, but saves a large amount of HBM accesses. And as we already saw in 10.1, the bottleneck of attention is often not computation, but IO. So the strategy of FlashAttention v1 is still fundamentally the same idea: use more on-chip computation and recomputation in exchange for less memory traffic.
+On the surface, recomputing $S_{ij}$ and $P_{ij}$ during the backward pass seems to add extra computation; but from a systems perspective, this is usually worthwhile. Compared with "save in forward, read back in backward," recomputation does more FLOPs, but saves a large amount of HBM accesses. And as we already saw in 10.1, the bottleneck of attention is often not computation, but IO. So the strategy of FlashAttention v1 is still fundamentally the same idea: use more on-chip computation and recomputation in exchange for less memory traffic.
 
 Next, let us also implement the backward pass of FlashAttention v1 in PyTorch.
 
@@ -348,7 +348,7 @@ print('dV max absolute error:', max_err_dV.item())
 
 At this point, FlashAttention v1 has already accomplished something very important: through tiled computation and online softmax, it avoids explicitly storing the full attention matrices $S$ and $P$, thereby significantly reducing HBM reads and writes. This is also the fundamental reason why it can be clearly faster than standard attention.
 
-But this does not mean that FlashAttention v1 has already reached the optimum. More precisely, FA1 solves the big problem of “do not write the full $N\times N$ intermediate matrix back to HBM,” but there is still room for further optimization in how the CUDA kernel is organized. One key issue lies in the **loop order**.
+But this does not mean that FlashAttention v1 has already reached the optimum. More precisely, FA1 solves the big problem of "do not write the full $N\times N$ intermediate matrix back to HBM," but there is still room for further optimization in how the CUDA kernel is organized. One key issue lies in the **loop order**.
 
 In the forward pass of FlashAttention v1, it is common to place the blocks of $K, V$ in the outer loop and the blocks of $Q$ in the inner loop. In other words, the computation is closer to the following structure:
 
@@ -368,9 +368,9 @@ This means that FA1 often has to keep the intermediate $O_i$ together with the r
 
 The core tension here is:
 
-- when $K, V$ are placed in the outer loop, one $K_j, V_j$ block is shared by many $Q_i$ blocks;
-- but in return, the output $O_i$ of each $Q_i$ block can only be accumulated little by little, rather than completed all at once.
+- When $K, V$ are placed in the outer loop, one $K_j, V_j$ block is shared by many $Q_i$ blocks;
+- But in return, the output $O_i$ of each $Q_i$ block can only be accumulated little by little, rather than completed all at once.
 
 As a result, the algorithm has to preserve intermediate states such as $O_i$, $m_i$, and $l_i$ across multiple stages.
 
-FlashAttention v2 continues to optimize exactly along this direction. One of its key changes is to rearrange the loop order and parallelization strategy. Instead of following FA1’s “$K, V$ outside, $Q$ inside” loop structure, it switches to a scheduling strategy that is more suitable for finishing each output block independently. Intuitively, this means letting one thread block work as much as possible around the same $Q_i$ block, and after scanning all the related $K, V$ blocks, produce the final $O_i$ in one shot, rather than storing and updating it repeatedly across multiple stages.
+FlashAttention v2 continues to optimize exactly along this direction. One of its key changes is to rearrange the loop order and parallelization strategy. Instead of following FA1’s "$K, V$ outside, $Q$ inside" loop structure, it switches to a scheduling strategy that is more suitable for finishing each output block independently. Intuitively, this means letting one thread block work as much as possible around the same $Q_i$ block, and after scanning all the related $K, V$ blocks, produce the final $O_i$ in one shot, rather than storing and updating it repeatedly across multiple stages.

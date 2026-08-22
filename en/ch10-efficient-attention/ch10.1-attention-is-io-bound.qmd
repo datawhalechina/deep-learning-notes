@@ -83,11 +83,11 @@ This is also why GPUs are extremely good at GEMM (general matrix multiplication)
 
 To understand the IO problem of attention, we also need to know that GPU storage is not unified. In terms of speed and capacity, GPU memory is hierarchical, and can be roughly understood as:
 
-![Figure 10.1.1.3: GPU memory hierarchy model [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.1-gpu-memory.png){width="40%"}
+![Figure 10.1.1.3 GPU memory hierarchy model [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.1-gpu-memory.png){width="40%"}
 
-- Register: extremely small capacity, but the fastest, with almost zero access latency
-- SRAM / Shared Memory / L2 Cache: small capacity, but fast, with low access latency, with speed about 19 TB/s
-- HBM (High Bandwidth Memory): large capacity, but high access latency, with speed about 1.5 TB/s
+- Register: extremely small capacity, but the fastest, with almost zero access latency;
+- SRAM / Shared Memory / L2 Cache: small capacity, but fast, with low access latency, with speed about 19 TB/s;
+- HBM (High Bandwidth Memory): large capacity, but high access latency, with speed about 1.5 TB/s.
 
 So, for a high-performance operator, one core principle is: keep data on-chip as much as possible, and reduce access to HBM. Because although HBM is also very fast, compared with on-chip SRAM and registers, it is still much slower. More importantly, HBM bandwidth is a scarce resource shared by many thread blocks across the whole GPU. Once an operator needs to frequently write large tensors back to HBM and then read them back again, it is very easy for it to get bottlenecked by bandwidth.
 
@@ -128,7 +128,7 @@ So, from the perspective of computation amount, attention is indeed not cheap. T
 
 Let us write the execution process of standard attention more accurately:
 
-![Algorithm 10.1.2.2: Execution flow of standard attention [@dao2022FlashAttentionv1, alg. 0]](figures/ch10.1-attn-forward.png){width=100%}
+![Algorithm 10.1.2.2 Execution flow of standard attention [@dao2022FlashAttentionv1, alg. 0]](figures/ch10.1-attn-forward.png)
 
 Assume we use `float32`, and each element takes 4 bytes. We make a very rough estimate and only keep the dominant terms.
 
