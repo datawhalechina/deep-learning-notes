@@ -165,9 +165,9 @@ $$
 
 假设在处理这个块之前，我们已经维护了当前 query 块的三个量：
 
-- $m_i$：到目前为止每一行的全局最大值
-- $l_i$：到目前为止每一行的归一化和
-- $O_i$：到目前为止每一行的输出累积
+- $m_i$：到目前为止每一行的全局最大值；
+- $l_i$：到目前为止每一行的归一化和；
+- $O_i$：到目前为止每一行的输出累积。
 
 那么处理完新块后，新的最大值应为：
 
@@ -220,13 +220,13 @@ $$
 5. 当所有 $K, V$ 块都扫描完后，得到这个 $Q_i$ 块对应的最终输出；
 6. 重复这个过程直到所有 $Q$ 块都处理完。
 
-![图 10.2.3：FlashAttention v1 分块计算示例 [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.2-fa1-loop.png){width=50%}
+![图 10.2.3 FlashAttention v1 分块计算示例 [@dao2022FlashAttentionv1, fig. 1]](figures/ch10.2-fa1-loop.png){width=50%}
 
 这个流程和标准 attention 的最大区别在于，标准 attention 是“先得到完整 $S$，再得到完整 $P$，最后得到 $O$”；而 FlashAttention v1 是“扫一块，更新一次统计量，顺便累积一部分输出”。也就是说，它不再把 softmax 看成一个必须在整张矩阵上单独完成的阶段，而是把 softmax 融入到了分块扫描的过程中。
 
 这样做有两个好处。一个是，中间矩阵不需要落到 HBM。$S$ 和 $P$ 只在片上 SRAM 中短暂存在于当前块的计算过程中，算完就可以丢弃，不需要作为完整张量写回显存。另一个是，HBM 的访问模式更接近流式扫描。每个 $K_j, V_j$ 块被读进片上 SRAM 以后，会立刻参与分数计算、softmax 更新和输出累积，而不是先产生一堆中间结果再留给下一阶段处理。这样就提高了数据复用，减少了不必要的读写。而且，从结果上看，FlashAttention v1 的前向传播仍然计算的是精确的标准 attention，而不是近似 attention。它改变的是执行方式，不是数学定义。
 
-![算法 10.2.3：FlashAttention v1 前向传播伪代码 [@dao2022FlashAttentionv1, alg. 2]](figures/ch10.2-fa1-forward.png){width=100%}
+![算法 10.2.3 FlashAttention v1 前向传播伪代码 [@dao2022FlashAttentionv1, alg. 2]](figures/ch10.2-fa1-forward.png)
 
 接下来我们用 PyTorch 来实现一下。
 
@@ -305,7 +305,7 @@ $$
 
 这个公式说明，只要我们能重算出当前块的 $P_{ij}$，再加上每一行一个标量 $\delta_i$，就能恢复 softmax 的梯度，而不必在前向时保存整张 $P$。这正是 FlashAttention v1 可以把反向传播也做成分块计算的关键。
 
-![算法 10.2.4：FlashAttention v1 反向传播伪代码 [@dao2022FlashAttentionv1, alg. 4]](figures/ch10.2-fa1-backward.png){width=100%}
+![算法 10.2.4 FlashAttention v1 反向传播伪代码 [@dao2022FlashAttentionv1, alg. 4]](figures/ch10.2-fa1-backward.png)
 
 表面上看，反向时重算 $S_{ij}$ 和 $P_{ij}$ 好像增加了额外计算；但从系统角度看，这通常是值得的。因为相比“前向存下来、反向再读回来”，重算虽然多做了一些 FLOPs，却省掉了大量 HBM 访问。而我们在 10.1 已经看到，attention 的瓶颈往往不是计算，而是 IO。所以 FlashAttention v1 的这套策略本质上还是同一个思路：用更多片上计算与重计算，换更少显存读写。
 
@@ -353,7 +353,7 @@ print('dV max absolute error:', max_err_dV.item())
 
 在 FlashAttention v1 的前向传播里，通常会把 $K, V$ 块放在外层循环，把 $Q$ 块放在内层循环。也就是说，计算过程更接近下面这种结构：
 
-```{.python filename="FA1 pseudo code"}
+```python
 for j in KV blocks:
     for i in Q blocks:
         update O_i, m_i, l_i
