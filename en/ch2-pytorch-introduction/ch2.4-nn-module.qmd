@@ -433,7 +433,7 @@ print('State dict keys:', cache.state_dict())
 The difference between Parameter and Buffer is:
 
 ::: {.list-table}
-Table 1: Differences between Parameter and Buffer
+Table 2.4.5 Differences between Parameter and Buffer
 
 - - Type
   - Is model state
@@ -972,6 +972,12 @@ This model contains:
 
 ```{python}
 class DemoNet(nn.Module):
+    """A demo network to illustrate nn.Module concepts."""
+
+    mean: Tensor
+    std: Tensor
+    cache_mask: Tensor
+
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int):
         super().__init__()
         self.register_buffer('mean', torch.zeros(input_dim))

@@ -460,9 +460,9 @@ Therefore, in well-supported CUDA scenarios, `fused=True` may be faster. But it 
 
 We can first understand them as three execution methods:
 
-1. for-loop: the most basic and most compatible.
-2. foreach: usually faster, but may use more memory.
-3. fused: more aggressive and may be fastest, but has more limited support.
+1. `for-loop`: the most basic and most compatible.
+2. `foreach`: usually faster, but may use more memory.
+3. `fused`: more aggressive and may be fastest, but has more limited support.
 
 In practice, if there is no special requirement, we can usually let PyTorch use its default choice. Only when optimizing large-model training performance, memory usage, or compatibility issues do we need to manually specify `foreach` or `fused`.
 
