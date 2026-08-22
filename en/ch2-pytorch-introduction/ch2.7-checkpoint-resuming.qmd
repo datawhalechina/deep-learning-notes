@@ -378,8 +378,8 @@ for epoch in range(last_epoch + 1, num_epochs + 1):
     n = len(str(num_epochs))
     print(
         f'Epoch [{epoch:0{n}d}/{num_epochs:0{n}d}] '
-        f'| train_loss: {train_loss:.4f} '
-        f'| train_acc: {train_acc:.4f} '
+        f'| loss: {train_loss:.4f} '
+        f'| acc: {train_acc:.4f} '
         f'| val_loss: {val_loss:.4f} '
         f'| val_acc: {val_acc:.4f}'
     )
