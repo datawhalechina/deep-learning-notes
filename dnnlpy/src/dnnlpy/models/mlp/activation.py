@@ -21,7 +21,6 @@ class Sigmoid(Module):
     """Elementwise sigmoid activation layer."""
 
     def __init__(self):
-        """Initialize the activation cache."""
         super().__init__()
 
     @override
@@ -46,7 +45,6 @@ class Tanh(Module):
     """Elementwise hyperbolic tangent activation layer."""
 
     def __init__(self):
-        """Initialize the activation cache."""
         super().__init__()
 
     @override
@@ -71,7 +69,6 @@ class ReLU(Module):
     """Elementwise rectified linear activation layer."""
 
     def __init__(self):
-        """Initialize the activation cache."""
         super().__init__()
 
     @override
@@ -98,7 +95,6 @@ class Softmax(Module):
     """Row-wise softmax activation layer."""
 
     def __init__(self, dim: int = 1):
-        """Initialize the activation cache."""
         super().__init__()
         self.dim = dim
 
