@@ -91,7 +91,7 @@ Therefore, the minus sign in gradient descent is not an arbitrary trick, but fol
 
 > **The gradient points in the direction of the fastest local increase, so the negative gradient points in the direction of the fastest local decrease.**
 
-In one dimension, this is simply a question of “left or right.” When a neural network has many parameters, the principle does not change; only the direction becomes a high-dimensional vector.
+In one dimension, this is simply a question of "left or right." When a neural network has many parameters, the principle does not change; only the direction becomes a high-dimensional vector.
 
 Suppose the model parameters are:
 
@@ -127,7 +127,7 @@ Therefore, what backpropagation actually gives the optimization process is not o
 
 ## 1.4.2 Why Can the Negative Gradient Reduce the Loss?
 
-The statement “the negative gradient is the fastest descent direction” can be understood through a local linear approximation. Suppose the current parameter is $\theta$, and we make a small change $\Delta\theta$ to the parameter. When this change is sufficiently small, the loss function can be approximated as:
+The statement "the negative gradient is the fastest descent direction" can be understood through a local linear approximation. Suppose the current parameter is $\theta$, and we make a small change $\Delta\theta$ to the parameter. When this change is sufficiently small, the loss function can be approximated as:
 
 $$
 L(\theta+\Delta\theta) \approx L(\theta) + \nabla_\theta L^T\Delta\theta
@@ -229,7 +229,7 @@ Therefore, the learning rate controls a very direct question:
 
 If the learning rate is too small, the model moves too slowly; if it is too large, the local approximation becomes invalid, and the parameters may oscillate back and forth across a low-loss region or even diverge. This is why the learning rate is usually one of the most important hyperparameters when training a neural network.
 
-Later optimization algorithms and learning-rate schedulers will use more complex methods to decide “which direction to move” and “how far to move at each step.” But regardless of how the form changes, they are all built on the basic idea introduced here.
+Later optimization algorithms and learning-rate schedulers will use more complex methods to decide "which direction to move" and "how far to move at each step." But regardless of how the form changes, they are all built on the basic idea introduced here.
 
 ## 1.4.4 Backward and Update Are Two Different Things
 
@@ -249,8 +249,8 @@ $$
 
 These two steps must be distinguished. We can understand them as follows:
 
-- Backward: compute “how the parameters should change”;
-- Update: actually “change the parameters.”
+- Backward: compute "how the parameters should change";
+- Update: actually "change the parameters."
 
 For example, suppose a parameter is currently:
 
@@ -355,7 +355,7 @@ $$
 \text{Update}
 $$
 
-The forward pass answers “what is the model predicting now,” the loss function answers “how wrong is the model,” backpropagation answers “in which direction should each parameter change,” and gradient descent completes the final step: **actually modifying the parameters.**
+The forward pass answers "what is the model predicting now," the loss function answers "how wrong is the model," backpropagation answers "in which direction should each parameter change," and gradient descent completes the final step: **actually modifying the parameters.**
 
 ## 1.4.6 Summary
 

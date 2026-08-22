@@ -103,13 +103,13 @@ A saddle point in two-dimensional space can be imagined as a horse saddle: viewe
 
 When the parameter dimension is extremely high, a critical point must have no descent direction in **every direction** before it can be a strict local minimum. As long as there is a direction with negative curvature, there is still a direction in which we can leave.
 
-This is why researchers noticed early in the study of high-dimensional non-convex optimization that the places that truly slow optimization are not necessarily just “bad local minima.” Large numbers of saddle points and flat regions are equally important. An optimizer may arrive at a point where the gradient is already very small and appear to stop moving, but this does not mean it has entered a true local minimum.
+This is why researchers noticed early in the study of high-dimensional non-convex optimization that the places that truly slow optimization are not necessarily just "bad local minima". Large numbers of saddle points and flat regions are equally important. An optimizer may arrive at a point where the gradient is already very small and appear to stop moving, but this does not mean it has entered a true local minimum.
 
 However, we must be especially careful here. We cannot conclude from this that:
 
 > **Because the parameter dimension is high, neural networks will not encounter local minima.**
 
-This conclusion is too strong. The loss landscape of a real neural network has a highly complex structure and is not a randomly generated high-dimensional function. High-dimensional geometry can help us understand why “being full of bad, isolated little pits” is not the only reasonable picture, but it cannot guarantee that gradient descent will find the global optimum.
+This conclusion is too strong. The loss landscape of a real neural network has a highly complex structure and is not a randomly generated high-dimensional function. High-dimensional geometry can help us understand why "being full of bad, isolated little pits" is not the only reasonable picture, but it cannot guarantee that gradient descent will find the global optimum.
 
 ## 1.5.2 Overparameterization: We May Not Need to Find a Unique Answer at All
 
@@ -141,13 +141,13 @@ $$
 
 All the solutions together form a straight line.
 
-Neural networks are of course much more complex than this example, but the intuition from overparameterization is similar: when a model has many degrees of freedom, there may be very many parameter configurations that fit the training data well. The optimizer does not necessarily need to find the one unique “correct answer” in the entire parameter space; it only needs to enter a sufficiently good solution region.
+Neural networks are of course much more complex than this example, but the intuition from overparameterization is similar: when a model has many degrees of freedom, there may be very many parameter configurations that fit the training data well. The optimizer does not necessarily need to find the one unique "correct answer" in the entire parameter space; it only needs to enter a sufficiently good solution region.
 
 Therefore, neural-network training is not searching for the single lowest point in a huge mountain range. It is closer to this:
 
 > **There are many low-loss positions in parameter space, perhaps even continuous low-loss regions, and we only need to find one of them.**
 
-There is another reason that makes the concept of a “unique optimal parameter” less important: **neural networks have parameter symmetries.**
+There is another reason that makes the concept of a "unique optimal parameter" less important: **neural networks have parameter symmetries.**
 
 For example, suppose two neurons in a hidden layer perform the same function. If we swap the order of these two neurons and simultaneously swap the corresponding connections in the next layer, the function computed by the entire network can remain exactly unchanged. That is:
 
@@ -161,7 +161,7 @@ $$
 f(x;\theta_a) = f(x;\theta_b)
 $$
 
-Therefore, even considering exactly the same function, there may be many different parameter representations. The goal of training a neural network has never been to recover one unique set of “true parameters,” but to find a set of parameters that implements the function behavior we need.
+Therefore, even considering exactly the same function, there may be many different parameter representations. The goal of training a neural network has never been to recover one unique set of "true parameters," but to find a set of parameters that implements the function behavior we need.
 
 This is an important shift in how to understand modern deep-learning optimization:
 
@@ -191,7 +191,7 @@ $$
 g_B \neq \nabla_\theta L(\theta)
 $$
 
-In other words, the gradient seen by SGD is not an exactly precise descent direction on the full loss landscape, but a stochastic estimate. Therefore, the actual training trajectory is not like a small ball smoothly rolling downhill along the steepest direction. It is more like “an overall downward trend + continuous random jitter.”
+In other words, the gradient seen by SGD is not an exactly precise descent direction on the full loss landscape, but a stochastic estimate. Therefore, the actual training trajectory is not like a small ball smoothly rolling downhill along the steepest direction. It is more like "an overall downward trend + continuous random jitter."
 
 At first, this randomness may look like a drawback because each step is less accurate. But it can sometimes help optimization instead. For example, near a very flat region, the full gradient may already be very small, while the gradients produced by different mini-batches may still fluctuate; near some saddle points with descent directions, these perturbations may also help the parameters leave the current region.
 
@@ -221,7 +221,7 @@ This leads to an influential intuition in machine learning: the **Manifold Hypot
 
 ![Figure 1.5.4: Illustration of the manifold hypothesis](figures/ch1.5-manifold-hypothesis.png){width=70%}
 
-If this intuition holds for a task, the model does not actually need to learn how to handle every possible point in the high-dimensional input space. It mainly needs to learn the correct mapping in the small region where real data commonly occurs. This makes “learning a high-dimensional function” less frightening than it appears on the surface.
+If this intuition holds for a task, the model does not actually need to learn how to handle every possible point in the high-dimensional input space. It mainly needs to learn the correct mapping in the small region where real data commonly occurs. This makes "learning a high-dimensional function" less frightening than it appears on the surface.
 
 For example, an image-classification model does not need to know what every 150528-dimensional random vector means. It only needs to form useful decision boundaries near natural images. The successive representation transformations inside a neural network can also be understood as continually reorganizing the input into representation spaces better suited to the current task:
 
@@ -231,9 +231,9 @@ $$
 
 For classification tasks, we hope these transformations make originally entangled data easier to distinguish; for generation tasks, we hope the model can capture the stable, structured patterns of variation in real data.
 
-However, we must clearly distinguish two concepts that are easy to confuse. The overparameterization discussion above concerns the possibility that **solutions in parameter space may form a continuous structure**; the Manifold Hypothesis here concerns the possibility that **real data in input space may be concentrated near a low-dimensional structure**. They may both involve the word “manifold,” but they refer to two entirely different things.
+However, we must clearly distinguish two concepts that are easy to confuse. The overparameterization discussion above concerns the possibility that **solutions in parameter space may form a continuous structure**; the Manifold Hypothesis here concerns the possibility that **real data in input space may be concentrated near a low-dimensional structure**. They may both involve the word "manifold," but they refer to two entirely different things.
 
-Moreover, the Manifold Hypothesis is not a theorem that has been rigorously proved for all real-world data. Real data usually contains discrete structures, noise, multi-scale variation, and complex topology; describing all data with one smooth low-dimensional manifold is often too idealized. It is more accurate to understand it as a hypothesis that helps us think about why high-dimensional data may still have learnable structure. More importantly, low-dimensional data structure cannot by itself prove that neural-network optimization is easy. The structure of input space addresses “why the task may contain regularities,” while the geometry and optimization dynamics of parameter space address “why we may find parameters that implement those regularities.” These two questions are related, but they must not be conflated.
+Moreover, the Manifold Hypothesis is not a theorem that has been rigorously proved for all real-world data. Real data usually contains discrete structures, noise, multi-scale variation, and complex topology; describing all data with one smooth low-dimensional manifold is often too idealized. It is more accurate to understand it as a hypothesis that helps us think about why high-dimensional data may still have learnable structure. More importantly, low-dimensional data structure cannot by itself prove that neural-network optimization is easy. The structure of input space addresses "why the task may contain regularities," while the geometry and optimization dynamics of parameter space address "why we may find parameters that implement those regularities." These two questions are related, but they must not be conflated.
 
 ## 1.5.5 Reducing the Loss Is Not Even the Most Amazing Part
 
@@ -243,7 +243,7 @@ At this point, we can give a less mysterious answer to the question we started w
 
 First, neural networks consist of many continuous, almost-everywhere differentiable operations, so backpropagation can efficiently provide local gradients. Although a gradient cannot see the entire parameter space, it can continually provide a direction for improvement near the current position.
 
-Second, high-dimensional non-convex spaces are not simply filled with isolated little pits. Saddle points, flat directions, and complex low-loss regions are also abundant, so the two-dimensional intuition that “gradient descent will necessarily fall quickly into a bad local minimum” is unreliable.
+Second, high-dimensional non-convex spaces are not simply filled with isolated little pits. Saddle points, flat directions, and complex low-loss regions are also abundant, so the two-dimensional intuition that "gradient descent will necessarily fall quickly into a bad local minimum" is unreliable.
 
 Finally, modern neural networks are usually highly overparameterized. Models have many degrees of freedom, so there may be many parameter configurations that complete the training task, and the optimizer often does not need to find one unique, exact answer. At the same time, the randomness brought by mini-batches prevents the SGD trajectory from moving entirely along one fixed direction, while real data itself has substantial structure, so the model is not facing a completely arbitrary high-dimensional mapping problem.
 
@@ -255,7 +255,7 @@ The truly more surprising question in deep learning is another one:
 
 > **Why can a trained neural network generalize?**
 
-A network whose number of parameters greatly exceeds the number of training examples often has enough capacity to simply memorize the training data. If our only goal were to reduce the training loss, overparameterization would indeed provide substantial help. But why can a model often make correct predictions on data it has never seen while fitting the training set extremely well? This cannot be explained merely by saying that “gradient descent found a low-loss solution.”
+A network whose number of parameters greatly exceeds the number of training examples often has enough capacity to simply memorize the training data. If our only goal were to reduce the training loss, overparameterization would indeed provide substantial help. But why can a model often make correct predictions on data it has never seen while fitting the training set extremely well? This cannot be explained merely by saying that "gradient descent found a low-loss solution."
 
 Optimization tells us how to find a solution in parameter space, while generalization asks:
 
@@ -267,13 +267,13 @@ The data distribution, the inductive bias of the network architecture, the impli
 
 This section did not introduce any new training step. Instead, it took a step back and discussed a more fundamental question: since a neural network is a huge non-convex optimization problem, why can gradient-based methods still train it?
 
-First, we cannot directly imagine the real loss landscape as a two-dimensional valley map. The parameter space of a neural network may have millions or even billions of dimensions. A point where the gradient is close to zero is not necessarily a local minimum; it may also be a saddle point or an extremely flat region. There are many different directions in high-dimensional space, so “the optimizer will be trapped everywhere by bad local minima” is not an accurate enough description.
+First, we cannot directly imagine the real loss landscape as a two-dimensional valley map. The parameter space of a neural network may have millions or even billions of dimensions. A point where the gradient is close to zero is not necessarily a local minimum; it may also be a saddle point or an extremely flat region. There are many different directions in high-dimensional space, so "the optimizer will be trapped everywhere by bad local minima" is not an accurate enough description.
 
 Second, modern neural networks are usually overparameterized. Having many parameters does not only mean a larger search space; it also gives the model more degrees of freedom. Solutions that fit the training data well are often not unique, so the optimizer may not need to search for an isolated optimum and may only need to enter one of many low-loss solutions.
 
 The randomness of SGD also changes the optimization trajectory. The mini-batch gradient is a noisy estimate of the full gradient, and these perturbations can sometimes help the model leave flat regions or saddle points with descent directions. However, this does not guarantee that training will succeed, nor that it will find the global optimum.
 
-Finally, we saw another important intuition from the input space. Although real data is represented in a high-dimensional space, it usually has substantial internal structure. The Manifold Hypothesis attempts to describe this phenomenon as “a low-dimensional structure in a high-dimensional space.” However, the data manifold and the structure of solutions in parameter space are two different concepts, and low-dimensional data structure alone cannot directly prove that optimization is easy.
+Finally, we saw another important intuition from the input space. Although real data is represented in a high-dimensional space, it usually has substantial internal structure. The Manifold Hypothesis attempts to describe this phenomenon as "a low-dimensional structure in a high-dimensional space." However, the data manifold and the structure of solutions in parameter space are two different concepts, and low-dimensional data structure alone cannot directly prove that optimization is easy.
 
 Therefore, neural networks can be trained not because one magical theorem guarantees that gradient descent will always succeed, but because many factors make the problem friendlier than it appears: the network is differentiable, the gradients contain information, high-dimensional space has many directions, overparameterization provides abundant feasible solutions, SGD is stochastic, and real data is not structureless.
 

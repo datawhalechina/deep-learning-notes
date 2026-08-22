@@ -19,7 +19,7 @@ $$
 \hat{y} = f(x;\theta)
 $$
 
-Then, we use a loss function to compare the model prediction $\hat{y}$ with the ground-truth answer $y$, turning “how poorly the model is doing” into a numerical value that can be computed:
+Then, we use a loss function to compare the model prediction $\hat{y}$ with the ground-truth answer $y$, turning "how poorly the model is doing" into a numerical value that can be computed:
 
 $$
 L = L(\hat{y},y)
@@ -33,7 +33,7 @@ But one crucial step is still missing:
 
 Suppose the model has a parameter $w$. If all we know is that the current loss is $L=10$, we still do not know whether $w$ should be increased or decreased, let alone by how much. If the model contains millions, hundreds of millions, or even more parameters, trying them one by one is obviously impractical.
 
-What we really need to know, therefore, is not simply “what is the loss?”, but:
+What we really need to know, therefore, is not simply "what is the loss?", but:
 
 > **If each parameter changes slightly, how will the loss change?**
 
@@ -180,9 +180,9 @@ This is a **computation graph**.
 
 The most important role of a computation graph is to explicitly unfold the computation process of a complex function so that we can clearly see:
 
-- how each intermediate result is obtained;
-- which variables a given variable depends on;
-- through which paths a parameter affects the final loss.
+- How each intermediate result is obtained;
+- Which variables a given variable depends on;
+- Through which paths a parameter affects the final loss.
 
 For example, in the graph above, the parameter $w$ does not directly produce the loss $L$. It first affects $a$, then $\hat{y}$, then the error $e$, and finally $L$:
 
@@ -397,7 +397,7 @@ At this point, you may wonder: the chain rule can already be used for differenti
 The key is that a neural network usually has a scalar loss but a very large number of parameters:
 
 $$
-L=L(w_1,w_2,\ldots,w_n)
+L = L(w_1,w_2,\ldots,w_n)
 $$
 
 We want to obtain all of the following at once:
@@ -427,7 +427,7 @@ $$
 
 After that, this result can be propagated separately into the different branches containing $w$ and $b$, without restarting the computation from the loss $L$.
 
-This is also why backpropagation is so well suited to neural networks. It is essentially an application of **reverse-mode automatic differentiation**, which is especially effective when there is “one scalar output and many input parameters.” Neural network training has exactly this structure.
+This is also why backpropagation is so well suited to neural networks. It is essentially an application of **reverse-mode automatic differentiation**, which is especially effective when there is "one scalar output and many input parameters." Neural network training has exactly this structure.
 
 There is another very important detail: if a variable affects the final loss through multiple paths, then the gradients coming from those paths must be **added together**. For example:
 
@@ -443,7 +443,7 @@ $$
 
 In more complex neural networks, the same tensor is often sent into multiple branches. When backpropagation encounters this situation, it accumulates the gradients propagated back from the different paths.
 
-So backpropagation is not simply “passing one gradient all the way backward.” More precisely, it traverses the computation graph from back to front, using the local derivative of each operation together with the upstream gradient already obtained to gradually compute the gradient of every node with respect to the final loss. If multiple paths exist, their contributions are added together.
+So backpropagation is not simply "passing one gradient all the way backward." More precisely, it traverses the computation graph from back to front, using the local derivative of each operation together with the upstream gradient already obtained to gradually compute the gradient of every node with respect to the final loss. If multiple paths exist, their contributions are added together.
 
 ## 1.3.6 After Backpropagation: Gradients Still Need to Be Used to Update the Parameters
 
@@ -453,7 +453,7 @@ $$
 \frac{\partial L}{\partial w}=8, \qquad \frac{\partial L}{\partial b}=4
 $$
 
-Does this mean the model has already “learned”? Not yet.
+Does this mean the model has already "learned"? Not yet.
 
 This is a very easy point to confuse:
 
@@ -514,10 +514,10 @@ $$
 
 Each step is responsible for something different:
 
-- forward propagation uses the current parameters to produce predictions;
-- the loss function measures how poor the current predictions are;
-- backpropagation computes the gradient corresponding to each parameter;
-- the optimization algorithm uses those gradients to actually modify the parameters.
+- Forward propagation uses the current parameters to produce predictions;
+- The loss function measures how poor the current predictions are;
+- Backpropagation computes the gradient corresponding to each parameter;
+- The optimization algorithm uses those gradients to actually modify the parameters.
 
 Later, we will study different optimization algorithms such as SGD, momentum, and Adam. But no matter how the update rule changes, the task of backpropagation remains the same: **compute the gradient of the loss with respect to the parameters.**
 

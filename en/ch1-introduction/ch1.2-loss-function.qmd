@@ -64,7 +64,7 @@ $$
 \hat{y} = 280
 $$
 
-It is easy to see that the prediction is not completely correct. But “the prediction is incorrect” is only a qualitative description. For training, we need a more explicit number that answers the question: **exactly how wrong is it?**
+It is easy to see that the prediction is not completely correct. But "the prediction is incorrect" is only a qualitative description. For training, we need a more explicit number that answers the question: **exactly how wrong is it?**
 
 One of the simplest ideas is to directly compute the difference between the prediction and the true value:
 
@@ -78,7 +78,7 @@ $$
 280 - 300 = -20
 $$
 
-The negative sign tells us that the prediction is smaller than the true value. But if our goal is only to measure “how large the error is,” we usually do not want positive and negative errors to cancel each other out.
+The negative sign tells us that the prediction is smaller than the true value. But if our goal is only to measure "how large the error is," we usually do not want positive and negative errors to cancel each other out.
 
 Therefore, we can square the error:
 
@@ -106,7 +106,7 @@ So we finally have an objective that can be optimized directly:
 
 > **Continuously adjust the model parameters so that the loss function becomes smaller.**
 
-## 1.2.2 Loss Function: Turning “How Well Is the Model Doing?” into a Number
+## 1.2.2 Loss Function: Turning "How Well Is the Model Doing?" into a Number
 
 Intuitively, a loss function is a **scoring rule**. The difference from an exam score is that, for a loss, smaller is usually better.
 
@@ -150,11 +150,11 @@ If we draw the loss function $L$, it might look roughly like this:
 
 What we need to do is find the point on this surface where the function value is smallest.
 
-In this way, the idea of “learning” from the previous section now has a more concrete mathematical meaning:
+In this way, the idea of "learning" from the previous section now has a more concrete mathematical meaning:
 
 > **Learning in a neural network is essentially the process of searching the parameter space for better parameters so that the loss function keeps decreasing.**
 
-The model itself does not know what a “cat” is, nor does it know what a “correct answer” means. During training, what it really sees is only a numerical value that needs to be reduced. That value is the loss.
+The model itself does not know what a "cat" is, nor does it know what a "correct answer" means. During training, what it really sees is only a numerical value that needs to be reduced. That value is the loss.
 
 ## 1.2.3 Different Tasks Need Different Loss Functions
 
@@ -168,9 +168,9 @@ The goal of a regression task is usually to predict a continuous numerical value
 
 For example:
 
-- predicting house prices from housing information;
-- predicting tomorrow's temperature from historical weather data;
-- predicting a physical quantity from sensor measurements.
+- Predicting house prices from housing information;
+- Predicting tomorrow's temperature from historical weather data;
+- Predicting a physical quantity from sensor measurements.
 
 For this type of problem, a common loss function is **Mean Squared Error (MSE)**.
 
@@ -194,7 +194,7 @@ $$
 
 Its meaning is very intuitive: compute the squared prediction error for every sample, then take the average. The more accurate the predictions are, the smaller the MSE becomes.
 
-#### Classification Problems
+#### **Classification Problems**
 
 Classification tasks are different.
 
@@ -211,7 +211,7 @@ Therefore, classification problems usually do not directly use mean squared erro
 
 > **The loss function is not fixed. It depends on the task we want the model to perform.**
 
-Choosing a loss function is, in essence, a way of telling the model what kind of prediction should count as “good.”
+Choosing a loss function is, in essence, a way of telling the model what kind of prediction should count as "good".
 
 ## 1.2.4 The Loss of One Sample and the Objective over the Entire Dataset
 
@@ -407,7 +407,7 @@ This leads to several very important concepts that we will discuss in the next s
 
 ## 1.2.7 Summary
 
-In this section, we added a clear training objective to the “learnable function” introduced in the previous section.
+In this section, we added a clear training objective to the "learnable function" introduced in the previous section.
 
 A neural network first produces a prediction using its current parameters:
 
@@ -427,7 +427,7 @@ $$
 \min_{\theta} J(\theta)
 $$
 
-Therefore, neural network training is not about making the model directly understand what is “correct” or “incorrect.” Instead, we first express our objective as a computable loss function, and then continuously adjust the parameters so that this loss gradually decreases.
+Therefore, neural network training is not about making the model directly understand what is "correct" or "incorrect". Instead, we first express our objective as a computable loss function, and then continuously adjust the parameters so that this loss gradually decreases.
 
 At this point, the training problem can be summarized in three steps:
 
