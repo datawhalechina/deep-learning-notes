@@ -81,8 +81,8 @@ $$
 前向分布 $q(x_t \mid x_{t-1})$ 是我们自己设计的，这个好办。但 $q(x_{t-1})$ 和 $q(x_t)$ 呢？它们分别对应样本在第 $t-1$ 步和第 $t$ 步的边缘分布。也就是说：
 
 $$
-q(x_{t-1}) = \int q(x_{t-1} \mid x_0) q(x_0) dx_0, \qquad q(x_t) =
-\int q(x_t \mid x_0) q(x_0) dx_0
+q(x_{t-1}) = \int q(x_{t-1} \mid x_0) q(x_0) dx_0, \qquad
+q(x_t) = \int q(x_t \mid x_0) q(x_0) dx_0
 $$
 
 你看，它们都涉及到真实数据分布 $q(x_0)$，而真实数据分布是我们无法直接建模的（如果知道了我们还要 DDPM 干嘛）。所以，这个反向条件分布 $q(x_{t-1} \mid x_t)$ 是一个非常复杂的分布，我们根本无法直接求出它。
@@ -121,13 +121,12 @@ $$
 其中：
 
 $$
-\tilde{\mu}_t(x_t,x_0) =
+\begin{align}
+\tilde{\mu}_t(x_t,x_0) &=
 \frac{\sqrt{\bar{\alpha}_{t-1}}\,\beta_t}{1-\bar{\alpha}_t}\,x_0 +
-\frac{\sqrt{\alpha_t}\,(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}\,x_t
-$$
-
-$$
-\tilde{\beta}_t = \frac{1-\bar{\alpha}_{t-1}}{1-\bar{\alpha}_t}\,\beta_t
+\frac{\sqrt{\alpha_t}\,(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}\,x_t \\
+\tilde{\beta}_t &= \frac{1-\bar{\alpha}_{t-1}}{1-\bar{\alpha}_t}\,\beta_t
+\end{align}
 $$
 
 完整的证明见 [@luo2022UnderstandingDiffusionModels, eq. 71-84]。注意，这里的结果和论文的结果有点不一样。论文里忽略了部分常数项，因此写的是“正比于”，而这里我们把常数项也写出来了。
@@ -144,6 +143,9 @@ x0 = ds[idx][0].squeeze(0)  # shape: (28, 28)
 
 
 def denoise_v1(x0: Tensor, xt: Tensor, timestep: int, betas: Tensor) -> Tensor:
+    """Remove noise from the noisy image `xt` at a given timestep using original
+    image `x0`.
+    """
     t = timestep
     alphas = 1.0 - betas
     alpha_t = alphas[t]
@@ -296,7 +298,7 @@ $$
 
 但是，虽然表面上只是 MSE，背后其实对应着对反向扩散过程的概率建模。也就是说，这个简单的 MSE 损失函数，其实是从一个严谨的概率模型出发，经过一系列等价或近似等价的变换，最终得到的一个非常易于优化的训练目标。与很多深度学习网络不同，它的背后是有理论支撑的。我们用一段伪代码来描述这个过程：
 
-![算法 14.3.4：DDPM 训练过程伪代码 [@ho2020DDPM, alg. 1]](figures/ch14.3-ddpm-training.png){width=60%}
+![算法 14.3.4 DDPM 训练过程伪代码 [@ho2020DDPM, alg. 1]](figures/ch14.3-ddpm-training.png){width=60%}
 
 你看，是不是很简单？别被它迷惑了。我们在后面会详细说明这个训练目标是怎么来的，以及它和概率建模之间的关系。
 

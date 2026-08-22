@@ -96,6 +96,8 @@ $$
 
 ```{python}
 class SinusoidalTimestepEmbedding(nn.Module):
+    """Create sinusoidal embeddings for diffusion timesteps."""
+
     def __init__(self, embedding_dim: int, max_period: int = 10000):
         super().__init__()
         self.embedding_dim = embedding_dim
@@ -160,8 +162,8 @@ DDPM 的输入是 $x_t$，输出通常是一个和图像同样大小的噪声张
 
 U-Net 这个名字来自它的形状。它一般分成两部分：
 
-- **下采样路径（encoder）**：不断压缩分辨率，提取更高层、更大感受野的特征；
-- **上采样路径（decoder）**：逐步恢复空间分辨率，把抽象特征重新变回像素级输出。
+- **下采样路径（Encoder）**：不断压缩分辨率，提取更高层、更大感受野的特征；
+- **上采样路径（Decoder）**：逐步恢复空间分辨率，把抽象特征重新变回像素级输出。
 
 中间再加上 skip connection，把早期高分辨率特征直接传给后面的上采样层。
 
@@ -326,7 +328,7 @@ print(output.shape)
 
 这是生成阶段的伪代码，同样也很简单：
 
-![算法 14.4.4：DDPM 生成过程伪代码 [@ho2020DDPM, alg. 2]](figures/ch14.4-ddpm-sampling.png){width="60%"}
+![算法 14.4.4 DDPM 生成过程伪代码 [@ho2020DDPM, alg. 2]](figures/ch14.4-ddpm-sampling.png){width=60%}
 
 如果你仔细看这个伪代码就会发现，我们似乎在采样过程也加入了噪声（就是伪代码里的 $z$）。可是，我们明明不是都要生成图像了吗？为什么还要在每一步去噪的同时加入噪声呢？
 
@@ -356,6 +358,9 @@ x0 = ds[idx][0].squeeze(0)  # shape: (28, 28)
 
 
 def denoise_v2(x0: Tensor, xt: Tensor, timestep: int, betas: Tensor) -> Tensor:
+    """Remove noise from the noisy image `xt` at a given timestep using original
+    image `x0`.
+    """
     t = timestep
     alphas = 1.0 - betas
     alpha_t = alphas[t]
