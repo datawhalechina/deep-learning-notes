@@ -73,7 +73,7 @@ jobs:
           archive: false
 
       - name: Notify dnnl-notebooks zh sync
-        if: ${{ hashFiles('dnnl-zh.tar.gz') != '' }}
+        if: ${{ github.repository == 'jshn9515/deep-learning-notes' && hashFiles('dnnl-zh.tar.gz') != '' }}
         run: |
           curl --fail-with-body -X POST \
             -H "Authorization: Bearer ${{ secrets.DNNL_SYNC_SRC }}" \
@@ -155,7 +155,7 @@ jobs:
           archive: false
 
       - name: Notify dnnl-notebooks en sync
-        if: ${{ hashFiles('dnnl-en.tar.gz') != '' }}
+        if: ${{ github.repository == 'jshn9515/deep-learning-notes' && hashFiles('dnnl-en.tar.gz') != '' }}
         run: |
           curl --fail-with-body -X POST \
             -H "Authorization: Bearer ${{ secrets.DNNL_SYNC_SRC }}" \
