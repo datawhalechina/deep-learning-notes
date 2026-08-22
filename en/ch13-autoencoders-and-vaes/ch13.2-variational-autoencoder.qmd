@@ -71,7 +71,7 @@ As a result, one sample $x$ no longer corresponds to a single point in the laten
 
 The following is a schematic diagram of the VAE network structure:
 
-![Figure 13.2.1: VAE network structure [@IBM2026VAE]](figures/ch13.2-vae.png){width=70%}
+![Figure 13.2.1 VAE network structure [@IBM2026VAE]](figures/ch13.2-vae.png){width=70%}
 
 So, the latent space of a normal AutoEncoder is like assigning each image an exact coordinate. What VAE wants to do is to let the neighborhood around these coordinate points also carry some probability density, so that each image corresponds to a small cloud. At the same time, these clouds should be connected and smooth as much as possible, and should overall stay close to a simple prior distribution, usually a standard normal distribution. In this way, the latent space is no longer fragmented, but becomes more continuous and more suitable for sampling.
 
@@ -127,7 +127,8 @@ Let us expand the KL divergence:
 
 $$
 \begin{align}
-D_{\text{KL}}(p_{\text{data}}(x) \parallel p_\theta(x)) &= \mathbb{E}_{x \sim p_{\text{data}}} \left[\log \frac{p_{\text{data}}(x)}{p_\theta(x)}\right] \\
+D_{\text{KL}}(p_{\text{data}}(x) \parallel p_\theta(x))
+&= \mathbb{E}_{x \sim p_{\text{data}}} \left[\log \frac{p_{\text{data}}(x)}{p_\theta(x)}\right] \\
 &= \mathbb{E}_{x \sim p_{\text{data}}} [\log p_{\text{data}}(x)] - \mathbb{E}_{x \sim p_{\text{data}}} [\log p_\theta(x)] \\
 \end{align}
 $$
@@ -286,18 +287,14 @@ Remember that we want the whole latent space to stay close to the standard norma
 That is, VAE does not directly sample hard from $\mathcal{N}(\mu, \sigma^2)$. Instead, it rewrites the sampling as:
 
 $$
-\epsilon \sim \mathcal{N}(0, I)
-$$
-
-$$
-z = \mu + \sigma \odot \epsilon
+z = \mu + \sigma \odot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I)
 $$
 
 Its idea is very simple:
 
-- The randomness comes from a noise $\epsilon$ that is independent of the parameters
-- $\mu$ and $\sigma$ are output by the encoder network
-- $z$ is a deterministic function of $\mu,\sigma,\epsilon$
+- The randomness comes from a noise $\epsilon$ that is independent of the parameters;
+- $\mu$ and $\sigma$ are output by the encoder network;
+- $z$ is a deterministic function of $\mu,\sigma,\epsilon$.
 
 As a result, the originally non-differentiable sampling becomes a differentiable transformation. After this transformation, $\epsilon$ can be sampled directly, while $\mu$ and $\sigma$ are still in the computation graph, so the loss function can smoothly compute gradients with respect to the encoder parameters. In other words, we are not asking the network to directly output a random variable. Instead, we ask the network to output how to transform standard noise into the target distribution.
 
@@ -315,8 +312,9 @@ class VAE(nn.Module):
         hidden_dim: int = 256,
         latent_dim: int = 32,
     ):
-        """Initialize encoder, latent heads, and decoder."""
         super().__init__()
+        self.latent_dim = latent_dim
+
         input_dim = math.prod(input_shape)
         self.encoder = nn.Sequential(
             dnn.Flatten(),

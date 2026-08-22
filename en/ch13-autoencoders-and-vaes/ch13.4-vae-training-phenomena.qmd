@@ -26,10 +26,10 @@ $$
 
 But just looking at the formula is not enough. To really understand VAE, the most important thing is to see what phenomena appear during training:
 
-- The reconstruction result is usually good, but often blurrier than GAN
-- The latent space is often more continuous and smoother
-- Sampling from the standard normal distribution can usually generate decent samples
-- When KL is too strong or too weak, the model behavior changes noticeably
+- The reconstruction result is usually good, but often blurrier than GAN;
+- The latent space is often more continuous and smoother;
+- Sampling from the standard normal distribution can usually generate decent samples;
+- When KL is too strong or too weak, the model behavior changes noticeably.
 
 In this section, we do not only talk about conclusions. Instead, we directly observe these phenomena through code. To make it easier to observe the distribution of the latent space, we use t-SNE to visualize the latent space and train a small VAE on MNIST.
 
@@ -80,9 +80,9 @@ optimizer = dopt.AdamW(model.parameters(), lr=1e-3)
 
 Here we separately record the total loss:
 
-- `recon_loss`: the loss of the reconstruction term
-- `kl_loss`: the loss of the KL term
-- `beta`: the weight of the KL term
+- `recon_loss`: the loss of the reconstruction term;
+- `kl_loss`: the loss of the KL term;
+- `beta`: the weight of the KL term.
 
 We first start from the most standard case, namely `beta = 1.0`. Later, we will change this value and observe different training phenomena.
 
@@ -360,7 +360,7 @@ It means that during training, the posterior distribution $q_\phi(z\mid x)$ outp
 
 Intuitively, this is like the model saying:
 
-> Since the decoder is already very strong, I might as well not seriously use the latent code.
+> **Since the decoder is already very strong, I might as well not seriously use the latent code.**
 
 In simple experiments such as MNIST, this problem may not be particularly obvious. But in text generation, strong autoregressive decoders, or complex models, it becomes a very practical problem. We can use some methods to alleviate this problem, use a more suitable decoder structure, and use variants such as $\beta$-VAE and InfoVAE for adjustment. We do not need to remember all of these techniques right now, but we need to know that VAE training is not always naturally stable. The design and weight of the KL term are very important.
 

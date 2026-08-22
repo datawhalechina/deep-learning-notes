@@ -57,10 +57,10 @@ A standard AutoEncoder consists of two parts:
 Written as formulas:
 
 $$
-z = f_\theta(x)
-$$
-$$
-\hat{x} = g_\phi(z)
+\begin{align}
+z &= f_\theta(x) \\
+\hat{x} &= g_\phi(z)
+\end{align}
 $$
 
 Combined together, it can also be written as:
@@ -79,7 +79,7 @@ $$
 x \rightarrow \text{Encoder} \rightarrow z \rightarrow \text{Decoder} \rightarrow \hat{x}
 $$
 
-![Figure 13.1.1: AutoEncoder Network Structure [@Mathworks2026AutoEncoder]](figures/ch13.1-autoencoder.svg){height=225px}
+![Figure 13.1.1 AutoEncoder Network Structure [@Mathworks2026AutoEncoder]](figures/ch13.1-autoencoder.svg){height=225px}
 
 At this point you may ask: if the goal is only to make the output as close as possible to the input, why does the model not simply learn an identity mapping?
 
@@ -166,7 +166,7 @@ At the same time, because we use the transformation `v2.ToDtype(torch.float32, s
 
 ```{python}
 class AutoEncoder(nn.Module):
-    """A fully connected autoencoder for small image tensors."""
+    """A fully connected AutoEncoder for small image tensors."""
 
     def __init__(
         self,
@@ -174,7 +174,6 @@ class AutoEncoder(nn.Module):
         hidden_dim: int = 256,
         latent_dim: int = 32,
     ):
-        """Initialize encoder and decoder networks."""
         super().__init__()
         self.latent_dim = latent_dim
 

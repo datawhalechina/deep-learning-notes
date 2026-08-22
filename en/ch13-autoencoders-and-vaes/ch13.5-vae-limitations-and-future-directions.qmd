@@ -33,7 +33,7 @@ VAE is classic not only because it can generate images, but because it naturally
 
 That is to say, VAE is not simply adding noise to AutoEncoder. Instead, it unifies representation learning, probabilistic modeling, and neural network training into one framework. This gives it strong foundational significance in history.
 
-**Training is relatively stable**
+#### **Training is relatively stable**
 
 Compared with many later generative models, one huge advantage of VAE is that its training is relatively stable. Its objective function comes from a clear probabilistic derivation, and usually it is optimizing ELBO, that is:
 
@@ -45,18 +45,18 @@ $$
 
 This means it does not need two networks to play an adversarial game like GAN. There is no pulling back and forth between generator and discriminator, and there are no such obvious problems as training oscillation and mode collapse. So, from the perspective of training, VAE is a relatively friendly generative model. This is also why VAE is very suitable as an important starting point for learning generative models.
 
-**It has a clear probabilistic interpretation**
+#### **It has a clear probabilistic interpretation**
 
 A normal AutoEncoder can also reconstruct and learn latent representation, but it lacks a clear probabilistic semantics. Every part of VAE, however, can be understood in the language of probabilistic graphical models:
 
-- $p(z)$: prior distribution
-- $p_\theta(x\mid z)$: generative model
-- $q_\phi(z\mid x)$: approximate posterior
-- ELBO: an optimizable lower bound of the log-likelihood
+- $p(z)$: prior distribution;
+- $p_\theta(x\mid z)$: generative model;
+- $q_\phi(z\mid x)$: approximate posterior;
+- ELBO: an optimizable lower bound of the log-likelihood.
 
 So, we know what assumptions VAE is making, where the loss function comes from, why sampling generation is reasonable, and what each regularization term is constraining. This is often easier to understand and analyze than the more “black-box” generation of GAN.
 
-**The latent space is continuous, interpretable, and interpolatable**
+#### **The latent space is continuous, interpretable, and interpolatable**
 
 One of the most attractive parts of VAE is that the latent space it learns is usually more regular than that of a normal AE. Because of the KL term, the model is encouraged to make the encoded distribution close to the prior, usually a standard normal distribution:
 
@@ -66,9 +66,9 @@ $$
 
 This means the latent space usually has some very useful properties:
 
-- **Continuity**: nearby latent codes often correspond to similar samples
-- **Smoothness**: when moving along the latent space, the generated results gradually change
-- **Interpolatability**: when doing latent interpolation between two samples, natural transitions often appear
+- **Continuity**: nearby latent codes often correspond to similar samples;
+- **Smoothness**: when moving along the latent space, the generated results gradually change;
+- **Interpolatability**: when doing latent interpolation between two samples, natural transitions often appear.
 
 This is also why many tutorials on generative models use VAE to show the geometry of latent space.
 
@@ -80,19 +80,19 @@ Although VAE is elegant, it also has some very typical limitations. The most com
 
 This is the most intuitive feeling many beginners have when they first run VAE. It looks like the model understands the rough outline, but the details are not sharp enough, and the edges are not as clear as GAN or later Diffusion models. This is not accidental. It is related to the objective function, probabilistic assumptions, and training method of VAE.
 
-**The reconstruction objective is more biased toward “reasonable in an average sense”**
+#### **The reconstruction objective is more biased toward “reasonable in an average sense”**
 
 VAE is often trained by maximizing the log-likelihood, and in many implementations, this is equivalent to minimizing some kind of pixel-wise reconstruction error, such as MSE or BCE. When one input may correspond to multiple possible details, pixel-wise loss often encourages the model to output an averaged result.
 
 For example, for a face image:
 
-- Some local textures may have multiple reasonable values
-- The tiny direction of hair may not be unique
-- Background details may have uncertainty
+- Some local textures may have multiple reasonable values;
+- The tiny direction of hair may not be unique;
+- Background details may have uncertainty.
 
 If the model tries to take multiple possibilities into account at the pixel level at the same time, the safest way is often to output a compromise average result. This averaging will visually appear as blur. So, the blur of VAE does not necessarily mean that it has not learned. It more often means that what it optimizes is probabilistic likelihood and overall structure, not visually sharpest sample quality.
 
-**KL regularization compresses expressive capacity**
+#### **KL regularization compresses expressive capacity**
 
 Another key objective of VAE is to make the encoded distribution close to the prior:
 
@@ -104,7 +104,7 @@ This term makes the latent space more regular, but it also means the model canno
 
 So, VAE is making a trade-off: it wants reconstruction to look more like the original image, and it also wants the latent space to be more regular. These two goals are not always completely consistent.
 
-**When the decoder is too strong, the latent variable may be ignored**
+#### **When the decoder is too strong, the latent variable may be ignored**
 
 This leads to a deeper problem: **posterior collapse**.
 
@@ -122,7 +122,7 @@ The consequence is that the KL term becomes very small, the latent variable lose
 
 The classic structure of VAE is already elegant, but researchers soon found that if they wanted to further improve representation quality, generation quality, or make the latent variables have more semantic structure, they needed to make various extensions. Below are several of the most common and most worth knowing directions.
 
-**$\beta$-VAE: putting more emphasis on latent space regularity** [@higgins2017BetaVAE]
+#### **$\beta$-VAE: putting more emphasis on latent space regularity** [@higgins2017BetaVAE]
 
 $\beta$-VAE is based on the standard VAE, but multiplies the KL term by a coefficient $\beta$:
 
@@ -134,7 +134,7 @@ $$
 
 When $\beta > 1$, the model is more strongly required to stay close to the prior. In this way, the latent space becomes more regular and it becomes easier to decompose independent factors, but the cost is that reconstruction quality may decrease. The independent factors here refer to the fact that different dimensions in the latent space are more likely to correspond to different semantic attributes, such as pose, scale, rotation, lighting, color, and so on. This kind of representation is usually called **disentangled representation**.
 
-**Conditional VAE: conditional generation** [@NIPS2015ConditionalVAE]
+#### **Conditional VAE: conditional generation** [@NIPS2015ConditionalVAE]
 
 If we want the model not only to generate randomly, but to generate according to a condition, we can add the conditional variable $y$ into the model. For example, given conditions such as class labels, attributes, or text descriptions, the model generates the corresponding image. At this point, the generation process becomes:
 
@@ -152,7 +152,7 @@ In this way, the model is not only learning what the overall data looks like, bu
 
 Conditional VAE is also a basic starting point for many conditional generation methods.
 
-**VQ-VAE: turning continuous latent variables into a discrete codebook** [@oord2018VQVAE]
+#### **VQ-VAE: turning continuous latent variables into a discrete codebook** [@oord2018VQVAE]
 
 The standard VAE uses continuous latent variables, usually assuming a Gaussian distribution. VQ-VAE (Vector Quantized VAE) takes another path: it discretizes the latent representation.
 
@@ -163,7 +163,7 @@ Simply speaking, it maintains a codebook. After the encoder outputs a continuous
 At this point, let us first compare several generative models together:
 
 ::: {.list-table}
-Table 13.5.4: Comparison of the advantages and disadvantages of generative models
+Table 13.5.4 Comparison of the advantages and disadvantages of generative models
 
 - - Model
   - Core idea
