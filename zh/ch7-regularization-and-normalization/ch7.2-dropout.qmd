@@ -435,7 +435,7 @@ print(channel_output)
 可以把这些模块粗略理解为：
 
 ::: {.list-table}
-表 1：PyTorch 中不同 Dropout 模块的典型输入
+表 7.2.8 PyTorch 中不同 Dropout 模块的典型输入
 
 - - 模块
   - 典型输入
@@ -507,7 +507,7 @@ block = nn.Sequential(
 可以把本节的核心内容总结为：
 
 ::: {.list-table}
-表 2：Dropout 的核心性质
+表 7.2.10 Dropout 的核心性质
 
 - - 问题
   - 结论
