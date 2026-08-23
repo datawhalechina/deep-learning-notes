@@ -18,7 +18,6 @@ if (lang.startsWith('zh')) {
 }
 </script>
 
-Choose language:
-
-- [中文](zh/index.html)
-- [English](en/index.html)
+- Author: jshn9515
+- GitHub: [deep-learning-notes](https://github.com/jshn9515/deep-learning-notes)
+- Website: [jshn9515.github.io](https://jshn9515.github.io/deep-learning-notes/)
