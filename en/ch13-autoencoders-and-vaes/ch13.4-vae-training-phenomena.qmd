@@ -68,6 +68,7 @@ train_ds = datasets.MNIST(root, train=True, download=True, transform=transform)
 test_ds = datasets.MNIST(root, train=False, download=True, transform=transform)
 
 train_dl = utils.DataLoader(train_ds, batch_size=256, shuffle=True, drop_last=True)
+test_dl = utils.DataLoader(test_ds, batch_size=256, shuffle=False, drop_last=False)
 ```
 
 We directly use the VAE model and ELBO loss function defined in the previous sections. At the same time, to avoid making the value of the loss function too large, we sum up the loss function values and then divide by the number of samples in the current batch.

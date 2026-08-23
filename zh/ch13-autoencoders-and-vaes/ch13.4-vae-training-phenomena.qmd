@@ -68,6 +68,7 @@ train_ds = datasets.MNIST(root, train=True, download=True, transform=transform)
 test_ds = datasets.MNIST(root, train=False, download=True, transform=transform)
 
 train_dl = utils.DataLoader(train_ds, batch_size=256, shuffle=True, drop_last=True)
+test_dl = utils.DataLoader(test_ds, batch_size=256, shuffle=False, drop_last=False)
 ```
 
 我们直接利用前面章节定义的 VAE 模型和 ELBO 损失函数。同时，为了避免损失函数的值过大，我们把损失函数的值求和汇总后除以当前批次的样本数量。
