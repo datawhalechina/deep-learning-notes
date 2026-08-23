@@ -272,10 +272,10 @@ print('Output with stride=1:', stride1[0, 0], sep='\n')
 print('Output with stride=2:', stride2[0, 0], sep='\n')
 ```
 
-A convolution with a stride greater than 1 performs two tasks at once:
+A convolution with a stride greater than one performs two tasks at once:
 
 - It extracts local features;
-- it downsamples the feature map.
+- It downsamples the feature map.
 
 Therefore, modern CNNs often use strided convolution in place of some pooling layers. However, a larger stride also means that fewer spatial positions are retained in the output, so downsampling too early may lose details.
 
