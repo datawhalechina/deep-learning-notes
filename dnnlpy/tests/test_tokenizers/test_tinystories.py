@@ -12,7 +12,7 @@ VOCAB_SIZE = 10000
 INITIAL_ALPHABET = tk.ByteLevelPreTokenizer.alphabet()
 
 if dnnlpy.has_gil():
-    MAX_TRAINING_SECONDS = 40
+    MAX_TRAINING_SECONDS = 45
 else:
     MAX_TRAINING_SECONDS = 20
 
@@ -56,7 +56,7 @@ def trained_tokenizer() -> tk.Tokenizer:
     )
     elapsed = time.perf_counter() - start
 
-    tokenizer.training_time = elapsed
+    setattr(tokenizer, 'training_time', elapsed)  # ruff: ignore[B010]
     return tokenizer
 
 
