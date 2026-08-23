@@ -1,6 +1,6 @@
 [project]
 name = "deep-learning-notes"
-version = "2026.08.20rc1"
+version = "2026.08.24"
 keywords = [
     "deep learning tutorial",
     "computer vision",
@@ -60,7 +60,7 @@ dependencies = [
     "pyyaml>=6.0.0,<6.1.0",
 
     # The auxiliary package of dnnl
-    "dnnlpy==2026.08.20rc1",
+    "dnnlpy==2026.08.24",
 ]
 
 [project.urls]

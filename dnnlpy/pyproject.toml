@@ -1,6 +1,6 @@
 [project]
 name = "dnnlpy"
-version = "2026.08.20rc1"
+version = "2026.08.24"
 keywords = ["deep learning", "pytorch", "utilities"]
 description = "A utility library for deep learning notes, providing common functions and tools to support the main content of the deep learning notes collection."
 authors = [{ name = "Yunjie Lin", email = "jshn9510@gmail.com" }]
