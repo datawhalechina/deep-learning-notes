@@ -1,4 +1,7 @@
 - source: project
+  posit-connect-cloud:
+    - id: 01a0304a-8a69-36b1-b020-9c894a32445c
+      url: https://connect.posit.cloud/jshn9515/content/01a0304a-8a69-36b1-b020-9c894a32445c
   netlify:
-    - id: b203e15b-583f-4a37-92f7-e46e90cc5f48
+    - id: 30cd6a65-e407-4b4f-bc89-e1b4b8902698
       url: https://deep-learning-notes.netlify.app
