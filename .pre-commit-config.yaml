@@ -10,4 +10,5 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
-        types_or: [python, pyi, jupyter, markdown]
+        files: \.(py|md|qmd|ipynb)$
+        types_or: [file]
