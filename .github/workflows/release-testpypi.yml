@@ -64,6 +64,7 @@ jobs:
 
   publish-testpypi:
     name: Publish to TestPyPI
+    if: github.repository == 'jshn9515/deep-learning-notes'
     runs-on: ubuntu-latest
     environment: testpypi
     needs: test-dnnlpy
