@@ -1,5 +1,5 @@
 ---
-title: "Part 8：LLM 基础：以 GPT-2 为例"
+title: "Part 8: LLM Fundamentals: Using GPT-2 as an Example"
 author: jshn9515
 date: 2026-05-05
 date-modified: today
