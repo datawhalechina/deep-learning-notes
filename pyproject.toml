@@ -17,7 +17,7 @@ readme = "README.md"
 license = "CC-BY-NC-4.0"
 requires-python = ">=3.14,<3.15"
 classifiers = [
-    "Development Status :: 5 - Stable",
+    "Development Status :: 5 - Production/Stable",
     "Operating System :: OS Independent",
     "Intended Audience :: Education",
     "Intended Audience :: Science/Research",
