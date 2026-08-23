@@ -13,6 +13,7 @@ $if(lang)$
   lang: "$lang$",
 $endif$
   main-color: brand-color.at("primary", default: blue),
+  part-font-size: 8em,
   logo: none,
   cover: image("assets/book-cover.jpg"),
   cover-background: none,
