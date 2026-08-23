@@ -50,7 +50,7 @@ device = dnnlpy.get_default_device()
 print('Using device:', device)
 ```
 
-## 17.1.1 训练显存到底花在哪里
+## 19.1.1 训练显存到底花在哪里
 
 假设我们下载了一个 7B 模型。如果模型参数使用 BF16，那么单纯保存权重大约需要：
 
@@ -131,7 +131,7 @@ $$
 
 来代表整个训练显存。它最多只能告诉我们模型权重本身有多大，而不能告诉我们训练时显存到底花在了哪里。
 
-## 17.1.2 模型状态：一个参数背后到底有多少显存
+## 19.1.2 模型状态：一个参数背后到底有多少显存
 
 前面我们已经按类别把训练显存分成了 model states、saved activations 和 runtime memory。接下来先从最容易估算的 model states 开始。
 
@@ -143,7 +143,7 @@ $$
 
 下面分别来看这三部分。
 
-### 17.1.2.1 Parameters
+### 19.1.2.1 Parameters
 
 如果参数本身每个元素占 $b_p$ bytes，那么：
 
@@ -161,7 +161,7 @@ $$
 |   INT8    |  1 byte  |
 |   INT4    | 0.5 byte |
 
-: 表 17.1.2 常见 dtype 的理论存储大小
+: 表 19.1.2 常见 dtype 的理论存储大小
 
 所以，一个 BF16 的 7B 模型参数量大约为：
 
@@ -189,7 +189,7 @@ $$
 
 所以 `14 GB ≈ 13.0 GiB`。
 
-### 17.1.2.2 Gradients
+### 19.1.2.2 Gradients
 
 训练过程中，每个可训练参数通常还会得到一个对应的 gradient。因此：
 
@@ -211,7 +211,7 @@ $$
 
 需要注意的是，参数是 BF16 并不能自动推出 gradient 一定也是 BF16。具体 dtype 取决于 mixed precision 策略和框架实现。例如，在 PyTorch AMP 中，gradient 通常会被保留为 FP32，以避免数值不稳定。
 
-### 17.1.2.3 AdamW Optimizer States
+### 19.1.2.3 AdamW Optimizer States
 
 与 SGD 只需要 gradient 就可以更新参数不同，AdamW 会为每个参数维护两个额外状态。
 
@@ -242,7 +242,7 @@ $$
 M_{\text{Adam states}} = 8N
 $$
 
-### 17.1.2.4 FP32 Master Weights
+### 19.1.2.4 FP32 Master Weights
 
 某些 mixed precision 训练方案还会额外保留一份 FP32 参数副本，更新时先对 FP32 master weights 做高精度更新，再转换到低精度权重。如果存在这份参数：
 
@@ -264,7 +264,7 @@ $$
 - $b_{m_1}$：Adam first moment；
 - $b_{m_2}$：Adam second moment。
 
-### 17.1.2.5 大模型的显存估算技巧
+### 19.1.2.5 大模型的显存估算技巧
 
 考虑一种简化配置：
 
@@ -285,7 +285,7 @@ FP32 Adam second moment
 | FP32 second moment |         4         |
 |       total        |      **12**       |
 
-: 表 17.1.2.1 AdamW 训练时每个参数的显存账本
+: 表 19.1.2.1 AdamW 训练时每个参数的显存账本
 
 因此：
 
@@ -304,7 +304,7 @@ $$
 | FP32 second moment |         4         |
 |       total        |      **16**       |
 
-: 表 17.1.2.2 AdamW + FP32 master weights 训练时每个参数的显存账本
+: 表 19.1.2.2 AdamW + FP32 master weights 训练时每个参数的显存账本
 
 于是得到：
 
@@ -353,7 +353,7 @@ def model_state_breakdown(
     return df
 ```
 
-### 17.1.2.6 7B 模型：13 GiB 权重为什么装不下
+### 19.1.2.6 7B 模型：13 GiB 权重为什么装不下
 
 现在把这个账本真正应用到一个 7B 模型。
 
@@ -413,15 +413,15 @@ optimizer states
 
 这个问题我们会在后面的多 GPU 训练里详细讨论。
 
-## 17.1.3 Activation Memory：Forward 需要保存什么
+## 19.1.3 Activation Memory：Forward 需要保存什么
 
 考虑一个简化的 Transformer block：
 
-![图 17.1.3 Transformer block](figures/ch19.1-transformer-block.png){height="350px"}
+![图 19.1.3 Transformer block](figures/ch19.1-transformer-block.png){height="350px"}
 
 在 forward 过程中，会产生很多中间张量。为了 backward，其中一部分必须被 autograd 保存。
 
-### 17.1.3.1 Query、Key、Value
+### 19.1.3.1 Query、Key、Value
 
 Self-Attention 首先计算：
 
@@ -449,7 +449,7 @@ $$
 
 当然，真实 autograd 不一定同时保存所有这些 tensor，这里的目的是建立规模直觉。
 
-### 17.1.3.2 Attention Matrix
+### 19.1.3.2 Attention Matrix
 
 Multi-head Attention 通常把 hidden dimension 拆成：
 
@@ -489,7 +489,7 @@ $$
 
 所以，compute complexity 和 memory complexity 不是同一件事。
 
-### 17.1.3.3 MLP Intermediate
+### 19.1.3.3 MLP Intermediate
 
 Transformer block 的另一大块来自 MLP。简化的 FFN 可以写成：
 
@@ -513,7 +513,7 @@ $$
 
 而实际使用 SwiGLU 等结构时，中间张量布局还会有所不同。所以，即使完全不考虑 $T^2$ 的 attention matrix，MLP 和 QKV 本身也已经会产生大量 activation。
 
-### 17.1.3.4 算不准的 Activation Memory
+### 19.1.3.4 算不准的 Activation Memory
 
 看到这里，我们可能想写一个公式：
 
@@ -543,7 +543,7 @@ L ↑ → 需要保存更多层的 activation
 
 相比得到一个看似精确、实际上并不可靠的显存数字，这些增长关系在工程上更加重要。
 
-## 17.1.4 Runtime Memory：为什么理论值和实际值对不上
+## 19.1.4 Runtime Memory：为什么理论值和实际值对不上
 
 到目前为止，我们已经有：
 
@@ -612,7 +612,7 @@ print(f'Reserved memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 
 可以简单理解为：
 
-![图 17.1.4 Allocated Memory 和 Reserved Memory](figures/ch19.1-memory.svg)
+![图 19.1.4 Allocated Memory 和 Reserved Memory](figures/ch19.1-memory.svg)
 
 所以经常会看到：
 
@@ -630,7 +630,7 @@ torch.cuda.memory_allocated()
 
 因为两者观察的是不同层次的显存状态。后面的 Profiling 章节会专门分析这些问题。
 
-## 17.1.5 Peak Memory：真正决定 OOM 的是什么
+## 19.1.5 Peak Memory：真正决定 OOM 的是什么
 
 前面已经分别看过 model states、saved activations 和 runtime memory。现在还差最后一个关键问题：这些显存并不是在整个 training step 中始终同时存在。因此，一次训练真正需要关注的不是所有可能出现过的张量加起来有多大，而是某个时刻同时还活着的张量有多少。
 
@@ -650,7 +650,7 @@ mem = dnnlpy.max_memory_allocated()
 print(f'Peak memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 ```
 
-## 17.1.6 沿着一个 Training Step 看显存生命周期
+## 19.1.6 沿着一个 Training Step 看显存生命周期
 
 我们先不考虑分布式训练，只看最普通的单 GPU training step：
 
@@ -771,7 +771,7 @@ Adam second moment
 
 这就是为什么我们不能只根据 forward 是否成功判断一个模型能不能训练。
 
-## 17.1.7 如何用 PyTorch 实际观察显存
+## 19.1.7 如何用 PyTorch 实际观察显存
 
 理论账本最终还是应该和真实程序对上。我们可以写一个简单函数，在 training step 的不同阶段观察显存。
 
@@ -840,7 +840,7 @@ steady-state training memory + optimizer initialization
 
 所以更合理的 profiling 通常会先 warmup 几步，然后重置 statistics，再测 steady-state step。这个思想以后分析训练性能时还会反复出现。
 
-## 17.1.8 从 OOM 发生的位置判断显存瓶颈
+## 19.1.8 从 OOM 发生的位置判断显存瓶颈
 
 有了前面的账本，我们可以把常见 OOM 按发生阶段分类。
 
@@ -922,12 +922,12 @@ optimizer.step()
 
 这种情况下，直接使用融合算子，例如换成 FlashAttention 或 cuDNN，通常比处理参数显存更直接。
 
-## 17.1.9 从显存账本到后面的训练优化
+## 19.1.9 从显存账本到后面的训练优化
 
 现在再看第 17 章后面的训练优化技术，它们就不再是一组孤立的省显存技巧。本质上，它们都在修改前面建立的这张账本，只是作用的位置不同。
 
 ::: {.list-table}
-表 17.1.9 显存账本和训练优化技术的对应关系
+表 19.1.9 显存账本和训练优化技术的对应关系
 
 - - 技术
   - 主要影响
@@ -972,7 +972,7 @@ optimizer.step()
 
 后面的 mixed precision、gradient accumulation、activation checkpointing、FlashAttention、DDP、ZeRO 和 FSDP，实际上都可以重新放回这张显存账本中理解。
 
-## 17.1.10 本章小结
+## 19.1.10 本章小结
 
 这一节我们没有开始优化模型，而是先建立了一张训练 LLM 时最重要的显存账本。
 

@@ -50,7 +50,7 @@ device = dnnlpy.get_default_device()
 print('Using device:', device)
 ```
 
-## 17.1.1 Where Does Training Memory Go?
+## 19.1.1 Where Does Training Memory Go?
 
 Suppose we download a 7B model. If its parameters use BF16, storing the weights alone requires approximately:
 
@@ -131,7 +131,7 @@ $$
 
 as a representation of total training memory. At most, it tells us the size of the model weights; it does not tell us where memory goes during training.
 
-## 17.1.2 Model States: How Much Memory Lies Behind One Parameter?
+## 19.1.2 Model States: How Much Memory Lies Behind One Parameter?
 
 We have divided training memory into model states, saved activations, and runtime memory. We begin with model states, which are the easiest to estimate.
 
@@ -143,7 +143,7 @@ $$
 
 Let us examine these three parts individually.
 
-### 17.1.2.1 Parameters
+### 19.1.2.1 Parameters
 
 If each parameter element occupies $b_p$ bytes, then:
 
@@ -161,7 +161,7 @@ The theoretical storage sizes of common dtypes are:
 |   INT8    |  1 byte  |
 |   INT4    | 0.5 byte |
 
-: Table 17.1.2 Theoretical storage sizes of common dtypes
+: Table 19.1.2 Theoretical storage sizes of common dtypes
 
 Thus, the parameters of a 7B BF16 model occupy approximately:
 
@@ -189,7 +189,7 @@ $$
 
 Therefore, `14 GB ≈ 13.0 GiB`.
 
-### 17.1.2.2 Gradients
+### 19.1.2.2 Gradients
 
 During training, each trainable parameter usually acquires a corresponding gradient. Therefore:
 
@@ -211,7 +211,7 @@ $$
 
 Parameters being BF16 does not automatically imply that gradients are also BF16. Their dtype depends on the mixed-precision strategy and framework implementation. In PyTorch AMP, for example, gradients are commonly retained in FP32 to avoid numerical instability.
 
-### 17.1.2.3 AdamW Optimizer States
+### 19.1.2.3 AdamW Optimizer States
 
 Unlike SGD, which can update parameters using only gradients, AdamW maintains two additional states for each parameter.
 
@@ -242,7 +242,7 @@ $$
 M_{\text{Adam states}} = 8N
 $$
 
-### 17.1.2.4 FP32 Master Weights
+### 19.1.2.4 FP32 Master Weights
 
 Some mixed-precision training schemes also retain an FP32 copy of the parameters. They first update these FP32 master weights at high precision and then convert them to low-precision weights. If this copy exists:
 
@@ -264,7 +264,7 @@ where:
 - $b_{m_1}$: Adam first moment;
 - $b_{m_2}$: Adam second moment.
 
-### 17.1.2.5 A Memory Estimation Technique for Large Models
+### 19.1.2.5 A Memory Estimation Technique for Large Models
 
 Consider the following simplified configuration:
 
@@ -285,7 +285,7 @@ Each parameter then requires:
 | FP32 second moment |         4         |
 |       total        |      **12**       |
 
-: Table 17.1.2.1 Per-parameter memory ledger for AdamW training
+: Table 19.1.2.1 Per-parameter memory ledger for AdamW training
 
 Therefore:
 
@@ -304,7 +304,7 @@ If FP32 master weights are also retained:
 | FP32 second moment |         4         |
 |       total        |      **16**       |
 
-: Table 17.1.2.2 Per-parameter memory ledger for AdamW with FP32 master weights
+: Table 19.1.2.2 Per-parameter memory ledger for AdamW with FP32 master weights
 
 This gives:
 
@@ -353,7 +353,7 @@ def model_state_breakdown(
     return df
 ```
 
-### 17.1.2.6 A 7B Model: Why 13 GiB of Weights Does Not Fit for Training
+### 19.1.2.6 A 7B Model: Why 13 GiB of Weights Does Not Fit for Training
 
 Now let us apply the ledger to a 7B model.
 
@@ -413,15 +413,15 @@ memory is quickly exhausted. One of the core ideas behind ZeRO and FSDP is:
 
 We will discuss this problem in detail later when we cover multi-GPU training.
 
-## 17.1.3 Activation Memory: What Must the Forward Pass Save?
+## 19.1.3 Activation Memory: What Must the Forward Pass Save?
 
 Consider a simplified Transformer block:
 
-![Figure 17.1.3 Transformer block](figures/ch19.1-transformer-block.png){height="350px"}
+![Figure 19.1.3 Transformer block](figures/ch19.1-transformer-block.png){height="350px"}
 
 Many intermediate tensors are produced during the forward pass. Some of them must be saved for the backward pass by autograd.
 
-### 17.1.3.1 Query, Key, and Value
+### 19.1.3.1 Query, Key, and Value
 
 Self-Attention first computes:
 
@@ -449,7 +449,7 @@ $$
 
 Of course, real autograd implementations do not necessarily save all these tensors simultaneously. The purpose here is to develop an intuition for scale.
 
-### 17.1.3.2 Attention Matrix
+### 19.1.3.2 Attention Matrix
 
 Multi-head Attention usually divides the hidden dimension as:
 
@@ -489,7 +489,7 @@ This is one of the most important motivations behind FlashAttention, which we di
 
 Compute complexity and memory complexity are therefore not the same thing.
 
-### 17.1.3.3 MLP Intermediate
+### 19.1.3.3 MLP Intermediate
 
 Another major component of a Transformer block is the MLP. A simplified FFN can be written as:
 
@@ -513,7 +513,7 @@ $$
 
 Architectures such as SwiGLU also use somewhat different intermediate tensor layouts. Thus, even without considering the $T^2$ attention matrix, the MLP and QKV alone can produce a large volume of activations.
 
-### 17.1.3.4 Why Activation Memory Cannot Be Calculated Exactly
+### 19.1.3.4 Why Activation Memory Cannot Be Calculated Exactly
 
 At this point, we might want to write a formula:
 
@@ -543,7 +543,7 @@ L ↑ → activations from more layers must be saved
 
 These scaling relationships are more useful in engineering than an apparently precise but unreliable memory figure.
 
-## 17.1.4 Runtime Memory: Why Theory and Practice Do Not Match
+## 19.1.4 Runtime Memory: Why Theory and Practice Do Not Match
 
 So far, we have:
 
@@ -612,7 +612,7 @@ print(f'Reserved memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 
 The distinction can be understood as:
 
-![Figure 17.1.4 Allocated Memory and Reserved Memory](figures/ch19.1-memory.svg)
+![Figure 19.1.4 Allocated Memory and Reserved Memory](figures/ch19.1-memory.svg)
 
 We therefore often see:
 
@@ -630,7 +630,7 @@ torch.cuda.memory_allocated()
 
 They observe memory state at different layers. We will analyze this issue specifically in the later chapter on profiling.
 
-## 17.1.5 Peak Memory: What Actually Determines OOM?
+## 19.1.5 Peak Memory: What Actually Determines OOM?
 
 We have examined model states, saved activations, and runtime memory. One final issue remains: these allocations do not all exist simultaneously throughout the entire training step. What matters is not the sum of every tensor that ever appears, but how many tensors are alive at the same moment.
 
@@ -650,7 +650,7 @@ mem = dnnlpy.max_memory_allocated()
 print(f'Peak memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 ```
 
-## 17.1.6 Following Memory Through a Training Step
+## 19.1.6 Following Memory Through a Training Step
 
 For now, ignore distributed training and consider an ordinary single-GPU training step:
 
@@ -769,7 +769,7 @@ Adam second moment
 
 This is why the success of the forward pass alone cannot tell us whether a model can be trained.
 
-## 17.1.7 Observing Memory in PyTorch
+## 19.1.7 Observing Memory in PyTorch
 
 The theoretical ledger should ultimately agree with a real program. We can write a simple function that observes GPU memory at different stages of a training step.
 
@@ -838,7 +838,7 @@ In later steps, the Adam states already exist.
 
 More representative profiling therefore usually performs several warm-up steps, resets the statistics, and then measures a steady-state step. This idea will recur when we analyze training performance later.
 
-## 17.1.8 Diagnosing the Memory Bottleneck from Where OOM Occurs
+## 19.1.8 Diagnosing the Memory Bottleneck from Where OOM Occurs
 
 With the preceding ledger, we can classify common OOM errors by the stage at which they occur.
 
@@ -920,12 +920,12 @@ A longer context requires the model to save more intermediate activations. In na
 
 In this situation, switching directly to a fused operator such as FlashAttention or cuDNN is usually more relevant than addressing parameter memory.
 
-## 17.1.9 From the Memory Ledger to Training Optimizations
+## 19.1.9 From the Memory Ledger to Training Optimizations
 
 The training optimization techniques later in Chapter 17 are no longer a collection of isolated memory-saving tricks when viewed through this ledger. Each one changes a different part of the ledger.
 
 ::: {.list-table}
-Table 17.1.9 How training optimizations map to the memory ledger
+Table 19.1.9 How training optimizations map to the memory ledger
 
 - - Technique
   - Primary effect
@@ -970,7 +970,7 @@ When an OOM occurs, therefore, the first question should not be which optimizati
 
 Mixed precision, gradient accumulation, activation checkpointing, FlashAttention, DDP, ZeRO, and FSDP can all be understood in terms of where they act on this memory ledger.
 
-## 17.1.10 Summary
+## 19.1.10 Summary
 
 In this section, rather than optimizing the model immediately, we established the most important memory ledger for LLM training.
 
