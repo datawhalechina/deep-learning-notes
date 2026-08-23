@@ -370,7 +370,11 @@ Then:
 
 ```{python}
 df = model_state_breakdown(num_params=7e9)
-ipy.display(df)
+ipy.display(
+    df.style.set_table_styles(
+        [{'selector': 'th', 'props': [('text-align', 'center')]}]
+    )
+)
 ```
 
 Notice that we have calculated only the model states. We have not yet included:

@@ -370,7 +370,11 @@ Adam v:     FP32
 
 ```{python}
 df = model_state_breakdown(num_params=7e9)
-ipy.display(df)
+ipy.display(
+    df.style.set_table_styles(
+        [{'selector': 'th', 'props': [('text-align', 'center')]}]
+    )
+)
 ```
 
 注意，我们这里只计算了 model states。还没有：
