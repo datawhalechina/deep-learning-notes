@@ -85,6 +85,8 @@ uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirec
 
 本项目网站使用 [Quarto](https://quarto.org/) 搭建。
 
+本书封面设计灵感来源于 [_Understanding Deep Learning_](https://udlbook.github.io/udlbook/)。
+
 ## 📄 许可证
 
 - 本仓库中的笔记内容采用 **CC BY-NC 4.0 协议**

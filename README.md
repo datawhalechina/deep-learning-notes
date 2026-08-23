@@ -83,7 +83,9 @@ If you would like to make a larger change, it is recommended to open an Issue fi
 
 While organizing these notes, I have benefited from many excellent resources. In particular, _Dive into Deep Learning_ by Aston Zhang, Zachary C. Lipton, Mu Li, and Alexander J. Smola, as well as Professor Hung-yi Lee’s deep learning lecture series, have helped me greatly in understanding many core concepts in deep learning.
 
-This project website is built with [Quarto](https://quarto.org/).
+This website is built with [Quarto](https://quarto.org/).
+
+The book cover design is inspired by [_Understanding Deep Learning_](https://udlbook.github.io/udlbook/).
 
 ## 📄 License
 
