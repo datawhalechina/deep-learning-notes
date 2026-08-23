@@ -1,8 +1,8 @@
 # Changelog
 
-## August 2026 Pre-release
+## August 2026 Release
 
-This release expands the bilingual deep-learning curriculum with new material on loss functions, neural-network trainability, convolutional networks, and LLM training engineering. It also adds a complete Stanford CS336 Assignment 1 implementation, substantially improves `dnnlpy`, and modernizes the project’s build, rendering, and release infrastructure.
+This release expands the bilingual deep-learning curriculum with new and refined material on loss functions, neural-network trainability, convolutional networks, VAEs, diffusion models, attention, MLPs, memory engineering, and LLM training engineering. It also adds a complete Stanford CS336 Assignment 1 implementation, substantially improves dnnlpy, and modernizes the project’s build, rendering, and release infrastructure.
 
 ### New Notebooks
 
@@ -20,6 +20,10 @@ This release expands the bilingual deep-learning curriculum with new material on
 - 5.4 Pooling and Downsampling: Max, Average, and Adaptive Pooling
 - 5.5 Building a Simple CNN: From Feature Extraction to Image Classification
 - 5.6 LeNet: An Early Template for Convolution, Pooling, and Fully Connected Layers
+
+#### Chapter 14: Diffusion Models: From Denoising to Generation
+
+- 14.1 DDPM: From Denoising to Generation [rewrite]
 
 #### Chapter 19: LLM Training Engineering
 
@@ -49,8 +53,11 @@ This release expands the bilingual deep-learning curriculum with new material on
 - Refined tokenizer vocabulary, merge, batch-encoding, and special-token handling.
 - Improved `Trainer` metric collection, evaluation history, logging, and state tracking.
 - Modernized model, optimizer, activation, folding, convolution, and gradient-clipping APIs.
+- Renamed the linear-layer parameter attributes to `weight` and `bias` and aligned the MLP tests with the public API.
 - Expanded tests for pooling, tokenizers, models, optimizers, training utilities, and public exports.
+- Adjusted the TinyStories tokenizer performance test for more reliable execution across environments.
 - Updated project metadata and dependencies for PyTorch 2.13 and Transformers 5.15.
+- Marked `dnnlpy` as stable and finalized its version as 2026.08.24.
 
 ### Book and Documentation Updates
 
@@ -59,19 +66,24 @@ This release expands the bilingual deep-learning curriculum with new material on
 - Revised foundational PyTorch, MLP, optimization, efficient-attention, Vision Transformer, VAE, diffusion, regularization, and GPT-2 material.
 - Refreshed bilingual diagrams and standardized Mermaid source and SVG naming.
 - Updated installation instructions, repository links, contribution guidance, citation metadata, and project roadmaps.
+- Added an AI-assisted-writing disclosure, book-author and website metadata, and cover-design attribution.
 - Improved the CS336 notebook references and generated notebook artifacts.
 - Added a new book cover and refreshed Typst styling for code, quotations, and bilingual PDF output.
+- Added dedicated Typst reference-section handling and corrected part-title sizing and table-header alignment in the PDF output.
 - Added the missing English chapters and aligned them with the Chinese version.
 
 ### Build and Development Updates
 
 - Added a Dockerfile and development-container configuration.
 - Added pre-commit configuration and refreshed Ruff and Python tooling.
+- Added Markdown linting configuration and expanded Ruff formatting coverage for Markdown, Quarto, and notebook files.
 - Updated Quarto profiles for HTML, notebook, and bilingual Typst rendering.
 - Bumped the minimum Quarto version to 1.10.
+- Added Posit Connect Cloud publishing configuration.
 - Simplified cache, checkpoint, attachment, image-attribute, table-of-contents, and PDF-renaming utilities.
 - Removed committed Quarto freeze artifacts and consolidated cache cleanup.
 - Updated dataset-download and Mermaid-cleanup tooling.
+- Finalized the project and `dnnlpy` versions as 2026.08.24 and marked the release metadata as stable.
 
 ### CI Updates
 
@@ -79,6 +91,9 @@ This release expands the bilingual deep-learning curriculum with new material on
 - Added manually dispatched website and bilingual PDF rendering workflows.
 - Added Docker image release automation.
 - Improved platform-aware execution, caching, artifact packaging, and release handling.
+- Standardized workflow concurrency behavior and restored published-release triggers for package and Docker publishing.
+- Restricted PyPI, TestPyPI, and notebook-sync side effects to the canonical `jshn9515/deep-learning-notes` repository.
+- Made matrix virtual-environment creation independent of the root project’s Python requirement.
 - Updated GitHub Actions dependencies, including newer Python, uv, checkout, and cache actions.
 - Simplified dnnlpy testing and packaging automation.
 
@@ -104,7 +119,7 @@ This release expands the bilingual deep-learning curriculum with new material on
 > [!NOTE]
 > This project continues to be maintained in both **Chinese** and **English** through a Quarto-based structure, as an open and continuously growing collection of deep learning study notes.
 
-**Full Changelog**: [https://github.com/jshn9515/deep-learning-notes/commits/v2026.08.20-rc1](https://github.com/jshn9515/deep-learning-notes/commits/v2026.08.20-rc1)
+**Full Changelog**: [https://github.com/jshn9515/deep-learning-notes/compare/v2026.07.21...v2026.08.24](https://github.com/jshn9515/deep-learning-notes/compare/v2026.07.21...v2026.08.24)
 
 ## July 2026 Release
 
