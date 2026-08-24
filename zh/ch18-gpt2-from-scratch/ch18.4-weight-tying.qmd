@@ -110,7 +110,9 @@ embedding = nn.Embedding(vocab_size, embed_dim)
 lm_head = dnn.Linear(embed_dim, vocab_size, bias=False)
 
 x_emb = embedding(input_ids)
-logits = lm_head(x_emb)
+# Only for shape demonstration; the Decoder main body is omitted!
+h = x_emb  # simulated hidden state for shape demonstration
+logits = lm_head(h)
 
 print('Embedding weight shape:', embedding.weight.shape)
 print('LM head weight shape:', lm_head.weight.shape)
