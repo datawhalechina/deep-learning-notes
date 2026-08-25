@@ -11,6 +11,7 @@
     ),
 )
 #set page(paper: "a4")
+#show pagebreak.where(to: "odd"): pagebreak()
 
 #let NotoSerif = (
     (name: "Libertinus Serif", covers: "latin-in-cjk"),
@@ -61,6 +62,7 @@
 #show raw: set text(font: ("JetBrains Mono", "Noto Serif CJK SC"), fallback: false)
 #show raw.where(block: true): set text(size: 8pt)
 #show table: it => align(center, it)
+#show table: set text(size: 10pt)
 #show math.equation: set block(breakable: true)
 
 #show quote.where(block: true): it => block(
