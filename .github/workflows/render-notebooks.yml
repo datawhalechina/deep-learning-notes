@@ -44,9 +44,6 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Install Chrome for Quarto
-        run: quarto install chrome-headless-shell
-
       - name: Convert zh qmd to ipynb
         shell: bash
         run: quarto render zh/ --profile jupyter
@@ -115,9 +112,6 @@ jobs:
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
-
-      - name: Install Chrome for Quarto
-        run: quarto install chrome-headless-shell
 
       - name: Set up Python
         uses: actions/setup-python@v7

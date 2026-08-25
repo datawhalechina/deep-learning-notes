@@ -55,9 +55,6 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Install Chrome for Quarto
-        run: quarto install chrome-headless-shell
-
       - name: Check for pyproject.toml changes
         id: pyproject-changes
         shell: bash
