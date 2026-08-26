@@ -112,14 +112,14 @@ torch = [
     { index = "pytorch-cpu", group = "cpu" },
     { index = "pytorch-cu126", group = "cu126" },
     { index = "pytorch-cu130", group = "cu130" },
-    { index = "pytorch-cu130", group = "cu132" },
+    { index = "pytorch-cu132", group = "cu132" },
     { index = "pytorch-xpu", group = "xpu" },
 ]
 torchvision = [
     { index = "pytorch-cpu", group = "cpu" },
     { index = "pytorch-cu126", group = "cu126" },
     { index = "pytorch-cu130", group = "cu130" },
-    { index = "pytorch-cu130", group = "cu132" },
+    { index = "pytorch-cu132", group = "cu132" },
     { index = "pytorch-xpu", group = "xpu" },
 ]
 dnnlpy = { workspace = true }
