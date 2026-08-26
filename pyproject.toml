@@ -35,6 +35,7 @@ dependencies = [
     "opt-einsum>=3.4.0,<3.5.0",
     "tokenizers>=0.22.0,<0.23.0",
     "torch>=2.13.0,<2.14.0",
+    "torchaudio>=2.11.0,<2.12.0",
     "torchinfo>=1.8.0,<1.9.0",
     "torchmetrics>=1.9.0,<1.10.0",
     "torchvision>=0.28.0,<0.29.0",
@@ -67,11 +68,31 @@ dependencies = [
 Homepage = "https://github.com/jshn9515/deep-learning-notes"
 
 [dependency-groups]
-cpu = ["torch>=2.13.0,<2.14.0", "torchvision>=0.28.0,<0.29.0"]
-cu126 = ["torch>=2.13.0,<2.14.0", "torchvision>=0.28.0,<0.29.0"]
-cu130 = ["torch>=2.13.0,<2.14.0", "torchvision>=0.28.0,<0.29.0"]
-cu132 = ["torch>=2.13.0,<2.14.0", "torchvision>=0.28.0,<0.29.0"]
-xpu = ["torch>=2.13.0,<2.14.0", "torchvision>=0.28.0,<0.29.0"]
+cpu = [
+    "torch>=2.13.0,<2.14.0",
+    "torchvision>=0.28.0,<0.29.0",
+    "torchaudio>=2.11.0,<2.12.0",
+]
+cu126 = [
+    "torch>=2.13.0,<2.14.0",
+    "torchvision>=0.28.0,<0.29.0",
+    "torchaudio>=2.11.0,<2.12.0",
+]
+cu130 = [
+    "torch>=2.13.0,<2.14.0",
+    "torchvision>=0.28.0,<0.29.0",
+    "torchaudio>=2.11.0,<2.12.0",
+]
+cu132 = [
+    "torch>=2.13.0,<2.14.0",
+    "torchvision>=0.28.0,<0.29.0",
+    "torchaudio>=2.11.0,<2.12.0",
+]
+xpu = [
+    "torch>=2.13.0,<2.14.0",
+    "torchvision>=0.28.0,<0.29.0",
+    "torchaudio>=2.11.0,<2.12.0",
+]
 
 [tool.uv]
 torch-backend = "auto"
