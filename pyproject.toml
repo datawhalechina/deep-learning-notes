@@ -38,7 +38,7 @@ dependencies = [
     "torchinfo>=1.8.0,<1.9.0",
     "torchmetrics>=1.9.0,<1.10.0",
     "torchvision>=0.28.0,<0.29.0",
-    "transformers>=5.15.0,<5.16.0",
+    "transformers>=5.16.1,<5.17.0",
 
     # Jupyter and related tools
     "ipython>=9.15.0",
