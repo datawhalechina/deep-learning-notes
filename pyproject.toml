@@ -62,7 +62,7 @@ dependencies = [
 
     # Experiment tracking and utilities
     "wandb>=0.29.0,<0.30.0",
-    "gdown>=6.1.0,<6.2.0",
+    "gdown>=6.2.0,<6.3.0",
     "pyyaml>=6.0.0,<6.1.0",
     "rich-click>=1.9.0,<1.10.0",
 
