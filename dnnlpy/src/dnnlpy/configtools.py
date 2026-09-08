@@ -1,5 +1,6 @@
 import os
 import sys
+from functools import cache
 
 import torch
 import torch.accelerator as accl
@@ -13,6 +14,7 @@ __all__ = [
 ]
 
 
+@cache
 def has_gil() -> bool:
     """Check if the current Python interpreter has a Global Interpreter Lock (GIL)."""
     if sys.version_info >= (3, 13):
@@ -53,6 +55,7 @@ def set_seed(
     return torch_rng
 
 
+@cache
 def get_default_device() -> torch.device:
     """Return the current accelerator device, or CPU when none is available."""
     device = accl.current_accelerator(check_available=True)
