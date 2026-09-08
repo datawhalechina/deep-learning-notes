@@ -117,4 +117,5 @@
 ## Chapter 19: LLM 训练工程：显存、计算与并行训练
 
 - 19.1 训练一个 LLM 到底花在哪里：模型状态、激活与运行时开销
+- 19.4 Mixed Precision：FP32、FP16、BF16 与 Loss Scaling
 - 19.8 现代 Attention API 与 Hugging Face Kernels

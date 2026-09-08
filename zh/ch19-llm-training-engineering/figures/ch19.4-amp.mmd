@@ -1,0 +1,60 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+
+  flowchart:
+    nodeSpacing: 10
+    rankSpacing: 30
+
+  themeVariables:
+    fontSize: 20px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+    background: "transparent"
+
+  themeCSS: |
+    svg {
+      background-color: transparent;
+    }
+
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+
+    .cluster rect {
+      fill: transparent !important;
+      stroke: transparent !important;
+    }
+
+---
+flowchart LR
+    subgraph A[FP32 training]
+        direction TB
+        A1[FP32 parameters] --> A2[FP32 forward] --> A3[FP32 loss] --> A4[FP32 backward] --> A5[Optimizer step]
+    end
+
+    subgraph B[FP16 mixed precision]
+        direction TB
+        B1[FP32 parameters] --> B2[Autocast FP16 / FP32 forward] --> B3[scaled loss] --> B4[backward] --> B5[unscale / check gradients] --> B6[Optimizer step]
+    end
+
+    subgraph C[BF16 mixed precision]
+        direction TB
+        C1[FP32 parameters] --> C2[Autocast BF16 / FP32 forward] --> C3[loss] --> C4[backward] --> C5[Optimizer step]
+    end
+
+    A ~~~ B
+    B ~~~ C
