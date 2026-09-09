@@ -97,4 +97,4 @@ uv pip install "git+https://github.com/jshn9515/deep-learning-notes.git#subdirec
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=datawhalechina/deep-learning-notes&type=timeline&legend=top-left)](https://www.star-history.com/?repos=datawhalechina%2Fdeep-learning-notes&type=timeline&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=datawhalechina/deep-learning-notes&type=date&legend=top-left)](https://www.star-history.com/?repos=datawhalechina%2Fdeep-learning-notes&type=timeline&legend=top-left)
