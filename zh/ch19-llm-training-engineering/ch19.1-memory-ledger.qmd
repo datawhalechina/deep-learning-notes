@@ -612,7 +612,7 @@ print(f'Reserved memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 
 可以简单理解为：
 
-![图 19.1.4 Allocated Memory 和 Reserved Memory](figures/ch19.1-memory.svg)
+![图 19.1.4 Allocated Memory 和 Reserved Memory](figures/ch19.1-memory.png){width=50%}
 
 所以经常会看到：
 
