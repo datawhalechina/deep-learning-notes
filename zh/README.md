@@ -118,4 +118,5 @@
 
 - 19.1 训练一个 LLM 到底花在哪里：模型状态、激活与运行时开销
 - 19.4 Mixed Precision：FP32、FP16、BF16 与 Loss Scaling
+- 19.5 Gradient Accumulation：显存不够时如何模拟大 Batch
 - 19.8 现代 Attention API 与 Hugging Face Kernels

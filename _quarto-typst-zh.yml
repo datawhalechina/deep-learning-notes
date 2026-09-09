@@ -152,4 +152,5 @@ book:
       chapters:
         - "zh/ch19-llm-training-engineering/ch19.1-memory-ledger.qmd"
         - "zh/ch19-llm-training-engineering/ch19.4-mixed-precision.qmd"
+        - "zh/ch19-llm-training-engineering/ch19.5-gradient-accumulation.qmd"
         - "zh/ch19-llm-training-engineering/ch19.8-modern-attention-apis.qmd"
