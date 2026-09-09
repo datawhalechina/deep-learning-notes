@@ -97,4 +97,4 @@ The book cover design is inspired by [_Understanding Deep Learning_](https://udl
 
 ## ⭐ Star History
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=datawhalechina/deep-learning-notes&type=date&legend=top-left)](https://star-history.dera.page/#datawhalechina/deep-learning-notes&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=datawhalechina/deep-learning-notes&type=timeline&legend=top-left)](https://www.star-history.com/?repos=datawhalechina%2Fdeep-learning-notes&type=timeline&legend=top-left)
