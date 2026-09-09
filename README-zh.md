@@ -10,6 +10,9 @@
 
 ![dnnl-title](assets/dnnl-title.png)
 
+> [!CAUTION]
+> 此仓库目前处于维护模式。如需获取最新更新，请访问 [jshn9515/deep-learning-notes](https://github.com/jshn9515/deep-learning-notes)。
+
 关于怎么学深度学习，我困扰了很久。
 
 《动手学深度学习》是很好的入门书，但更新速度已经有些跟不上这个领域的发展。Transformer 之后，CLIP、Diffusion、vLLM 等等内容越来越多，网上资料虽然丰富，却很零散，今天看 Attention，明天学 LoRA，后天又去读扩散模型，最后留下的往往只是碎片，很难真正串成体系。
