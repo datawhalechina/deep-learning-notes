@@ -9,6 +9,8 @@ title: "19.5 Gradient Accumulation：显存不够时如何模拟大 Batch"
 order: 5
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.5-gradient-accumulation.ipynb){fig-align="left"}
+
 在前面几节里，我们已经看到，训练显存并不只由模型参数决定。尤其是在 forward 过程中，中间的 activation 往往会随着 batch size 增大而明显增加。因此，一个很常见的情况是：我们希望使用更大的 batch，但 GPU 一次放不下这么多样本。
 
 最直接的办法当然是减小 batch size。但 batch size 变小之后，每次参数更新看到的数据也会变少，梯度噪声通常会更大。有没有办法让 GPU 每次只处理一个小 batch，但在更新参数时仍然使用多个小 batch 的梯度？

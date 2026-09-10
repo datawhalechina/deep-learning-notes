@@ -10,6 +10,8 @@ order: 8
 eval: false
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.8-modern-attention-apis.ipynb){fig-align="left"}
+
 第 10 章我们已经完整讨论过 FlashAttention 的算法原理：
 
 - 为什么标准 attention 会产生大量 HBM 读写？

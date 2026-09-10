@@ -9,6 +9,8 @@ title: "19.4 Mixed Precision：FP32、FP16、BF16 与 Loss Scaling"
 order: 4
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.4-mixed-precision.ipynb){fig-align="left"}
+
 上一节我们用 profiler 回答了一个问题：
 
 > **训练时间到底花在哪里？**
