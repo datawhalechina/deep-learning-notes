@@ -188,7 +188,7 @@ Self-attention 则更像一张完全图。理论上，每个位置在一层里�
 我们可以粗略地对比一下三类结构：
 
 ::: {.list-table}
-表 1：RNN、CNN 和 Self-Attention 的对比
+表 9.3.5 RNN、CNN 和 Self-Attention 的对比
 
 - - 结构
   - 信息交互方式

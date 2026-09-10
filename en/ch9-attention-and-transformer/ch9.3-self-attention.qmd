@@ -188,7 +188,7 @@ Finally, it is not limited to a local window. CNN is successful in image tasks b
 We can roughly compare the three types of structures:
 
 ::: {.list-table}
-Table 1: Comparison of RNN, CNN, and Self-Attention
+Table 9.3.5 Comparison of RNN, CNN, and Self-Attention
 
 - - Structure
   - Information interaction method
