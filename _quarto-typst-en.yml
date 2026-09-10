@@ -123,21 +123,21 @@ book:
         - "en/ch11-vision-transformers/ch11.3-positional-embedding.qmd"
         - "en/ch11-vision-transformers/ch11.4-vit-encoder.qmd"
         - "en/ch11-vision-transformers/ch11.5-vit-as-backbone.qmd"
-    - part: "Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation"
+    - part: "Chapter 13: VAE: From Latent Space to Probabilistic Generation"
       chapters:
         - "en/ch13-autoencoders-and-vaes/ch13.1-autoencoder.qmd"
         - "en/ch13-autoencoders-and-vaes/ch13.2-variational-autoencoder.qmd"
         - "en/ch13-autoencoders-and-vaes/ch13.3-elbo-vae-objective.qmd"
         - "en/ch13-autoencoders-and-vaes/ch13.4-vae-training-phenomena.qmd"
         - "en/ch13-autoencoders-and-vaes/ch13.5-vae-limitations-and-future-directions.qmd"
-    - part: "Chapter 14: Diffusion Models: From Denoising to Generation"
+    - part: "Chapter 14: Diffusion Models: From the Diffusion Process to Generative Models"
       chapters:
         - "en/ch14-diffusion-models/ch14.1-ddpm-basics.qmd"
         - "en/ch14-diffusion-models/ch14.2-ddpm-forward.qmd"
         - "en/ch14-diffusion-models/ch14.3-ddpm-reverse.qmd"
         - "en/ch14-diffusion-models/ch14.4-ddpm-design-and-sampling.qmd"
         - "en/ch14-diffusion-models/ch14.5-elbo-for-ddpm.qmd"
-    - part: "Chapter 18: Implementing GPT-2 from Scratch: Core Structures for Language Model Training"
+    - part: "Chapter 18: Implementing GPT from Scratch: From the Transformer Decoder to GPT-2"
       chapters:
         - "en/ch18-gpt2-from-scratch/ch18.1-next-token-prediction.qmd"
         - "en/ch18-gpt2-from-scratch/ch18.2-minigpt.qmd"
@@ -146,6 +146,3 @@ book:
         - "en/ch18-gpt2-from-scratch/ch18.5-train-minigpt.qmd"
         - "en/ch18-gpt2-from-scratch/ch18.6-generation.qmd"
         - "en/ch18-gpt2-from-scratch/ch18.7-gpt2-vs-minigpt.qmd"
-    - part: "Chapter 19: LLM Training Engineering: Memory, Computation, and Parallel Training"
-      chapters:
-        - "en/ch19-llm-training-engineering/ch19.1-memory-ledger.qmd"

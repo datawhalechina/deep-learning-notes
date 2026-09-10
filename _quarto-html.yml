@@ -105,13 +105,13 @@ website:
               contents: "zh/ch11-vision-transformers/*.qmd"
         - section: "Part 6: 生成模型"
           contents:
-            - section: "Chapter 13: VAE：从压缩重建到概率生成"
+            - section: "Chapter 13: VAE：从潜空间到概率生成"
               contents: "zh/ch13-autoencoders-and-vaes/*.qmd"
-            - section: "Chapter 14: Diffusion Models：从去噪到生成"
+            - section: "Chapter 14: Diffusion Models：从扩散过程到生成模型"
               contents: "zh/ch14-diffusion-models/*.qmd"
         - section: "Part 8: LLM 基础：以 GPT-2 为例"
           contents:
-            - section: "Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构"
+            - section: "Chapter 18: 从零实现 GPT：从 Transformer Decoder 到 GPT-2"
               contents: "zh/ch18-gpt2-from-scratch/*.qmd"
             - section: "Chapter 19: LLM 训练工程：显存、计算与并行训练"
               contents: "zh/ch19-llm-training-engineering/*.qmd"
@@ -146,13 +146,13 @@ website:
               contents: "en/ch11-vision-transformers/*.qmd"
         - section: "Part 6: Generative Models"
           contents:
-            - section: "Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation"
+            - section: "Chapter 13: VAE: From Latent Space to Probabilistic Generation"
               contents: "en/ch13-autoencoders-and-vaes/*.qmd"
-            - section: "Chapter 14: Diffusion Models: From Denoising to Generation"
+            - section: "Chapter 14: Diffusion Models: From the Diffusion Process to Generative Models"
               contents: "en/ch14-diffusion-models/*.qmd"
         - section: "Part 8: LLM Fundamentals: Using GPT-2 as an Example"
           contents:
-            - section: "Chapter 18: Implementing GPT-2 from Scratch: Core Structures for Language Model Training"
+            - section: "Chapter 18: Implementing GPT from Scratch: From the Transformer Decoder to GPT-2"
               contents: "en/ch18-gpt2-from-scratch/*.qmd"
             - section: "Chapter 19: LLM Training Engineering: Memory, Computation, and Parallel Training"
               contents: "en/ch19-llm-training-engineering/*.qmd"
