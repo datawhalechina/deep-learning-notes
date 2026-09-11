@@ -33,17 +33,17 @@ website:
   search: true
   back-to-top-navigation: false
   page-navigation: true
-  repo-url: https://github.com/jshn9515/deep-learning-notes
+  repo-url: https://github.com/datawhalechina/deep-learning-notes
   repo-actions: [source, issue, edit]
   open-graph:
     locale: en_US
     site-name: deep-learning-notes
   comments:
     giscus:
-      repo: jshn9515/deep-learning-notes
-      repo-id: R_kgDOTslIoQ
+      repo: datawhalechina/deep-learning-notes
+      repo-id: R_kgDOSIPXtQ
       category: Announcements
-      category-id: DIC_kwDOTslIoc4DClBj
+      category-id: DIC_kwDOSIPXtc4C7Uuj
       mapping: og:title
       loading: lazy
       input-position: top
