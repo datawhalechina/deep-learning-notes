@@ -71,7 +71,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jshn9515/deep-learning-notes"
+Homepage = "https://github.com/datawhalechina/deep-learning-notes"
 
 [dependency-groups]
 cpu = [
