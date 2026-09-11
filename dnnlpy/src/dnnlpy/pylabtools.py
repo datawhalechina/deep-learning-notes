@@ -14,7 +14,6 @@ from functools import partial
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
 
-from matplotlib.backend_bases import FigureCanvasBase
 from matplotlib.figure import Figure
 
 if TYPE_CHECKING:
@@ -89,9 +88,6 @@ def print_figure(
     }
 
     bytes_io = BytesIO()
-    if fig.canvas is None:
-        fig.set_canvas(FigureCanvasBase(fig))
-
     fig.canvas.print_figure(bytes_io, **kwargs)
     data = bytes_io.getvalue()
     if fmt == 'svg':
