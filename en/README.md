@@ -88,7 +88,7 @@
 - 11.4 ViT Encoder: Letting Patch Tokens Exchange Information
 - 11.5 ViT Backbone: Pretraining and Fine-Tuning
 
-## Chapter 13: VAE: From Compression and Reconstruction to Probabilistic Generation
+## Chapter 13: VAE: From Latent Space to Probabilistic Generation
 
 - 13.1 AutoEncoder: Starting with Compression and Reconstruction
 - 13.2 VAE: Probabilistic Modeling and the Reparameterization Trick
@@ -96,7 +96,7 @@
 - 13.4 VAE Training Phenomena and Latent Space Intuition
 - 13.5 VAE: Advantages, Limitations, and Future Developments
 
-## Chapter 14: Diffusion Models: From Denoising to Generation
+## Chapter 14: Diffusion Models: From the Diffusion Process to Generative Models
 
 - 14.1 DDPM: From Denoising to Generation
 - 14.2 The Forward Process of DDPM: From Image to Noise
@@ -104,7 +104,7 @@
 - 14.4 DDPM Network Structure and Sampling Process
 - 14.5 DDPM from a Variational Derivation: Where Does the ELBO Come From?
 
-## Chapter 18: Implementing GPT-2 from Scratch: Core Structures for Language Model Training
+## Chapter 18: Implementing GPT from Scratch: From the Transformer Decoder to GPT-2
 
 - 18.1 What Language Models Predict: Next-Token Prediction
 - 18.2 MiniGPT: From a Causal GPT Block to a Decoder-only Language Model

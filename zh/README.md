@@ -88,7 +88,7 @@
 - 11.4 ViT Encoder：让 Patch Token 之间交换信息
 - 11.5 ViT Backbone：预训练与微调
 
-## Chapter 13: VAE：从压缩重建到概率生成
+## Chapter 13: VAE：从潜空间到概率生成
 
 - 13.1 AutoEncoder：从压缩与重建开始
 - 13.2 VAE：概率建模与重参数化技巧
@@ -96,7 +96,7 @@
 - 13.4 VAE 的训练现象与潜空间直觉
 - 13.5 VAE 的优点、局限与后续发展
 
-## Chapter 14: Diffusion Models：从去噪到生成
+## Chapter 14: Diffusion Models：从扩散过程到生成模型
 
 - 14.1 DDPM：从去噪到生成
 - 14.2 DDPM 的前向加噪过程
@@ -104,7 +104,7 @@
 - 14.4 DDPM 的网络结构与采样过程
 - 14.5 从变分推导看 DDPM：ELBO 从哪里来
 
-## Chapter 18: 从零实现 GPT-2：语言模型训练的核心结构
+## Chapter 18: 从零实现 GPT：从 Transformer Decoder 到 GPT-2
 
 - 18.1 语言模型在预测什么：Next-Token Prediction
 - 18.2 MiniGPT：从 Causal GPT Block 到语言模型
