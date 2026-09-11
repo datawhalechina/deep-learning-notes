@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: Lin
     given-names: Yunjie
-repository-code: "https://github.com/jshn9515/deep-learning-notes"
-url: "https://jshn9515.github.io/deep-learning-notes/"
+repository-code: "https://github.com/datawhalechina/deep-learning-notes"
+url: "https://datawhalechina.github.io/deep-learning-notes/"
 abstract: >-
   A collection of tutorial-style deep learning notes and notebooks that explain
   core concepts, classic models, PyTorch implementation details, efficient deep
