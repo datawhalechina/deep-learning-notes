@@ -643,13 +643,13 @@ def train_step_fp16(
 
 ```python
 # Reset peak memory stats before training step
-dnnlpy.reset_peak_memory_stats()
+accl.reset_peak_memory_stats()
 
 # Compute loss
 loss = training_step(...)
 
 # Get peak memory usage after training step
-peak_memory = dnnlpy.max_memory_allocated()
+peak_memory = accl.max_memory_allocated()
 ```
 
 然后分别运行，比较它们的 peak memory。
@@ -661,6 +661,8 @@ peak_memory = dnnlpy.max_memory_allocated()
 num_warmup_steps = 5
 for _ in range(num_warmup_steps):
     training_step(...)
+
+accl.synchronize()  # Make sure warmup steps are finished before timing
 
 # Benchmark
 start = torch.Event(device, enable_timing=True)
@@ -681,31 +683,7 @@ print(f'Average step time: {average_step_time:.2f} ms.')
 
 不要直接使用第一次 iteration 的时间。第一次运行通常还包含 kernel 初始化、内存分配和缓存建立等额外开销，并不能代表稳定状态下的训练性能。
 
-## 19.4.8 Mixed Precision 的常见误区
-
-现在，我们总结一下关于 mixed precision 的常见误区。
-
-1. Mixed Precision 就是把模型转成 FP16。
-
-    不是。`model.half()` 是显式地把模型参数转换成 FP16。而 autocast 是按算子动态选择 dtype，两者不是同一件事。
-
-2. FP16 和 BF16 都需要 GradScaler。
-
-    通常不是。FP16 因为动态范围较小，经常需要 `GradScaler`；而 BF16 的动态范围接近 FP32，通常不需要 `GradScaler`。
-
-3. 低精度一定让显存减半。
-
-    不是。在 autocast 下，参数和 optimizer states 可能仍然是 FP32。主要节省的是部分激活和临时张量。
-
-4. BF16 在任何 GPU 上都更快。
-
-    不是。是否更快取决于硬件是否原生支持 BF16，以及实际算子是否使用了高效 kernel。
-
-5. 用了 autocast 就不需要检查数值稳定性。
-
-    不是。仍然应该监控 `loss`、`gradient`、训练曲线，以及是否出现 `inf` 或 `NaN`。Mixed precision 降低了数值精度，不能完全替代训练过程中的数值诊断。
-
-## 19.4.9 本章小结
+## 19.4.8 本章小结
 
 这一节我们讨论了 LLM 训练中最常用的效率优化之一：**Mixed Precision**。
 
@@ -717,7 +695,7 @@ PyTorch 里的核心工具是 `torch.autocast` 和 `torch.GradScaler`。其中�
 - GradScaler 通过放大 loss，减少 FP16 梯度下溢；
 - BF16 通常不需要 `GradScaler`。
 
-![图 19.4.9 三种不同精度的 AMP 流程](figures/ch19.4-amp.svg){width=80%}
+![图 19.4.8 三种不同精度的 AMP 流程](figures/ch19.4-amp.svg){width=80%}
 
 最后还要记住：
 

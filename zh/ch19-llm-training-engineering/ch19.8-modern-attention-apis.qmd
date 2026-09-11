@@ -57,6 +57,7 @@ import dnnlpy
 import IPython.display as ipy
 import kernels
 import torch
+import torch.accelerator as accl
 import torch.nn as nn
 import torch.nn.attention as attn
 import torch.nn.attention.flex_attention as flex_attn
@@ -276,8 +277,7 @@ def benchmark_sdpa(
         for _ in range(num_warmup):
             F.scaled_dot_product_attention(query, key, value, is_causal=True)
 
-        backend = getattr(torch, device.type)
-        backend.synchronize()
+        accl.synchronize()  # Make sure all warmup kernels are finished
 
         start = torch.Event(enable_timing=True)
         end = torch.Event(enable_timing=True)
@@ -288,7 +288,7 @@ def benchmark_sdpa(
             F.scaled_dot_product_attention(query, key, value, is_causal=True)
 
         end.record()
-        backend.synchronize()
+        end.synchronize()
 
     return start.elapsed_time(end) / num_steps
 ```

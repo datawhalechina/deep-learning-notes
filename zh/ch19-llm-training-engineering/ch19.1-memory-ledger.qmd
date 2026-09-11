@@ -38,6 +38,7 @@ import dnnlpy
 import IPython.display as ipy
 import pandas as pd
 import torch
+import torch.accelerator as accl
 import torch.nn as nn
 import torch.optim as optim
 from dnnlpy.models.gpt import MiniGPT
@@ -586,12 +587,7 @@ $$
 
 ```{python}
 x = torch.randn(1000, 1000, 1000, device=device)
-
-if device.type != 'cpu':
-    mem = dnnlpy.memory_allocated()
-else:
-    mem = x.element_size() * x.nelement()
-
+mem = accl.memory_allocated()
 print(f'Allocated memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 ```
 
@@ -602,11 +598,7 @@ print(f'Allocated memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 因此还有：
 
 ```{python}
-if device.type != 'cpu':
-    mem = dnnlpy.memory_reserved()
-else:
-    mem = 0
-
+mem = accl.memory_reserved()
 print(f'Reserved memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 ```
 
@@ -645,8 +637,8 @@ $$
 这个区别非常重要，因为 LLM 训练中的 OOM 几乎都是由峰值显存决定的。
 
 ```{python}
-dnnlpy.reset_peak_memory_stats()
-mem = dnnlpy.max_memory_allocated()
+accl.reset_peak_memory_stats()
+mem = accl.max_memory_allocated()
 print(f'Peak memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 ```
 
@@ -777,9 +769,9 @@ Adam second moment
 
 ```{python}
 def memory_snapshot(name: str) -> None:
-    allocated = dnnlpy.memory_allocated()
-    reserved = dnnlpy.memory_reserved()
-    peak = dnnlpy.max_memory_allocated()
+    allocated = accl.memory_allocated()
+    reserved = accl.memory_reserved()
+    peak = accl.max_memory_allocated()
 
     print(
         f'{name:<20}: '
@@ -792,7 +784,7 @@ def memory_snapshot(name: str) -> None:
 训练时可以观察：
 
 ```{python}
-dnnlpy.reset_peak_memory_stats()
+accl.reset_peak_memory_stats()
 
 model = MiniGPT(vocab_size=1000, block_size=32).to(device)
 loss_fn = nn.CrossEntropyLoss()
