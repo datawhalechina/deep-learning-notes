@@ -156,7 +156,7 @@ num_elements = 1_000_000_000
 for dtype in [torch.float64, torch.float32, torch.float16, torch.bfloat16]:
     bytes_per_element = torch.tensor([], dtype=dtype).element_size()
     total_gib = dnnlpy.bytes_to_gib(num_elements * bytes_per_element)
-    print(f'{str(dtype)}: {total_gib:.4f} GiB')
+    print(f'{dtype}: {total_gib:.4f} GiB')
 ```
 
 另一方面，现代 GPU 通常为 FP16 和 BF16 矩阵乘法提供专门的硬件路径，例如 Tensor Cores。因此，对于 Linear、Matmul、Convolution 和 Attention 中的矩阵乘法，低精度通常可以显著提高计算吞吐。
