@@ -1,0 +1,39 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A["1. 固定 workload"]
+    B["2. warmup 后测<br/>step time / tokens per second"]
+    C["3. CUDA workload 用 synchronize<br/>或 CUDA Event 正确计时"]
+    D["4. torch.profiler 找最耗时的<br/>CPU / CUDA operator"]
+    E["5. record_function 标记<br/>forward / backward / optimizer 等区域"]
+    F["6. timeline 检查 CPU、GPU、Memcpy<br/>和同步关系"]
+    G["7. 只对真正的瓶颈做优化"]
+    H["8. 用同一个 benchmark 重新测量"]
+
+    A --> B --> C --> D --> E --> F --> G --> H
+    H -. "继续分析" .-> D

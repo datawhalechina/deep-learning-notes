@@ -1,0 +1,54 @@
+<mxfile host="Electron">
+  <diagram id="cpu-gpu-async" name="Page-1">
+    <mxGraphModel dx="1443" dy="1042" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="cpu_label" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=30;fontStyle=1;fontFamily=Courier New;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="CPU:" vertex="1">
+          <mxGeometry height="50" width="100" x="100" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="gpu_label" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=30;fontStyle=1;fontFamily=Courier New;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="GPU:" vertex="1">
+          <mxGeometry height="50" width="100" x="100" y="334" as="geometry" />
+        </mxCell>
+        <mxCell id="cpu_line" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;convertToSvg=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="200" y="205" as="sourcePoint" />
+            <mxPoint x="1230" y="204.15" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="gpu_line" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;convertToSvg=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="200" y="359" as="sourcePoint" />
+            <mxPoint x="1220" y="358.15" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="launch" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=26;fontFamily=Helvetica;convertToSvg=1;svgWhiteSpace=wrap;" value="Launch matmul" vertex="1">
+          <mxGeometry height="90" width="230" x="340" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="python" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=26;fontFamily=Helvetica;convertToSvg=1;svgWhiteSpace=wrap;" value="Continue Python code" vertex="1">
+          <mxGeometry height="90" width="330" x="760" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="kernel" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=26;fontFamily=Helvetica;convertToSvg=1;svgWhiteSpace=wrap;" value="Matmul kernel" vertex="1">
+          <mxGeometry height="90" width="470" x="520" y="314" as="geometry" />
+        </mxCell>
+        <mxCell id="cpu_arrow" edge="1" parent="1" source="launch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Helvetica;fontSize=26;convertToSvg=1;" target="python">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="launch_to_gpu" edge="1" parent="1" source="launch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 6;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Helvetica;fontSize=26;convertToSvg=1;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="455" y="360" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="time_axis" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;convertToSvg=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="190" y="480" as="sourcePoint" />
+            <mxPoint x="1220" y="480" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="time_label" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=30;fontFamily=Courier New;fontStyle=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="Time" vertex="1">
+          <mxGeometry height="50" width="120" x="660" y="490" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

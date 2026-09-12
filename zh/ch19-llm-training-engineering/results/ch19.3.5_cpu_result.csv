@@ -1,0 +1,8 @@
+﻿Name,Self CPU %,Self CPU,CPU total %,CPU total,CPU time avg
+Optimizer.step#AdamW.step,0.46%,2.154ms,2.70%,12.795ms,2.559ms
+Optimizer.step#AdamW.step,0.00%,0.000us,0.00%,0.000us,0.000us
+aten::_foreach_mul_,0.25%,1.202ms,0.69%,3.280ms,328.030us
+aten::_foreach_addcdiv_,0.08%,379.100us,0.27%,1.260ms,251.900us
+aten::mm,0.50%,2.385ms,0.86%,4.080ms,163.204us
+aten::_foreach_lerp_,0.07%,344.200us,0.31%,1.473ms,294.520us
+aten::_foreach_addcmul_,0.07%,325.600us,0.26%,1.227ms,245.500us

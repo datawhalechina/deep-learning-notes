@@ -1,0 +1,16 @@
+Name,Self XPU,Self XPU %,XPU total,XPU time avg
+Optimizer.step#AdamW.step,247.530ms,54.58%,488.128ms,97.626ms
+Optimizer.step#AdamW.step,247.530ms,54.58%,247.530ms,49.506ms
+_ZTSN2at6native3xpu29MultiTensor...,78.577ms,17.33%,78.577ms,4.911ms
+_ZTSN2at6native3xpu29MultiTensor...,74.850ms,16.51%,74.850ms,9.356ms
+gemm_kernel,59.663ms,13.16%,59.663ms,1.492ms
+_ZTSN2at6native3xpu29MultiTensor...,56.526ms,12.46%,56.526ms,7.066ms
+_ZTSN2at6native3xpu29MultiTensor...,55.518ms,12.24%,55.518ms,6.940ms
+aten::_foreach_mul_,47.468ms,10.47%,47.468ms,4.747ms
+aten::_foreach_addcdiv_,47.161ms,10.40%,47.161ms,9.432ms
+_ZTSN2at6native3xpu29MultiTensor...,43.297ms,9.55%,43.297ms,5.412ms
+_ZTSN2at6native3xpu29MultiTensorNaN,42.106ms,9.28%,42.106ms,5.263ms
+_ZTSN2at6native3xpu29MultiTensorNaN,40.556ms,8.94%,40.556ms,5.070ms
+aten::mm,38.024ms,8.38%,38.024ms,1.521ms
+aten::_foreach_lerp_,35.254ms,7.77%,35.254ms,7.051ms
+aten::_foreach_addcmul_,34.570ms,7.62%,34.570ms,6.914ms

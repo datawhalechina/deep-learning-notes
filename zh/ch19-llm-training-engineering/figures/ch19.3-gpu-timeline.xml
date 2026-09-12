@@ -1,0 +1,64 @@
+<mxfile host="Electron">
+  <diagram id="cpu-cuda-timeline" name="Page-1">
+    <mxGraphModel dx="1443" dy="1042" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="time_label" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=30;fontFamily=Courier New;fontStyle=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="Time:" vertex="1">
+          <mxGeometry height="40" width="100" x="70" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="time_axis" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;convertToSvg=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="190" y="80" as="sourcePoint" />
+            <mxPoint x="1240" y="80" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cpu_label" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=30;fontStyle=1;fontFamily=Courier New;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="CPU:" vertex="1">
+          <mxGeometry height="50" width="100" x="70" y="144" as="geometry" />
+        </mxCell>
+        <mxCell id="cuda_label" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=30;fontStyle=1;fontFamily=Courier New;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;" value="CUDA:" vertex="1">
+          <mxGeometry height="50" width="120" x="70" y="287" as="geometry" />
+        </mxCell>
+        <mxCell id="forward" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=26;fontFamily=Helvetica;labelBackgroundColor=none;fontStyle=0;convertToSvg=1;svgWhiteSpace=wrap;" value="forward" vertex="1">
+          <mxGeometry height="80" width="220" x="220" y="129" as="geometry" />
+        </mxCell>
+        <mxCell id="backward" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=26;fontFamily=Helvetica;labelBackgroundColor=none;fontStyle=0;convertToSvg=1;svgWhiteSpace=wrap;" value="backward" vertex="1">
+          <mxGeometry height="80" width="240" x="580" y="129" as="geometry" />
+        </mxCell>
+        <mxCell id="optimizer" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=26;fontFamily=Helvetica;labelBackgroundColor=none;fontStyle=0;convertToSvg=1;svgWhiteSpace=wrap;" value="optimizer" vertex="1">
+          <mxGeometry height="80" width="240" x="960" y="129" as="geometry" />
+        </mxCell>
+        <mxCell id="kernel1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=26;fontFamily=Helvetica;labelBackgroundColor=none;fontStyle=0;convertToSvg=1;svgWhiteSpace=wrap;" value="kernels" vertex="1">
+          <mxGeometry height="80" width="220" x="220" y="272" as="geometry" />
+        </mxCell>
+        <mxCell id="kernel2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=26;fontFamily=Helvetica;labelBackgroundColor=none;fontStyle=0;convertToSvg=1;svgWhiteSpace=wrap;" value="kernels" vertex="1">
+          <mxGeometry height="80" width="240" x="580" y="272" as="geometry" />
+        </mxCell>
+        <mxCell id="kernel3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=26;fontFamily=Helvetica;labelBackgroundColor=none;fontStyle=0;convertToSvg=1;svgWhiteSpace=wrap;" value="kernels" vertex="1">
+          <mxGeometry height="80" width="240" x="960" y="272" as="geometry" />
+        </mxCell>
+        <mxCell id="cpu_edge_1" edge="1" parent="1" source="forward" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=26;labelBackgroundColor=none;fontStyle=0;fontFamily=Helvetica;convertToSvg=1;" target="backward">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cpu_edge_2" edge="1" parent="1" source="backward" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=26;labelBackgroundColor=none;fontStyle=0;fontFamily=Helvetica;convertToSvg=1;" target="optimizer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cuda_edge_1" edge="1" parent="1" source="kernel1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=26;labelBackgroundColor=none;fontStyle=0;fontFamily=Helvetica;convertToSvg=1;" target="kernel2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cuda_edge_2" edge="1" parent="1" source="kernel2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=26;labelBackgroundColor=none;fontStyle=0;fontFamily=Helvetica;convertToSvg=1;" target="kernel3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v_edge_1" edge="1" parent="1" source="forward" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=26;labelBackgroundColor=none;fontStyle=0;fontFamily=Helvetica;convertToSvg=1;" target="kernel1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v_edge_2" edge="1" parent="1" source="backward" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=26;labelBackgroundColor=none;fontStyle=0;fontFamily=Helvetica;convertToSvg=1;" target="kernel2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v_edge_3" edge="1" parent="1" source="optimizer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=26;labelBackgroundColor=none;fontStyle=0;fontFamily=Helvetica;convertToSvg=1;" target="kernel3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

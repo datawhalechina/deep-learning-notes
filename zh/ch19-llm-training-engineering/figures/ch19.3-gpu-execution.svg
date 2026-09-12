@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="background: #ffffff; background-color: var(--ge-adaptive-bg, #ffffff); color-scheme: light dark;" version="1.1" width="1139px" height="381px" viewBox="0 0 1139 381" id="ge-svg-bVJBNum4zxXkaen_LROw" content="&lt;mxfile host=&quot;Electron&quot; scale=&quot;1&quot; border=&quot;0&quot;&gt;&#10;  &lt;diagram id=&quot;cpu-gpu-async&quot; name=&quot;Page-1&quot;&gt;&#10;    &lt;mxGraphModel dx=&quot;1443&quot; dy=&quot;1042&quot; grid=&quot;1&quot; gridSize=&quot;10&quot; guides=&quot;1&quot; tooltips=&quot;1&quot; connect=&quot;1&quot; arrows=&quot;1&quot; fold=&quot;1&quot; page=&quot;1&quot; pageScale=&quot;1&quot; pageWidth=&quot;1600&quot; pageHeight=&quot;900&quot; math=&quot;0&quot; shadow=&quot;0&quot;&gt;&#10;      &lt;root&gt;&#10;        &lt;mxCell id=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;1&quot; parent=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;cpu_label&quot; parent=&quot;1&quot; style=&quot;text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=30;fontStyle=1;fontFamily=Courier New;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;CPU:&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;50&quot; width=&quot;100&quot; x=&quot;100&quot; y=&quot;180&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;gpu_label&quot; parent=&quot;1&quot; style=&quot;text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=30;fontStyle=1;fontFamily=Courier New;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;GPU:&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;50&quot; width=&quot;100&quot; x=&quot;100&quot; y=&quot;334&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;cpu_line&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;200&quot; y=&quot;205&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;1230&quot; y=&quot;204.15&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;gpu_line&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;200&quot; y=&quot;359&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;1220&quot; y=&quot;358.15&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;launch&quot; parent=&quot;1&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=26;fontFamily=Helvetica;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Launch matmul&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;90&quot; width=&quot;230&quot; x=&quot;340&quot; y=&quot;160&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;python&quot; parent=&quot;1&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=26;fontFamily=Helvetica;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Continue Python code&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;90&quot; width=&quot;330&quot; x=&quot;760&quot; y=&quot;160&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;kernel&quot; parent=&quot;1&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=26;fontFamily=Helvetica;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Matmul kernel&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;90&quot; width=&quot;470&quot; x=&quot;520&quot; y=&quot;314&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;cpu_arrow&quot; edge=&quot;1&quot; parent=&quot;1&quot; source=&quot;launch&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Helvetica;fontSize=26;convertToSvg=1;&quot; target=&quot;python&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;launch_to_gpu&quot; edge=&quot;1&quot; parent=&quot;1&quot; source=&quot;launch&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 6;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Helvetica;fontSize=26;convertToSvg=1;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;455&quot; y=&quot;360&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;time_axis&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;190&quot; y=&quot;480&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;1220&quot; y=&quot;480&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;time_label&quot; parent=&quot;1&quot; style=&quot;text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=30;fontFamily=Courier New;fontStyle=1;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Time&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;50&quot; width=&quot;120&quot; x=&quot;660&quot; y=&quot;490&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;      &lt;/root&gt;&#10;    &lt;/mxGraphModel&gt;&#10;  &lt;/diagram&gt;&#10;&lt;/mxfile&gt;&#10;">
+  <style type="text/css">@supports (color: light-dark(#000, #fff)) { #ge-svg-bVJBNum4zxXkaen_LROw { --ge-adaptive-bg: light-dark(#ffffff, var(--ge-dark-color, #121212)); } }
+  </style>
+  <defs/>
+  <rect fill="#ffffff" width="100%" height="100%" x="0" y="0" style="fill: var(--ge-adaptive-bg, #ffffff);"/>
+  <g>
+    <g data-cell-id="0">
+      <g data-cell-id="1">
+        <g data-cell-id="cpu_label">
+          <g>
+            <rect x="-0.1" y="20.15" width="100" height="50" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="'Courier New'" font-weight="bold" text-anchor="start" font-size="30px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(1.9,59.15) scale(1)">
+                <text>
+                  <tspan>CPU:
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="gpu_label">
+          <g>
+            <rect x="-0.1" y="174.15" width="100" height="50" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="'Courier New'" font-weight="bold" text-anchor="start" font-size="30px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(1.9,213.15) scale(1)">
+                <text>
+                  <tspan>GPU:
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="cpu_line">
+          <g>
+            <path d="M 99.9 45.15 L 615.36 45.23 L 1119.66 44.32" fill="none" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="stroke" style="stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+            <path d="M 1127.66 44.3 L 1119.67 48.32 L 1119.66 40.32 Z" fill="#000000" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="all" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+          </g>
+        </g>
+        <g data-cell-id="gpu_line">
+          <g>
+            <path d="M 99.9 199.15 L 610.44 199.23 L 1109.66 198.32" fill="none" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="stroke" style="stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+            <path d="M 1117.66 198.3 L 1109.67 202.32 L 1109.66 194.32 Z" fill="#000000" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="all" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+          </g>
+        </g>
+        <g data-cell-id="launch">
+          <g transform="translate(0.5,0.5)">
+            <rect x="239.9" y="0.15" width="230" height="90" rx="13.5" ry="13.5" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all" style="fill: rgb(218, 232, 252); stroke: rgb(108, 142, 191);"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="26px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(354.9,57.15) scale(1)">
+                <text>
+                  <tspan>Launch matmul
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="python">
+          <g transform="translate(0.5,0.5)">
+            <rect x="659.9" y="0.15" width="330" height="90" rx="13.5" ry="13.5" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="26px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(824.9,57.15) scale(1)">
+                <text>
+                  <tspan>Continue Python code
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="kernel">
+          <g transform="translate(0.5,0.5)">
+            <rect x="419.9" y="154.15" width="470" height="90" rx="13.5" ry="13.5" fill="#f8cecc" stroke="#b85450" pointer-events="all" style="fill: rgb(248, 206, 204); stroke: rgb(184, 84, 80);"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="26px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(654.9,211.15) scale(1)">
+                <text>
+                  <tspan>Matmul kernel
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="cpu_arrow">
+          <g>
+            <path d="M 469.9 45.15 L 649.66 45.15" fill="none" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="stroke" style="stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+            <path d="M 657.66 45.15 L 649.66 49.15 L 649.66 41.15 Z" fill="#000000" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="all" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+          </g>
+        </g>
+        <g data-cell-id="launch_to_gpu">
+          <g>
+            <path d="M 354.9 90.15 L 354.9 189.91" fill="none" stroke="#000000" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="12 12" pointer-events="stroke" style="stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+            <path d="M 354.9 197.91 L 350.9 189.91 L 358.9 189.91 Z" fill="#000000" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="all" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+          </g>
+        </g>
+        <g data-cell-id="time_axis">
+          <g>
+            <path d="M 89.9 320.15 L 1109.66 320.15" fill="none" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="stroke" style="stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+            <path d="M 1117.66 320.15 L 1109.66 324.15 L 1109.66 316.15 Z" fill="#000000" stroke="#000000" stroke-width="2" stroke-miterlimit="10" pointer-events="all" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); stroke: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));"/>
+          </g>
+        </g>
+        <g data-cell-id="time_label">
+          <g>
+            <rect x="559.9" y="330.15" width="120" height="50" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="'Courier New'" font-weight="bold" text-anchor="middle" font-size="30px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(619.9,369.15) scale(1)">
+                <text>
+                  <tspan>Time
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

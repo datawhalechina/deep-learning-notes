@@ -151,6 +151,7 @@ book:
     - part: "Chapter 19: LLM 训练工程：显存、计算与并行训练"
       chapters:
         - "zh/ch19-llm-training-engineering/ch19.1-memory-ledger.qmd"
+        - "zh/ch19-llm-training-engineering/ch19.3-profiling.qmd"
         - "zh/ch19-llm-training-engineering/ch19.4-mixed-precision.qmd"
         - "zh/ch19-llm-training-engineering/ch19.5-gradient-accumulation.qmd"
         - "zh/ch19-llm-training-engineering/ch19.8-modern-attention-apis.qmd"
