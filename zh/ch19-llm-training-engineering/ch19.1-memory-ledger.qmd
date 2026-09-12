@@ -3,9 +3,9 @@ author: jshn9515
 date: 2026-08-15
 date-modified: 2026-08-15
 open-graph:
-  title: ch19.1-llm-training-memory-ledger
-  description: "19.1 LLM Training Memory Ledger: Model States, Activations, and Runtime Overhead"
-title: "19.1 训练一个 LLM 到底花在哪里：模型状态、激活与运行时开销"
+  title: ch19.1-memory-ledger
+  description: "19.1 LLM Training Memory Ledger: Parameters, Activations, and States"
+title: "19.1 LLM 训练显存账本：参数、激活与状态"
 order: 1
 ---
 
