@@ -587,9 +587,14 @@ $$
 在 PyTorch 中还有一个很容易混淆的问题。如果我们调用：
 
 ```{python}
+#| eval: false
 x = torch.randn(1000, 1000, 1000, device=device)
 mem = accl.memory_allocated()
 print(f'Allocated memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
+```
+
+```code
+Allocated memory: 3814.6973 MiB.
 ```
 
 得到的是当前 tensor 实际占用的显存。
@@ -599,8 +604,13 @@ print(f'Allocated memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
 因此还有：
 
 ```{python}
+#| eval: false
 mem = accl.memory_reserved()
 print(f'Reserved memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
+```
+
+```code
+Reserved memory: 3816.0000 MiB.
 ```
 
 可以简单理解为：
@@ -618,7 +628,7 @@ $$
 同样，`nvidia-smi` 看到的显存也不能直接等价于：
 
 ```python
-torch.cuda.memory_allocated()
+accl.memory_allocated()
 ```
 
 因为两者观察的是不同层次的显存状态。后面的 Profiling 章节会专门分析这些问题。
@@ -638,9 +648,14 @@ $$
 这个区别非常重要，因为 LLM 训练中的 OOM 几乎都是由峰值显存决定的。
 
 ```{python}
+#| eval: false
 accl.reset_peak_memory_stats()
 mem = accl.max_memory_allocated()
 print(f'Peak memory: {dnnlpy.bytes_to_mib(mem):6.4f} MiB.')
+```
+
+```code
+Peak memory: 3814.6973 MiB.
 ```
 
 ## 19.1.6 沿着一个 Training Step 看显存生命周期
@@ -785,6 +800,7 @@ def memory_snapshot(name: str) -> None:
 训练时可以观察：
 
 ```{python}
+#| eval: false
 accl.reset_peak_memory_stats()
 
 model = MiniGPT(vocab_size=1000, block_size=32).to(device)
@@ -809,6 +825,13 @@ memory_snapshot('After `backward()`')
 
 optimizer.step()
 memory_snapshot('After `step()`')
+```
+
+```code
+After `zero_grad()` : allocated=  3.53 MiB | reserved=3820.00 MiB | peak=3818.23 MiB
+After `forward()`   : allocated= 12.29 MiB | reserved=3830.00 MiB | peak=3818.23 MiB
+After `backward()`  : allocated=  7.55 MiB | reserved=3830.00 MiB | peak=3818.23 MiB
+After `step()`      : allocated= 14.61 MiB | reserved=3836.00 MiB | peak=3818.23 MiB
 ```
 
 这里的结果比单纯计算 `param_count × bytes` 更接近真实训练过程。
