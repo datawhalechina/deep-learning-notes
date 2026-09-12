@@ -233,6 +233,3 @@ _freeze/
 
 # Jupyter Cache
 .jupyter_cache/
-
-# draw.io
-*.drawio
