@@ -12,9 +12,9 @@
 
 For a long time, I struggled with how to learn deep learning effectively.
 
-_Dive into Deep Learning_ is an excellent introductory book, but its update pace has gradually fallen behind the speed of progress in this field. Since the rise of Transformers, topics like CLIP, Diffusion, and vLLM have become increasingly important. Although there is no shortage of online material, most of it is scattered. One day you study Attention, the next day LoRA, and the day after that diffusion models. In the end, what often remains are only fragments, and it is hard to build a truly coherent understanding.
+_Dive into Deep Learning_ is a very good introductory book, but its update speed has already fallen somewhat behind the development of this field. After Transformer, more and more content such as ViT, DiT, LLM, Agent, as well as data processing, training optimization, inference, and post-training that gradually formed around large models, has continued to appear. Although there are many materials online, they are often scattered across papers, blogs, courses, and code repositories: today you learn Attention, tomorrow you study LoRA, and the day after tomorrow you start reading about vLLM, SGLang, and FlashAttention. In the end, what is often left is only fragments, and it is difficult to truly connect them into a system.
 
-So I decided to systematically organize what I have learned. From the fundamentals of PyTorch, to Attention and Transformers, and then to GANs, CLIP, Stable Diffusion, and SAM3, I try to explain the core ideas, mathematical derivations, code implementations, and common pitfalls of each topic as clearly as possible. This repository is the public version of those notes. If you are also learning deep learning on your own, I hope it can be helpful to you.
+So I thought, I might as well systematically organize the content I have learned. These notes start from basic content such as neural networks, PyTorch, optimization algorithms, and CNNs, gradually move into Attention, Transformer, ViT, VAE, and DDPM, and further extend to modern LLMs: implementing GPT from scratch, training engineering, data processing, Scaling Laws, model evaluation, LLM Inference, and post-training. I will try to clearly explain the core ideas, formula derivations, code implementations, and common problems of each topic. This repository is the public version of these notes. If you are also self-studying deep learning, I hope it can give you some help.
 
 > [!NOTE]
 > **AI-assisted writing:** LLMs were used during the writing process of this tutorial to assist with drafting. After each generated draft, I review it myself and revise the content, logic, and wording based on my own understanding. Before publication, I also further check the relevant code and technical details. Despite this, the tutorial may still contain omissions or errors, and corrections and suggestions are always welcome.
@@ -25,16 +25,19 @@ This project is primarily maintained and published in **Quarto Markdown**, and b
 
 The content mainly includes:
 
-- PyTorch fundamentals and engineering practice
-- Attention mechanisms and Transformer-based models
-- Generative models, such as GANs, VAEs, and diffusion models
-- Multimodal models, such as CLIP
-- The Hugging Face ecosystem and its practical use
-- Practical notes covering the full workflow from data processing to training, inference, and deployment
+- PyTorch fundamentals and Deep Learning training practice
+- Introduction to Attention and Transformer
+- Vision Transformer models such as ViT and Swin
+- Generative models such as GAN, VAE, and DDPM
+- Vision and multimodal models such as CLIP and BLIP
+- Implementing GPT-2 from scratch and modern language models
+- LLM data processing, training engineering, and Scaling Laws
+- LLM Evaluation, Inference, and Serving
+- Post-training methods such as Instruction Tuning, LoRA, DPO, and RLHF
 
 The corresponding Jupyter Notebook version of this project is available at [jshn9515/dnnl-notebooks](https://github.com/jshn9515/dnnl-notebooks). This repository is kept in sync with the main repository, and the notebooks can be opened directly in Google Colab. GitHub Actions Artifacts can also serve as a backup source for accessing the latest build outputs when repository synchronization fails or is temporarily unavailable.
 
-If you prefer generating Notebook files from the source yourself, you can also install Quarto locally and use the `quarto convert` command to convert `.qmd` files into Jupyter Notebooks. For example:
+If you prefer generating notebook files from the source yourself, you can also install Quarto locally and use the `quarto convert` command to convert `.qmd` files into Jupyter Notebooks. For example:
 
 ```bash
 quarto convert path/to/file.qmd

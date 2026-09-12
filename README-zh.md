@@ -12,9 +12,9 @@
 
 关于怎么学深度学习，我困扰了很久。
 
-《动手学深度学习》是很好的入门书，但更新速度已经有些跟不上这个领域的发展。Transformer 之后，CLIP、Diffusion、vLLM 等等内容越来越多，网上资料虽然丰富，却很零散，今天看 Attention，明天学 LoRA，后天又去读扩散模型，最后留下的往往只是碎片，很难真正串成体系。
+《动手学深度学习》是很好的入门书，但更新速度已经有些跟不上这个领域的发展。Transformer 之后，ViT、DiT、LLM、Agent，以及围绕大模型逐渐形成的数据处理、训练优化、推理和 Post-training 等内容不断出现。网上的资料虽然很多，却往往散落在论文、博客、课程和代码仓库里：今天学习 Attention，明天研究 LoRA，后天又开始看 vLLM、SGLang 和 FlashAttention，最后留下的往往只是碎片，很难真正串成体系。
 
-所以我想，干脆把自己学过的内容系统地整理下来。从最基础的 PyTorch，到 Attention、Transformer，再到 GAN、CLIP、Stable Diffusion、SAM3，我会尽量把每个主题的核心思想、公式推导、代码实现和常见问题都写清楚。这个仓库就是这份笔记的公开版。如果你也在自学深度学习，希望它能给你一些帮助。
+所以我想，干脆把自己学过的内容系统地整理下来。这份笔记从神经网络、PyTorch、优化算法和 CNN 等基础内容开始，逐渐进入 Attention、Transformer、ViT、VAE 和 DDPM，并进一步延伸到现代 LLM：从零实现 GPT、训练工程、数据处理、Scaling Laws、模型评测、LLM Inference，以及 Post-training。我会尽量把每个主题的核心思想、公式推导、代码实现和常见问题都写清楚。这个仓库就是这份笔记的公开版。如果你也在自学深度学习，希望它能给你一些帮助。
 
 > [!NOTE]
 > **AI 辅助写作：** 本教程的写作过程中使用了 LLM 辅助生成初稿。每次生成后，我都会自行 review，并根据自己的理解对内容、逻辑和表述进行修改。发布前，我也会进一步检查相关代码和技术细节。尽管如此，内容中仍可能存在疏漏或错误，欢迎指出并提出修改建议。
@@ -25,16 +25,19 @@
 
 内容主要包括：
 
-- PyTorch 核心与工程实践
-- 注意力机制与 Transformer 系列模型
-- 生成模型，如 GAN、VAE、Diffusion
-- 多模态模型，如 CLIP 等
-- Hugging Face 生态与实际应用
-- 从数据处理到训练、推理、部署的实践笔记
+- PyTorch 基础与深度学习训练实践
+- Attention 与 Transformer 简介
+- ViT、Swin 等视觉 Transformer 模型
+- GAN、VAE、DDPM 等生成模型
+- CLIP、BLIP 等视觉与多模态模型
+- 从零实现 GPT-2 与现代语言模型
+- LLM 数据处理、训练工程与 Scaling Laws
+- LLM Evaluation、Inference 与 Serving
+- Instruction Tuning、LoRA、DPO、RLHF 等 Post-training 方法
 
 项目对应的 Jupyter Notebook 版本在 [jshn9515/dnnl-notebooks](https://github.com/jshn9515/dnnl-notebooks)。这个仓库会与主仓库保持同步，其中的 notebooks 可以直接在 Google Colab 中打开。GitHub Actions Artifacts 也可以作为备用来源，在仓库同步失败或暂时不可用时，用于获取最新的构建输出。
 
-如果你希望自己从源码生成 Notebook，也可以在本地安装 Quarto 后，使用 `quarto convert` 命令将 `.qmd` 文件转换为 Jupyter Notebook。例如：
+如果你希望自己从源码生成 notebook，也可以在本地安装 Quarto 后，使用 `quarto convert` 命令将 `.qmd` 文件转换为 Jupyter Notebook。例如：
 
 ```bash
 quarto convert path/to/file.qmd
@@ -45,7 +48,7 @@ quarto convert path/to/file.qmd
 本仓库所有代码已在以下环境测试通过：
 
 - Python 3.14
-- PyTorch 2.13
+- PyTorch 2.14
 
 完整依赖见 `pyproject.toml`。
 
