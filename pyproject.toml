@@ -47,6 +47,7 @@ dependencies = [
     # High performance kernels
     "triton-windows>=3.8.0,<3.9.0; sys_platform == 'win32'",
     "triton>=3.8.0,<3.9.0; sys_platform == 'linux'",
+    "xformers==0.0.35",
 
     # Scientific computing and machine learning
     "numpy>=2.5.0,<2.6.0",

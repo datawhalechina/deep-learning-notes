@@ -7,7 +7,6 @@ open-graph:
   description: "19.8 Modern Attention APIs and Hugging Face Kernels"
 title: "19.8 现代 Attention API 与 Hugging Face Kernels"
 order: 8
-eval: false
 ---
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.8-modern-attention-apis.ipynb){fig-align="left"}
@@ -62,12 +61,17 @@ import torch.nn as nn
 import torch.nn.attention as attn
 import torch.nn.attention.flex_attention as flex_attn
 import torch.nn.functional as F
+import transformers
+import xformers
 import xformers.ops as xops
 from torch import Tensor
 from torch.nn.attention import SDPBackend
 from transformers import AutoModelForCausalLM
 
+ipy.clear_output()
 print('PyTorch version:', torch.__version__)
+print('Transformers version:', transformers.__version__)
+print('xFormers version:', xformers.__version__)
 ```
 
 ```{python}
@@ -106,8 +110,8 @@ value = torch.randn_like(query)
 
 output = F.scaled_dot_product_attention(query, key, value)
 
-print('input shape:', query.shape)
-print('output shape:', output.shape)
+print('Input shape:', query.shape)
+print('Output shape:', output.shape)
 ```
 
 对于 GPT 的 causal self-attention，通常写成：
@@ -118,7 +122,6 @@ F.scaled_dot_product_attention(query, key, value, is_causal=True)
 
 ```{python}
 output = F.scaled_dot_product_attention(query, key, value, is_causal=True)
-
 print('Causal attention output shape:', output.shape)
 ```
 
@@ -270,9 +273,6 @@ def benchmark_sdpa(
     num_warmup: int = 5,
     num_steps: int = 20,
 ) -> float:
-    if device.type not in {'cpu', 'cuda', 'xpu', 'mps'}:
-        raise AssertionError('Benchmark only supports CPU, CUDA, XPU, MPS devices.')
-
     with attn.sdpa_kernel(attn_backend):
         for _ in range(num_warmup):
             F.scaled_dot_product_attention(query, key, value, is_causal=True)
@@ -296,6 +296,7 @@ def benchmark_sdpa(
 接下来我们创建几个比较大的张量，测试不同 backend 的平均执行时间。
 
 ```{python}
+#| eval: false
 batch_size = 64
 num_heads = 32
 seq_len = 1024
@@ -473,11 +474,15 @@ $$
 简化代码如下：
 
 ```{python}
+#| eval: false
 output = xops.memory_efficient_attention(
     query, key, value, attn_bias=xops.LowerTriangularMask()
 )
-
 print('xFormers output shape:', output.shape)
+```
+
+```code
+xFormers output shape: torch.Size([16, 4, 128, 32])
 ```
 
 xFormers 的一个重要特点是提供 Attention Bias 抽象，例如：
@@ -500,7 +505,7 @@ SDPA 是 PyTorch 内部统一 attention API，而 `kernels` 则是一个 kernel 
 
 基本形式是：
 
-```{python}
+```python
 module = kernels.get_kernel('kernels-community/flash-attn3', version=1)
 ```
 
@@ -509,6 +514,7 @@ module = kernels.get_kernel('kernels-community/flash-attn3', version=1)
 Hugging Face Transformers 也支持在加载模型时指定 attention kernel：
 
 ```{python}
+#| eval: false
 model = AutoModelForCausalLM.from_pretrained(
     'Qwen/Qwen3-0.6B',
     attn_implementation='kernels-community/flash-attn3',
@@ -522,6 +528,7 @@ ipy.clear_output()
 除了 `attn_implementation`，Transformers 还提供了一个全局开关 `use_kernels`，当设置为 `True` 时，Transformers 会尝试为所有支持的层加载匹配的 kernel，而不仅限于 attention。
 
 ```{python}
+#| eval: false
 model = AutoModelForCausalLM.from_pretrained(
     'Qwen/Qwen3-0.6B',
     attn_implementation='kernels-community/flash-attn3',
@@ -575,7 +582,7 @@ import xformers.ops as xops
 xops.memory_efficient_attention(query, key, value, attn_bias=...)
 ```
 
-而如果希望从 Hugging Face Hub 动态加载 kernel，或者希望固定 kernel 版本，可以使用 Hugging Face `kernels：`
+而如果希望从 Hugging Face Hub 动态加载 kernel，或者希望固定 kernel 版本，可以使用 Hugging Face `kernels`：
 
 ```python
 import kernels
