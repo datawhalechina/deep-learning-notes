@@ -32,7 +32,7 @@ In short, this package serves as the code companion to the tutorial.
 ## Requirements
 
 - Python 3.12 or newer
-- PyTorch 2.13 or newer
+- PyTorch 2.14 or newer
 
 ## Installation
 

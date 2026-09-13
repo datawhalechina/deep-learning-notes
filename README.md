@@ -50,7 +50,7 @@ quarto convert path/to/file.qmd
 All code in this repository has been tested in the following environment:
 
 - Python 3.14
-- PyTorch 2.13
+- PyTorch 2.14
 
 See `pyproject.toml` for the full list of dependencies.
 
