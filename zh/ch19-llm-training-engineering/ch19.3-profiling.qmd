@@ -26,6 +26,7 @@ order: 3
 这一节不会重新分析每个算子的 FLOPs，而是从实际代码出发，学习怎样逐层定位瓶颈：先测完整 step time，再测 GPU 时间，然后用 PyTorch Profiler 继续深入到 operator 和 timeline。
 
 ```{python}
+import datetime as dt
 import os
 import time
 from collections.abc import Callable
@@ -385,7 +386,9 @@ def trace_handler(profiler: prof.profile):
     """Profiler trace handler to save timeline to file."""
     event_list = profiler.key_averages()
     event_table = event_list.table(sort_by=sort_by, row_limit=10)
-    trace_path = os.path.join('profiler_traces', f'trace_{profiler.step_num}.json')
+
+    timestamp = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
+    trace_path = os.path.join('profiler_traces', f'trace_{timestamp}.json')
     profiler.export_chrome_trace(trace_path)
 
 
