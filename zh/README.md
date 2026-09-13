@@ -116,7 +116,7 @@
 
 ## Chapter 19: LLM 训练工程：显存、计算与并行训练
 
-- 19.1 训练一个 LLM 到底花在哪里：模型状态、激活与运行时开销
+- 19.1 LLM 训练显存账本：参数、激活与状态
 - 19.3 Profiling：怎么知道代码慢在哪里
 - 19.4 Mixed Precision：FP32、FP16、BF16 与 Loss Scaling
 - 19.5 Gradient Accumulation：显存不够时如何模拟大 Batch
