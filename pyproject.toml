@@ -44,6 +44,10 @@ dependencies = [
     "tokenizers>=0.23.0,<0.24.0",
     "transformers>=5.17.0,<5.18.0",
 
+    # High performance kernels
+    "triton-windows>=3.8.0,<3.9.0; sys_platform == 'win32'",
+    "triton>=3.8.0,<3.9.0; sys_platform == 'linux'",
+
     # Scientific computing and machine learning
     "numpy>=2.5.0,<2.6.0",
     "scipy>=1.18.0,<1.19.0",
