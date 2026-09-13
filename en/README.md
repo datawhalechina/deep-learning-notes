@@ -115,5 +115,3 @@
 - 18.7 GPT-2: From MiniGPT to a Pretrained Language Model
 
 ## Chapter 19: LLM Training Engineering: Memory, Computation, and Parallel Training
-
-- 19.1 Where Does the Memory Go When Training an LLM? Model States, Activations, and Runtime Overhead
