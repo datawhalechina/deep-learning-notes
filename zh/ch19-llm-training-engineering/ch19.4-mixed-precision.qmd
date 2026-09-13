@@ -49,6 +49,10 @@ print('PyTorch version:', torch.__version__)
 
 ```{python}
 device = dnnlpy.get_default_device()
+
+if device.type == 'cpu' and dnnlpy.IS_AVX2_VNNI_2:
+    torch.backends.mkldnn.enabled = False
+
 print('Using device:', device)
 ```
 
