@@ -121,3 +121,4 @@
 - 19.4 Mixed Precision：FP32、FP16、BF16 与 Loss Scaling
 - 19.5 Gradient Accumulation：显存不够时如何模拟大 Batch
 - 19.8 现代 Attention API 与 Hugging Face Kernels
+- 19.10 Triton 入门：什么时候需要自己写 Kernel
