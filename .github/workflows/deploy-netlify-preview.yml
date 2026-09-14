@@ -7,7 +7,8 @@ on:
 
 permissions:
   actions: read
-  pull-requests: write
+  deployments: write
+  pull-requests: read
 
 concurrency:
   group: netlify-docs-preview-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
@@ -71,6 +72,43 @@ jobs:
         with:
           node-version: 24
 
+      - name: Register GitHub deployment
+        id: deployment
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const environment = "netlify-preview";
+            const { data: deployment } = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: process.env.SOURCE_SHA,
+              task: "deploy",
+              auto_merge: false,
+              required_contexts: [],
+              environment,
+              description: `Netlify documentation preview for PR #${process.env.PR_NUMBER}`,
+              transient_environment: true,
+              production_environment: false,
+            });
+
+            core.setOutput("id", deployment.id);
+            core.setOutput("environment", environment);
+
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.id,
+              state: "in_progress",
+              environment,
+              log_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: "Uploading rendered documentation to Netlify.",
+              auto_inactive: false,
+            });
+
       - name: Deploy preview to Netlify
         id: netlify
         shell: bash
@@ -107,52 +145,37 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `url=${result.deploy_url}\n`);
           NODE
 
-      - name: Comment preview URL on pull request
+      - name: Update GitHub deployment status
+        if: ${{ always() && steps.deployment.outputs.id != '' }}
         uses: actions/github-script@v9
         env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          DEPLOYMENT_ENVIRONMENT: ${{ steps.deployment.outputs.environment }}
+          DEPLOY_OUTCOME: ${{ steps.netlify.outcome }}
           PREVIEW_URL: ${{ steps.netlify.outputs.url }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const marker = "<!-- dnnl-netlify-docs-preview -->";
-            const issue_number = Number(process.env.PR_NUMBER);
-            if (!Number.isInteger(issue_number)) {
-              throw new Error(`Invalid PR number: ${process.env.PR_NUMBER}`);
+            const deploymentId = Number(process.env.DEPLOYMENT_ID);
+            if (!Number.isInteger(deploymentId)) {
+              throw new Error(`Invalid deployment ID: ${process.env.DEPLOYMENT_ID}`);
             }
 
-            const shortSha = process.env.SOURCE_SHA.slice(0, 7);
-            const body = `${marker}
-            ## Documentation Preview
-
-            The rendered documentation for PR #${issue_number} is available at [View the Netlify preview](${process.env.PREVIEW_URL}).
-
-            Preview updated for commit \`${shortSha}\`.`;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
+            const succeeded = process.env.DEPLOY_OUTCOME === "success";
+            const status = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number,
-              per_page: 100,
-            });
-            const existing = comments.find(
-              (comment) =>
-                comment.user?.type === "Bot" && comment.body?.includes(marker),
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                body,
-              });
+              deployment_id: deploymentId,
+              state: succeeded ? "success" : "failure",
+              environment: process.env.DEPLOYMENT_ENVIRONMENT,
+              log_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: succeeded
+                ? "Documentation preview deployed successfully."
+                : "Documentation preview deployment failed.",
+              auto_inactive: false,
+            };
+            if (succeeded) {
+              status.environment_url = process.env.PREVIEW_URL;
             }
+
+            await github.rest.repos.createDeploymentStatus(status);
