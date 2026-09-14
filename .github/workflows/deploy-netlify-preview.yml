@@ -92,7 +92,6 @@ jobs:
             --dir="$RUNNER_TEMP/dnnl-website" \
             --site="$NETLIFY_SITE_ID" \
             --alias="deploy-preview-$PR_NUMBER" \
-            --context=deploy-preview \
             --message="Documentation preview for PR #$PR_NUMBER ($SOURCE_SHA)" \
             --no-build \
             --json > "$RUNNER_TEMP/netlify-deploy.json"
