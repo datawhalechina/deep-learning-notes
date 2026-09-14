@@ -47,7 +47,7 @@ jobs:
         uses: quarto-dev/quarto-actions/setup@v2
 
       - name: Restore Quarto freeze cache
-        if: inputs.use-cache == 'true'
+        if: inputs.use-cache
         uses: actions/cache/restore@v6
         with:
           path: _freeze
