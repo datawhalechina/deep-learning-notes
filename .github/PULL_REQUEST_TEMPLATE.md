@@ -5,7 +5,7 @@
 <!-- Check all that apply. -->
 
 - [ ] Adds a new tutorial on a specific topic
-- [ ] Adds or updates notes, examples, or code commentsAdds or updates examples, derivations, or code comment
+- [ ] Adds or updates notes, examples, or code comments
 - [ ] Fixes an error or unclear explanation in the notes
 - [ ] Improves wording, structure, formatting, or references
 - [ ] Updates `dnnlpy` package code
