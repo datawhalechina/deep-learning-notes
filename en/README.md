@@ -113,5 +113,3 @@
 - 18.5 Training MiniGPT on TinyStories
 - 18.6 From Training to Generation: Temperature, Top-k, and Top-p
 - 18.7 GPT-2: From MiniGPT to a Pretrained Language Model
-
-## Chapter 19: LLM Training Engineering: Memory, Computation, and Parallel Training
