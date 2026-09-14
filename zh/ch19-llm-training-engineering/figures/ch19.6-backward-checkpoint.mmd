@@ -1,0 +1,49 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    Output[Output]
+
+    Output --> R4
+
+    subgraph R4[Recompute]
+        C3[Load checkpoint x3] --> RF4[Recompute Block 4 forward]
+    end
+
+    RF4 --> BW4[Backward Block 4]
+    BW4 --> BW3[Backward Block 3]
+
+    BW3 --> R2
+
+    subgraph R2[Recompute]
+        C1[Load checkpoint x1] --> RF2[Recompute Block 2 forward]
+    end
+
+    RF2 --> BW2[Backward Block 2]
+    BW2 --> BW1[Backward Block 1]
+
+    BW1 --> Input[Input]

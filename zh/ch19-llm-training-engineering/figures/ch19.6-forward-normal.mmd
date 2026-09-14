@@ -1,0 +1,42 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    Input[Input]
+    Input --> B1[Block 1]
+    B1 --> S1[Save internal activations]
+
+    B1 --> B2[Block 2]
+    B2 --> S2[Save internal activations]
+
+    B2 --> B3[Block 3]
+    B3 --> S3[Save internal activations]
+
+    B3 --> B4[Block 4]
+    B4 --> S4[Save internal activations]
+
+    B4 --> Output[Output]

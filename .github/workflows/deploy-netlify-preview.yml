@@ -124,7 +124,7 @@ jobs:
 
             const shortSha = process.env.SOURCE_SHA.slice(0, 7);
             const body = `${marker}
-            ## Documentation preview
+            ## Documentation Preview
 
             The rendered documentation for PR #${issue_number} is available at [View the Netlify preview](${process.env.PREVIEW_URL}).
 
