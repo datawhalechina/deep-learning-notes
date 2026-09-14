@@ -8,7 +8,7 @@ on:
 permissions:
   actions: read
   deployments: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: netlify-docs-preview-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
@@ -179,3 +179,53 @@ jobs:
             }
 
             await github.rest.repos.createDeploymentStatus(status);
+
+      - name: Comment preview URL on pull request
+        uses: actions/github-script@v9
+        env:
+          PREVIEW_URL: ${{ steps.netlify.outputs.url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = "<!-- dnnl-netlify-docs-preview -->";
+            const issue_number = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(issue_number)) {
+              throw new Error(`Invalid PR number: ${process.env.PR_NUMBER}`);
+            }
+
+            const shortSha = process.env.SOURCE_SHA.slice(0, 7);
+            const body = `${marker}
+            ## Documentation Preview
+
+            The rendered documentation for PR #${issue_number} is available at [View the Netlify preview](${process.env.PREVIEW_URL}).
+
+            Preview updated for commit \`${shortSha}\`.`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" && comment.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }
