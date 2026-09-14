@@ -1,0 +1,160 @@
+name: Deploy Quarto Preview to Netlify
+
+on:
+  workflow_run:
+    workflows: [Check Quarto Website Rendering]
+    types: [completed]
+
+permissions:
+  actions: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: netlify-docs-preview-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    name: Deploy PR docs preview
+    if: >-
+      github.repository == 'jshn9515/deep-learning-notes' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve pull request number
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const workflowRun = context.payload.workflow_run;
+            let pullRequest = workflowRun.pull_requests?.[0];
+
+            if (!pullRequest) {
+              const candidates = await github.paginate(
+                github.rest.repos.listPullRequestsAssociatedWithCommit,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  commit_sha: workflowRun.head_sha,
+                  per_page: 100,
+                },
+              );
+              const matching = candidates.filter(
+                (candidate) =>
+                  candidate.head.sha === workflowRun.head_sha &&
+                  candidate.base.repo.full_name === context.payload.repository.full_name,
+              );
+              if (matching.length !== 1) {
+                throw new Error(
+                  `Expected one PR for ${workflowRun.head_sha}, found ${matching.length}.`,
+                );
+              }
+              [pullRequest] = matching;
+            }
+
+            core.setOutput("number", pullRequest.number);
+
+      - name: Download rendered website artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dnnl-website-pr-${{ steps.pr.outputs.number }}
+          path: ${{ runner.temp }}/dnnl-website
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Deploy preview to Netlify
+        id: netlify
+        shell: bash
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$NETLIFY_AUTH_TOKEN" || -z "$NETLIFY_SITE_ID" ]]; then
+            echo "NETLIFY_AUTH_TOKEN and NETLIFY_SITE_ID must be configured." >&2
+            exit 1
+          fi
+
+          npx --yes netlify-cli@27.5.2 deploy \
+            --dir="$RUNNER_TEMP/dnnl-website" \
+            --site="$NETLIFY_SITE_ID" \
+            --alias="deploy-preview-$PR_NUMBER" \
+            --context=deploy-preview \
+            --message="Documentation preview for PR #$PR_NUMBER ($SOURCE_SHA)" \
+            --no-build \
+            --json > "$RUNNER_TEMP/netlify-deploy.json"
+
+          node <<'NODE'
+          const fs = require("fs");
+
+          const result = JSON.parse(
+            fs.readFileSync(`${process.env.RUNNER_TEMP}/netlify-deploy.json`, "utf8"),
+          );
+          if (!result.deploy_url) {
+            throw new Error("Netlify CLI did not return a deploy_url.");
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `url=${result.deploy_url}\n`);
+          NODE
+
+      - name: Comment preview URL on pull request
+        uses: actions/github-script@v9
+        env:
+          PREVIEW_URL: ${{ steps.netlify.outputs.url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = "<!-- dnnl-netlify-docs-preview -->";
+            const issue_number = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(issue_number)) {
+              throw new Error(`Invalid PR number: ${process.env.PR_NUMBER}`);
+            }
+
+            const shortSha = process.env.SOURCE_SHA.slice(0, 7);
+            const body = `${marker}
+            ## Documentation preview
+
+            The rendered documentation for PR #${issue_number} is available at [View the Netlify preview](${process.env.PREVIEW_URL}).
+
+            Preview updated for commit \`${shortSha}\`.`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" && comment.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }
