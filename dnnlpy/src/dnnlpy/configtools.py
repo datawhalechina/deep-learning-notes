@@ -60,8 +60,10 @@ def get_default_device() -> torch.device:
     """Return the current accelerator device, or CPU when none is available."""
     device = accl.current_accelerator(check_available=True)
     if device is not None:
-        return device
-    return torch.device('cpu')
+        index = accl.current_device_index()
+        return torch.device(device.type, index)
+    else:
+        return torch.device('cpu')
 
 
 def get_data_root() -> str:
