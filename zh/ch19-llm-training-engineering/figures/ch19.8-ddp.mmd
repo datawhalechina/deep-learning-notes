@@ -1,0 +1,49 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    D["Global Batch"] --> D0["Rank 0<br/>Local Batch"]
+    D --> D1["Rank 1<br/>Local Batch"]
+    D --> D2["Rank 2<br/>Local Batch"]
+    D --> D3["Rank 3<br/>Local Batch"]
+
+    D0 --> M0["Full Model"]
+    D1 --> M1["Full Model"]
+    D2 --> M2["Full Model"]
+    D3 --> M3["Full Model"]
+
+    M0 --> G0["Local Gradients"]
+    M1 --> G1["Local Gradients"]
+    M2 --> G2["Local Gradients"]
+    M3 --> G3["Local Gradients"]
+
+    G0 --> AR["All-Reduce"]
+    G1 --> AR
+    G2 --> AR
+    G3 --> AR
+
+    AR --> U["Same Reduced Gradients<br/>Same Optimizer Update"]

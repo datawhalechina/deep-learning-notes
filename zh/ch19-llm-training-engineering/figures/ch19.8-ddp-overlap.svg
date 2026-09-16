@@ -1,0 +1,243 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="background: #ffffff; background-color: var(--ge-adaptive-bg, #ffffff); color-scheme: light dark;" version="1.1" width="1054px" height="602px" viewBox="0 0 1054 602" id="ge-svg-OyvuUiGiSZITp45vTOBD" content="&lt;mxfile host=&quot;Electron&quot; scale=&quot;1&quot; border=&quot;0&quot;&gt;&#10;  &lt;diagram name=&quot;Page-1&quot; id=&quot;jg5u0VUs8LaPUK6uHvbN&quot;&gt;&#10;    &lt;mxGraphModel dx=&quot;1104&quot; dy=&quot;796&quot; grid=&quot;1&quot; gridSize=&quot;10&quot; guides=&quot;1&quot; tooltips=&quot;1&quot; connect=&quot;1&quot; arrows=&quot;1&quot; fold=&quot;1&quot; page=&quot;1&quot; pageScale=&quot;1&quot; pageWidth=&quot;827&quot; pageHeight=&quot;1169&quot; math=&quot;0&quot; shadow=&quot;0&quot;&gt;&#10;      &lt;root&gt;&#10;        &lt;mxCell id=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;1&quot; parent=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-1&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontFamily=Courier New;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;time:&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;82.5&quot; x=&quot;55&quot; y=&quot;50&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-2&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;endArrow=block;html=1;rounded=0;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;145&quot; y=&quot;65&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;1080&quot; y=&quot;65&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-3&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontFamily=Courier New;fontColor=default;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;backward:&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;140&quot; x=&quot;55&quot; y=&quot;110&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-4&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontFamily=Courier New;fontColor=default;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;communication:&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;215&quot; x=&quot;35&quot; y=&quot;390&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-5&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;fontColor=default;fontStyle=0;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Layer 4&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;97.5&quot; y=&quot;156&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-6&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Layer 3&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;98&quot; y=&quot;216&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-7&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Layer 2&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;98&quot; y=&quot;276&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-8&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Layer 1&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;98&quot; y=&quot;336&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-9&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#CCE5FF;strokeColor=#0066CC;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;150&quot; x=&quot;200&quot; y=&quot;160&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-10&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#CCE5FF;strokeColor=#0066CC;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=default;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;150&quot; x=&quot;350&quot; y=&quot;220&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-11&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#CCE5FF;strokeColor=#0066CC;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=default;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;150&quot; x=&quot;500&quot; y=&quot;280&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-12&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#CCE5FF;strokeColor=#0066CC;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=default;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;150&quot; x=&quot;650&quot; y=&quot;340&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-13&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;fontColor=default;fontStyle=0;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;bucket 4&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;97.5&quot; y=&quot;436&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-14&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;fontColor=default;fontStyle=0;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;bucket 3&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;98&quot; y=&quot;496&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-15&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;fontColor=default;fontStyle=0;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;bucket 2&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;97.5&quot; y=&quot;556&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-16&quot; parent=&quot;1&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;fontSize=20;fontFamily=Helvetica;fontColor=default;fontStyle=0;whiteSpace=wrap;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;bucket 1&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;30&quot; width=&quot;90&quot; x=&quot;98&quot; y=&quot;616&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-17&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;115&quot; x=&quot;350&quot; y=&quot;440&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-18&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;115&quot; x=&quot;500&quot; y=&quot;500&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-19&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;115&quot; x=&quot;650&quot; y=&quot;560&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-20&quot; parent=&quot;1&quot; style=&quot;rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;22&quot; width=&quot;115&quot; x=&quot;800&quot; y=&quot;620&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-21&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;dashed=1;strokeColor=#8A8A8A;endArrow=none;strokeWidth=2;rounded=1;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=11;fontColor=default;labelBackgroundColor=default;html=1;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;350&quot; y=&quot;145&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;350&quot; y=&quot;470&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-22&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;dashed=1;strokeColor=#8A8A8A;endArrow=none;rounded=1;strokeWidth=2;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=11;fontColor=default;labelBackgroundColor=default;html=1;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;500&quot; y=&quot;205&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;500&quot; y=&quot;530&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-23&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;dashed=1;strokeColor=#8A8A8A;endArrow=none;rounded=1;strokeWidth=2;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=11;fontColor=default;labelBackgroundColor=default;html=1;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;650&quot; y=&quot;265&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;650&quot; y=&quot;590&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;AXX7T6I6iJIOltGa0H4r-24&quot; edge=&quot;1&quot; parent=&quot;1&quot; style=&quot;dashed=1;strokeColor=#8A8A8A;endArrow=none;rounded=1;strokeWidth=2;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=11;fontColor=default;labelBackgroundColor=default;html=1;convertToSvg=1;&quot; value=&quot;&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxPoint x=&quot;800&quot; y=&quot;325&quot; as=&quot;sourcePoint&quot; /&gt;&#10;            &lt;mxPoint x=&quot;800&quot; y=&quot;650&quot; as=&quot;targetPoint&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;      &lt;/root&gt;&#10;    &lt;/mxGraphModel&gt;&#10;  &lt;/diagram&gt;&#10;&lt;/mxfile&gt;&#10;">
+  <style type="text/css">@supports (color: light-dark(#000, #fff)) { #ge-svg-OyvuUiGiSZITp45vTOBD { --ge-adaptive-bg: light-dark(#ffffff, var(--ge-dark-color, #121212)); } }
+  </style>
+  <defs/>
+  <rect fill="#ffffff" width="100%" height="100%" x="0" y="0" style="fill: var(--ge-adaptive-bg, #ffffff);"/>
+  <g>
+    <g data-cell-id="0">
+      <g data-cell-id="1">
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-1">
+          <g>
+            <rect x="20" y="-0.6" width="82.5" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="'Courier New'" font-weight="bold" text-anchor="middle" font-size="24px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(61.25,25.4) scale(1)">
+                <text>
+                  <tspan>time:
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-2">
+          <g>
+            <path d="M 110 14.4 L 1034.76 14.4" fill="none" stroke="#d79b00" stroke-width="2" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(215, 155, 0);"/>
+            <path d="M 1042.76 14.4 L 1034.76 18.4 L 1034.76 10.4 Z" fill="#d79b00" stroke="#d79b00" stroke-width="2" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(215, 155, 0); stroke: rgb(215, 155, 0);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-3">
+          <g>
+            <rect x="20" y="59.4" width="140" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="'Courier New'" font-weight="bold" text-anchor="middle" font-size="24px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(90,85.4) scale(1)">
+                <text>
+                  <tspan>backward:
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-4">
+          <g>
+            <rect x="0" y="339.4" width="215" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="'Courier New'" font-weight="bold" text-anchor="middle" font-size="24px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(107.5,365.4) scale(1)">
+                <text>
+                  <tspan>communication:
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-5">
+          <g>
+            <rect x="62.5" y="105.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(107.5,129.4) scale(1)">
+                <text>
+                  <tspan>Layer 4
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-6">
+          <g>
+            <rect x="63" y="165.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(108,189.4) scale(1)">
+                <text>
+                  <tspan>Layer 3
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-7">
+          <g>
+            <rect x="63" y="225.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(108,249.4) scale(1)">
+                <text>
+                  <tspan>Layer 2
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-8">
+          <g>
+            <rect x="63" y="285.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(108,309.4) scale(1)">
+                <text>
+                  <tspan>Layer 1
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-9">
+          <g transform="translate(0.5,0.5)">
+            <rect x="165" y="109.4" width="150" height="22" fill="#cce5ff" stroke="#0066cc" pointer-events="all" style="fill: rgb(204, 229, 255); stroke: rgb(0, 102, 204);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-10">
+          <g transform="translate(0.5,0.5)">
+            <rect x="315" y="169.4" width="150" height="22" fill="#cce5ff" stroke="#0066cc" pointer-events="all" style="fill: rgb(204, 229, 255); stroke: rgb(0, 102, 204);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-11">
+          <g transform="translate(0.5,0.5)">
+            <rect x="465" y="229.4" width="150" height="22" fill="#cce5ff" stroke="#0066cc" pointer-events="all" style="fill: rgb(204, 229, 255); stroke: rgb(0, 102, 204);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-12">
+          <g transform="translate(0.5,0.5)">
+            <rect x="615" y="289.4" width="150" height="22" fill="#cce5ff" stroke="#0066cc" pointer-events="all" style="fill: rgb(204, 229, 255); stroke: rgb(0, 102, 204);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-13">
+          <g>
+            <rect x="62.5" y="385.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(107.5,409.4) scale(1)">
+                <text>
+                  <tspan>bucket 4
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-14">
+          <g>
+            <rect x="63" y="445.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(108,469.4) scale(1)">
+                <text>
+                  <tspan>bucket 3
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-15">
+          <g>
+            <rect x="62.5" y="505.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(107.5,529.4) scale(1)">
+                <text>
+                  <tspan>bucket 2
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-16">
+          <g>
+            <rect x="63" y="565.4" width="90" height="30" fill="none" stroke="none" pointer-events="all"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="20px" style="fill: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));">
+              <g transform="translate(108,589.4) scale(1)">
+                <text>
+                  <tspan>bucket 1
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-17">
+          <g transform="translate(0.5,0.5)">
+            <rect x="315" y="389.4" width="115" height="22" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-18">
+          <g transform="translate(0.5,0.5)">
+            <rect x="465" y="449.4" width="115" height="22" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-19">
+          <g transform="translate(0.5,0.5)">
+            <rect x="615" y="509.4" width="115" height="22" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-20">
+          <g transform="translate(0.5,0.5)">
+            <rect x="765" y="569.4" width="115" height="22" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-21">
+          <g>
+            <path d="M 315 94.4 L 315 419.4" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="6 6" pointer-events="stroke" style="stroke: rgb(138, 138, 138);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-22">
+          <g>
+            <path d="M 465 154.4 L 465 479.4" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="6 6" pointer-events="stroke" style="stroke: rgb(138, 138, 138);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-23">
+          <g>
+            <path d="M 615 214.4 L 615 539.4" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="6 6" pointer-events="stroke" style="stroke: rgb(138, 138, 138);"/>
+          </g>
+        </g>
+        <g data-cell-id="AXX7T6I6iJIOltGa0H4r-24">
+          <g>
+            <path d="M 765 274.4 L 765 599.4" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="6 6" pointer-events="stroke" style="stroke: rgb(138, 138, 138);"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

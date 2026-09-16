@@ -1,0 +1,40 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 24px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+  
+  flowchart:
+    wrappingWidth: 300
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    S["Parameter Shards"] --> AG1["All-Gather"]
+    AG1 --> P["Temporary Full Parameters"]
+    P --> F["Forward"]
+    F --> R["Release / Reshard"]
+
+    AG2["All-Gather for Backward"] --> B["Backward"]
+    B --> RS["Reduce-Scatter Gradients"]
+    RS --> GS["Gradient Shards"]
+    GS --> O["Local Optimizer Update"]
