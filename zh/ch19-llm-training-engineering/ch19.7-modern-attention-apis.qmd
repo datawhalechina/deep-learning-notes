@@ -1,15 +1,15 @@
 ---
 author: jshn9515
-date: 2026-06-19
-date-modified: 2026-06-19
+date: 2026-09-12
+date-modified: 2026-09-12
 open-graph:
-  title: ch19.8-modern-attention-apis
-  description: "19.8 Modern Attention APIs and Hugging Face Kernels"
-title: "19.8 现代 Attention API 与 Hugging Face Kernels"
-order: 8
+  title: ch19.7-modern-attention-apis
+  description: "19.7 Modern Attention APIs and Hugging Face Kernels"
+title: "19.7 现代 Attention API 与 Hugging Face Kernels"
+order: 7
 ---
 
-[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.8-modern-attention-apis.ipynb){fig-align="left"}
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.7-modern-attention-apis.ipynb){fig-align="left"}
 
 第 10 章我们已经完整讨论过 FlashAttention 的算法原理：
 
