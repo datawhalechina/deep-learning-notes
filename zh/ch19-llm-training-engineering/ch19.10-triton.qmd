@@ -568,7 +568,7 @@ Triton 官方教程中也包含 LayerNorm、attention 等 forward + backward 更
 
 实际工程里，更合理的判断顺序是：
 
-![图 19.10.10 Triton Fusion Judgement](figures/ch19.10-triton-judgement.svg){height=550px}
+![图 19.10.10 Triton Fusion 判断顺序](figures/ch19.10-summary.svg){height=550px}
 
 比较适合 Triton 的场景通常包括：
 
