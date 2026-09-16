@@ -67,7 +67,7 @@ dependencies = [
     "jupyterlab>=4.5.0",
 
     # Experiment tracking and utilities
-    "gdown>=6.2.0,<6.3.0",
+    "gdown>=6.3.0,<6.4.0",
     "pyyaml>=6.0.0,<6.1.0",
 
     # DNNL utilities
