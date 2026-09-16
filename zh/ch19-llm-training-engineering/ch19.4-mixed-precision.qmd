@@ -1,7 +1,7 @@
 ---
 author: jshn9515
-date: 2026-06-19
-date-modified: 2026-06-19
+date: 2026-09-10
+date-modified: 2026-09-10
 open-graph:
   title: ch19.4-mixed-precision
   description: "19.4 Mixed Precision: FP32, FP16, BF16 and Loss Scaling"
