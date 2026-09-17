@@ -79,7 +79,7 @@ device = dnnlpy.get_default_device()
 print('Using device:', device)
 ```
 
-## 19.8.1 SDPA：PyTorch 的统一 Attention 入口
+## 19.7.1 SDPA：PyTorch 的统一 Attention 入口
 
 Scaled Dot-Product Attention 的数学形式是：
 
@@ -131,7 +131,7 @@ print('Causal attention output shape:', output.shape)
 
 同一段 SDPA 代码，在不同硬件和输入条件下，可能使用不同后端。因此，不应该把调用 SDPA 等同于一定调用 FlashAttention。更准确的理解是：我描述需要哪种 attention，PyTorch 决定如何执行。
 
-## 19.8.2 SDPA 为什么比手写 Attention 更适合作为默认实现
+## 19.7.2 SDPA 为什么比手写 Attention 更适合作为默认实现
 
 手写 attention 往往是：
 
@@ -162,7 +162,7 @@ dropout_p = self.dropout if self.training else 0.0
 
 而不是在推理阶段仍然传入训练时的 dropout probability。
 
-## 19.8.3 torch.nn.attention：控制 SDPA 行为的命名空间
+## 19.7.3 torch.nn.attention：控制 SDPA 行为的命名空间
 
 `torch.nn.attention` 是围绕 SDPA 的控制与扩展命名空间，其中包括：
 
@@ -178,7 +178,7 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 当然，普通模型代码通常不需要固定后端。让 PyTorch 自动选择，往往更容易跨设备和跨版本运行。
 
-### 19.8.3.1 SDPBackend：SDPA 有哪些后端
+### 19.7.3.1 SDPBackend：SDPA 有哪些后端
 
 `SDPBackend` 是一个类似枚举的类，用于表示 SDPA 后端。常见成员包括：
 
@@ -192,7 +192,7 @@ CUDNN_ATTENTION
 不同成员对应不同算法。大体上可以理解为：
 
 ::: {.list-table}
-表 19.8.3.1 不同 SDPA 后端的对应关系
+表 19.7.3.1 不同 SDPA 后端的对应关系
 
 - - Backend
   - 对应算法
@@ -212,7 +212,7 @@ CUDNN_ATTENTION
 
 这些名字描述的是后端类别，不代表所有设备都支持。例如 CPU 通常只支持 MATH，而 CUDA GPU 可能支持 Flash、Efficient 或 cuDNN。具体能否使用，取决于 dtype、shape、mask 和硬件。
 
-### 19.8.3.2 用 sdpa_kernel 强制选择后端
+### 19.7.3.2 用 sdpa_kernel 强制选择后端
 
 `sdpa_kernel` 是一个 context manager，用于控制 SDPA 可以选择哪些后端。
 
@@ -252,7 +252,7 @@ with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
 
 日常训练通常更推荐不写 sdpa_kernel，让 PyTorch dispatcher 自动选择后端。
 
-### 19.8.3.3 如何正确比较不同 SDPA 后端
+### 19.7.3.3 如何正确比较不同 SDPA 后端
 
 比较不同 attntion backend 时，不能只运行一次然后用 `time.time()`。因为 GPU kernel 通常是异步执行的，而且第一次运行可能包含初始化和编译开销。
 
@@ -335,7 +335,7 @@ Backend: CUDNN_ATTENTION | Average time: 7.64 ms.
 
 当然，训练场景中只测 forward 不够，还应该测 forward + backward，并关注 peak memory 和完整训练 step 的时间。因为一个 kernel 的 forward 更快，不代表整个训练 step 一定更快。
 
-## 19.8.4 FlexAttention：当 SDPA 的 Mask 不够灵活
+## 19.7.4 FlexAttention：当 SDPA 的 Mask 不够灵活
 
 FlexAttention [@dong2024FlexAttention] 是 PyTorch 2.5 引入的一个新特性，目标是让用户可以用 Python 函数描述自定义 attention 语义，然后由 PyTorch 编译成高效 fused kernel。
 
@@ -447,7 +447,7 @@ print('FlexAttention output shape:', output.shape)
 
 需要注意，FlexAttention 的 API 和支持范围仍在快速演进。请以最新的 PyTorch 文档为准。
 
-## 19.8.5 xFormers：PyTorch 原生 SDPA 之前的重要高效算子库
+## 19.7.5 xFormers：PyTorch 原生 SDPA 之前的重要高效算子库
 
 xFormers [@xFormers] 是 Meta 维护的 PyTorch 扩展库，提供可组合的 Transformer 组件和优化算子。与 SDPA 不同，xFormers 并不是 PyTorch 官方的一部分，而是一个第三方库。
 
@@ -497,7 +497,7 @@ xFormers 的一个重要特点是提供 Attention Bias 抽象，例如：
 
 前几年，xFormers 是 PyTorch 官方 SDPA 之前的主要高效 attention 算子库。随着 PyTorch 逐渐完善 FlexAttention 和 SDPA，并且提供了 `EFFICIENT_ATTENTION` 后端，xFormers 的必要性有所下降。当前，xFormers 更多用于 PyTorch 尚未完全覆盖或需要更细粒度控制的场景，例如特殊的 attention bias、paged attention、长上下文和解码相关算子上。
 
-## 19.8.6 Hugging Face kernels：从 Hub 动态加载 kernel
+## 19.7.6 Hugging Face kernels：从 Hub 动态加载 kernel
 
 Hugging Face 的 `kernels` 库 [@Kernels] 解决的问题和 SDPA 不完全一样。
 
@@ -540,7 +540,7 @@ ipy.clear_output()
 
 这种设计的优势在于，kernel 可以独立于 Transformers 发布，可以针对不同硬件提供不同实现，并且可以固定 kernel 版本，从而减少本地编译和依赖冲突。但它也意味着加载 kernel 时会执行任意代码，因此只能加载可信来源。如果确实需要加载第三方的 kernel，需要显式设置 `allow_all_kernels=True`。
 
-## 19.8.7 这些方案应该怎么选
+## 19.7.7 这些方案应该怎么选
 
 可以先使用下面的决策顺序。
 
@@ -593,7 +593,7 @@ module.flash_attention(query, key, value)
 
 最重要的是，不要仅根据名称判断哪个一定最快。最终仍然应该测量完整训练 step 的时间、tokens per second、peak memory、数值稳定性和硬件兼容性。
 
-## 19.8.8 本章小结
+## 19.7.8 本章小结
 
 这一节，我们整理了现代 attention 的算子生态。
 
@@ -634,6 +634,6 @@ Hugging Face `kernels` 则进一步解决了 kernel 的分发、版本管理和�
 F.scaled_dot_product_attention(...)
 ```
 
-下一节，我们将进入单机多卡训练，讨论 DDP、ZeRO 与 FSDP。单卡算子优化解决的是不同算子在单个 GPU 内部如何高效执行，而多卡训练则要回答：
+下一节，我们将进一步下沉到 GPU kernel，学习 Triton 的基本执行模型，以及什么时候值得自己写 fused kernel。现代 Attention API 帮我们优先复用成熟的高性能实现，而 Triton 要回答的是：
 
-> **如何把模型计算和训练状态分摊到多张 GPU。**
+> **当现有算子和编译器仍然无法消除瓶颈时，如何获得更细粒度的 GPU 控制。**
