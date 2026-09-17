@@ -92,7 +92,7 @@ Activation checkpointing 会选择某些边界作为 **checkpoint**。例如我�
 
 ![图 19.6.2.3 开启 Activation Checkpoint 过程](figures/ch19.6-forward-checkpoint.svg){height=450px}
 
-这里的 `checkpoint` 和 19.7 要讲的模型 checkpoint 不是一回事。
+这里的 `checkpoint` 和 19.10 要讲的模型 checkpoint 不是一回事。
 
 - **Model checkpoint**：把参数、optimizer state 等写到磁盘，之后可以恢复训练；
 - **Activation checkpoint**：训练过程中保留少量边界 tensor，backward 时用它们重算中间 activation。
