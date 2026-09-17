@@ -46,7 +46,7 @@ PyTorch 之外，常见的高效 attention 生态还包括：
 - 普通 causal attention，优先使用 SDPA；
 - 需要控制具体后端，使用 `sdpa_kernel` + `SDPBackend`；
 - 需要自定义 mask、bias 或 attention 变体，使用 FlexAttention；
-- 已有项目依赖 xFormers 或需要其 AttentionBias，继续使用 `xFormers`；
+- 已有项目依赖 xFormers 或需要其 `AttentionBias`，继续使用 `xFormers`；
 - 使用 Transformers 并希望动态加载社区 kernel，使用 Hugging Face `kernels`。
 
 ```{python}
@@ -574,7 +574,7 @@ flex_attention = torch.compile(flex_attention, dynamic=False)
 flex_attention(query, key, value, block_mask=...)
 ```
 
-如果项目已经依赖 xFormers，或者需要其 AttentionBias 抽象，可以继续使用 xFormers：
+如果项目已经依赖 xFormers，或者需要其 `AttentionBias` 抽象，可以继续使用 xFormers：
 
 ```python
 import xformers.ops as xops
@@ -625,7 +625,7 @@ Hugging Face `kernels` 则进一步解决了 kernel 的分发、版本管理和�
 - 普通 attention，优先使用 SDPA；
 - 需要控制后端，使用 `SDPBackend` + `sdpa_kernel`；
 - 需要自定义 mask、bias 或 attention 变体，使用 FlexAttention；
-- 已有项目依赖 xFormers 或需要其 AttentionBias，继续使用 `xFormers`；
+- 已有项目依赖 xFormers 或需要其 `AttentionBias`，继续使用 `xFormers`；
 - 使用 Transformers 并希望动态加载社区 kernel，使用 Hugging Face `kernels`。
 
 当然，对于大多数自己实现的 GPT，最合理的起点仍然是：
@@ -634,6 +634,6 @@ Hugging Face `kernels` 则进一步解决了 kernel 的分发、版本管理和�
 F.scaled_dot_product_attention(...)
 ```
 
-下一节，我们将进一步下沉到 GPU kernel，学习 Triton 的基本执行模型，以及什么时候值得自己写 fused kernel。现代 Attention API 帮我们优先复用成熟的高性能实现，而 Triton 要回答的是：
+下一节，我们将进一步下沉到 GPU kernel，学习 Triton 的基本执行模型，以及什么时候值得自己写 fused kernel。现代 attention API 帮我们优先复用成熟的高性能实现，而 Triton 要回答的是：
 
 > **当现有算子和编译器仍然无法消除瓶颈时，如何获得更细粒度的 GPU 控制。**
