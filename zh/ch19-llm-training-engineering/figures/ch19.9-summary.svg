@@ -1,0 +1,372 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" id="diagram-graph" class="flowchart" style="max-width: 100%; max-height: 100%; width: auto; height: auto; background-color: rgb(255, 255, 255); color: rgb(0, 0, 0);" viewBox="-2.0000038146972656 -2.000001907348633 1192.9901123046875 407.6363830566406" role="graphics-document document" aria-roledescription="flowchart-v2">
+  <style>#diagram-graph{font-family:Arial,Microsoft YaHei,Noto Serif CJK SC,sans-serif;font-size:20px;fill:#333333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#diagram-graph .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#diagram-graph .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#diagram-graph .error-icon{fill:hsl(31.5789473684, 76%, 100%);}#diagram-graph .error-text{fill:#000000;stroke:#000000;}#diagram-graph .edge-thickness-normal{stroke-width:1px;}#diagram-graph .edge-thickness-thick{stroke-width:3.5px;}#diagram-graph .edge-pattern-solid{stroke-dasharray:0;}#diagram-graph .edge-thickness-invisible{stroke-width:0;fill:none;}#diagram-graph .edge-pattern-dashed{stroke-dasharray:3;}#diagram-graph .edge-pattern-dotted{stroke-dasharray:2;}#diagram-graph .marker{fill:#0b0b0b;stroke:#0b0b0b;}#diagram-graph .marker.cross{stroke:#0b0b0b;}#diagram-graph svg{font-family:Arial,Microsoft YaHei,Noto Serif CJK SC,sans-serif;font-size:20px;}#diagram-graph p{margin:0;}#diagram-graph .label{font-family:Arial,Microsoft YaHei,Noto Serif CJK SC,sans-serif;color:#333333;}#diagram-graph .cluster-label text{fill:#000000;}#diagram-graph .cluster-label span{color:#000000;}#diagram-graph .cluster-label span p{background-color:transparent;}#diagram-graph .label text,#diagram-graph span{fill:#333333;color:#333333;}#diagram-graph .node rect,#diagram-graph .node circle,#diagram-graph .node ellipse,#diagram-graph .node polygon,#diagram-graph .node path{fill:#e9f2fc;stroke:#296bb7;stroke-width:1px;}#diagram-graph .rough-node .label text,#diagram-graph .node .label text,#diagram-graph .image-shape .label,#diagram-graph .icon-shape .label{text-anchor:middle;}#diagram-graph .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#diagram-graph .rough-node .label,#diagram-graph .node .label,#diagram-graph .image-shape .label,#diagram-graph .icon-shape .label{text-align:center;}#diagram-graph .node.clickable{cursor:pointer;}#diagram-graph .root .anchor path{fill:#0b0b0b!important;stroke-width:0;stroke:#0b0b0b;}#diagram-graph .arrowheadPath{fill:#0b0b0b;}#diagram-graph .edgePath .path{stroke:#0b0b0b;stroke-width:1px;}#diagram-graph .flowchart-link{stroke:#0b0b0b;fill:none;}#diagram-graph .edgeLabel{background-color:hsl(91.5789473684, 76%, 95.0980392157%);text-align:center;}#diagram-graph .edgeLabel p{background-color:hsl(91.5789473684, 76%, 95.0980392157%);}#diagram-graph .edgeLabel rect{opacity:0.5;background-color:hsl(91.5789473684, 76%, 95.0980392157%);fill:hsl(91.5789473684, 76%, 95.0980392157%);}#diagram-graph .labelBkg{background-color:rgba(242, 252, 233.0000000001, 0.5);}#diagram-graph .cluster rect{fill:#FFFFF8;stroke:hsl(31.5789473684, 36%, 90%);stroke-width:1px;}#diagram-graph .cluster text{fill:#000000;}#diagram-graph .cluster span{color:#000000;}#diagram-graph div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:Arial,Microsoft YaHei,Noto Serif CJK SC,sans-serif;font-size:12px;background:hsl(31.5789473684, 76%, 100%);border:1px solid hsl(31.5789473684, 36%, 90%);border-radius:2px;pointer-events:none;z-index:100;}#diagram-graph .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#333333;}#diagram-graph rect.text{fill:none;stroke-width:0;}#diagram-graph .icon-shape,#diagram-graph .image-shape{background-color:hsl(91.5789473684, 76%, 95.0980392157%);text-align:center;}#diagram-graph .icon-shape p,#diagram-graph .image-shape p{background-color:hsl(91.5789473684, 76%, 95.0980392157%);padding:2px;}#diagram-graph .icon-shape .label rect,#diagram-graph .image-shape .label rect{opacity:0.5;background-color:hsl(91.5789473684, 76%, 95.0980392157%);fill:hsl(91.5789473684, 76%, 95.0980392157%);}#diagram-graph .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#diagram-graph .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#diagram-graph .node .neo-node{stroke:#296bb7;}#diagram-graph [data-look="neo"].node rect,#diagram-graph [data-look="neo"].cluster rect,#diagram-graph [data-look="neo"].node polygon{stroke:url(#diagram-graph-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram-graph [data-look="neo"].swimlane.cluster rect{filter:none;}#diagram-graph [data-look="neo"].node path{stroke:url(#diagram-graph-gradient);stroke-width:1px;}#diagram-graph [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram-graph [data-look="neo"].node .neo-line path{stroke:#296bb7;filter:none;}#diagram-graph [data-look="neo"].node circle{stroke:url(#diagram-graph-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram-graph [data-look="neo"].node circle .state-start{fill:#000000;}#diagram-graph [data-look="neo"].icon-shape .icon{fill:url(#diagram-graph-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram-graph [data-look="neo"].icon-shape .icon-neo path{stroke:url(#diagram-graph-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram-graph .node text,#diagram-graph .nodeLabel,#diagram-graph .label text{font-weight:400;font-style:normal;}#diagram-graph .node rect,#diagram-graph .flowchart-link{stroke-width:1px;}#diagram-graph :root{--mermaid-font-family:Arial,Microsoft YaHei,Noto Serif CJK SC,sans-serif;}
+  </style>
+  <g>
+    <marker id="diagram-graph_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="7.75" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto">
+      <path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="4" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto">
+      <polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto">
+      <path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto">
+      <polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="10.75" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto">
+      <circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="0" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto">
+      <circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto">
+      <circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto">
+      <circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/>
+    </marker>
+    <marker id="diagram-graph_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/>
+    </marker>
+    <g class="root">
+      <g class="clusters"/>
+      <g class="edgePaths">
+        <path d="M305.18701410261815,54.272727966308594L154.52724205162005,90.51937071530307Q146.67258834838867,92.40909099578857 146.67258834838867,100.4878673595806L146.67258834838867,126.54545402526855" id="diagram-graph-L_A_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 190.91944885253906 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_A_B_0" data-points="W3sieCI6MzA1LjE4NzAxNDEwMjYxODE1LCJ5Ijo1NC4yNzI3Mjc5NjYzMDg1OTR9LHsieCI6MTQ2LjY3MjU4ODM0ODM4ODY3LCJ5Ijo5Mi40MDkwOTA5OTU3ODg1N30seyJ4IjoxNDYuNjcyNTg4MzQ4Mzg4NjcsInkiOjEzMC41NDU0NTQwMjUyNjg1NX1d" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M108.3248261198822,176.81818199157715L53.823074943852625,209.7007357482749Q45.11505889892578,214.95454502105713 45.11505889892578,225.12470014836347L45.11505889892578,249.0909080505371" id="diagram-graph-L_B_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 102.2320556640625 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_B_C_0" data-points="W3sieCI6MTA4LjMyNDgyNjExOTg4MjIsInkiOjE3Ni44MTgxODE5OTE1NzcxNX0seyJ4Ijo0NS4xMTUwNTg4OTg5MjU3OCwieSI6MjE0Ljk1NDU0NTAyMTA1NzEzfSx7IngiOjQ1LjExNTA1ODg5ODkyNTc4LCJ5IjoyNTMuMDkwOTA4MDUwNTM3MX1d" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M185.02035057689514,176.81818199157715L239.52210175292473,209.7007357482749Q248.23011779785156,214.95454502105713 248.23011779785156,225.12470014836347L248.23011779785156,249.0909080505371" id="diagram-graph-L_B_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 102.2320556640625 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_B_D_0" data-points="W3sieCI6MTg1LjAyMDM1MDU3Njg5NTE0LCJ5IjoxNzYuODE4MTgxOTkxNTc3MTV9LHsieCI6MjQ4LjIzMDExNzc5Nzg1MTU2LCJ5IjoyMTQuOTU0NTQ1MDIxMDU3MTN9LHsieCI6MjQ4LjIzMDExNzc5Nzg1MTU2LCJ5IjoyNTMuMDkwOTA4MDUwNTM3MX1d" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M535.8681379574313,54.272727966308594L749.945403395586,91.09382629373152Q757.5923309326172,92.40909099578857 757.5923309326172,100.16830629071907L757.5923309326172,126.54545402526855" id="diagram-graph-L_A_E_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 252.74832153320312 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_A_E_0" data-points="W3sieCI6NTM1Ljg2ODEzNzk1NzQzMTMsInkiOjU0LjI3MjcyNzk2NjMwODU5NH0seyJ4Ijo3NTcuNTkyMzMwOTMyNjE3MiwieSI6OTIuNDA5MDkwOTk1Nzg4NTd9LHsieCI6NzU3LjU5MjMzMDkzMjYxNzIsInkiOjEzMC41NDU0NTQwMjUyNjg1NX1d" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M661.8909419808266,176.81818199157715L512.0015440017609,213.0548103920958Q504.14347076416016,214.95454502105713 504.14347076416016,223.03899346655865L504.14347076416016,249.0909080505371" id="diagram-graph-L_E_F_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 190.17581176757812 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_E_F_0" data-points="W3sieCI6NjYxLjg5MDk0MTk4MDgyNjYsInkiOjE3Ni44MTgxODE5OTE1NzcxNX0seyJ4Ijo1MDQuMTQzNDcwNzY0MTYwMTYsInkiOjIxNC45NTQ1NDUwMjEwNTcxM30seyJ4Ijo1MDQuMTQzNDcwNzY0MTYwMTYsInkiOjI1My4wOTA5MDgwNTA1MzcxfV0=" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M757.5923309326172,176.81818199157715L757.5923309326172,214.95454502105713L757.5923309326172,249.0909080505371" id="diagram-graph-L_E_G_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 68.27273559570312 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_E_G_0" data-points="W3sieCI6NzU3LjU5MjMzMDkzMjYxNzIsInkiOjE3Ni44MTgxODE5OTE1NzcxNX0seyJ4Ijo3NTcuNTkyMzMwOTMyNjE3MiwieSI6MjE0Ljk1NDU0NTAyMTA1NzEzfSx7IngiOjc1Ny41OTIzMzA5MzI2MTcyLCJ5IjoyNTMuMDkwOTA4MDUwNTM3MX1d" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M868.4042814383554,176.81818199157715L1043.2988476289424,213.33431877640666Q1051.0589447021484,214.95454502105713 1051.0589447021484,222.88198090344906L1051.0589447021484,249.0909080505371" id="diagram-graph-L_E_H_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 214.42315673828125 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_E_H_0" data-points="W3sieCI6ODY4LjQwNDI4MTQzODM1NTQsInkiOjE3Ni44MTgxODE5OTE1NzcxNX0seyJ4IjoxMDUxLjA1ODk0NDcwMjE0ODQsInkiOjIxNC45NTQ1NDUwMjEwNTcxM30seyJ4IjoxMDUxLjA1ODk0NDcwMjE0ODQsInkiOjI1My4wOTA5MDgwNTA1MzcxfV0=" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M504.14347076416016,299.3636360168457L504.14347076416016,324.3636360168457L504.14347076416016,345.3636360168457" id="diagram-graph-L_F_Z1_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 42 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_F_Z1_0" data-points="W3sieCI6NTA0LjE0MzQ3MDc2NDE2MDE2LCJ5IjoyOTkuMzYzNjM2MDE2ODQ1N30seyJ4Ijo1MDQuMTQzNDcwNzY0MTYwMTYsInkiOjMyNC4zNjM2MzYwMTY4NDU3fSx7IngiOjUwNC4xNDM0NzA3NjQxNjAxNiwieSI6MzQ5LjM2MzYzNjAxNjg0NTd9XQ==" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M757.5923309326172,299.3636360168457L757.5923309326172,324.3636360168457L757.5923309326172,345.3636360168457" id="diagram-graph-L_G_Z2_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 42 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_G_Z2_0" data-points="W3sieCI6NzU3LjU5MjMzMDkzMjYxNzIsInkiOjI5OS4zNjM2MzYwMTY4NDU3fSx7IngiOjc1Ny41OTIzMzA5MzI2MTcyLCJ5IjozMjQuMzYzNjM2MDE2ODQ1N30seyJ4Ijo3NTcuNTkyMzMwOTMyNjE3MiwieSI6MzQ5LjM2MzYzNjAxNjg0NTd9XQ==" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+        <path d="M1051.0589447021484,299.3636360168457L1051.0589447021484,324.3636360168457L1051.0589447021484,345.3636360168457" id="diagram-graph-L_H_Z3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 42 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_H_Z3_0" data-points="W3sieCI6MTA1MS4wNTg5NDQ3MDIxNDg0LCJ5IjoyOTkuMzYzNjM2MDE2ODQ1N30seyJ4IjoxMDUxLjA1ODk0NDcwMjE0ODQsInkiOjMyNC4zNjM2MzYwMTY4NDU3fSx7IngiOjEwNTEuMDU4OTQ0NzAyMTQ4NCwieSI6MzQ5LjM2MzYzNjAxNjg0NTd9XQ==" data-look="neo" marker-end="url(#diagram-graph_flowchart-v2-pointEnd-margin)"/>
+      </g>
+      <g class="edgeLabels">
+        <g class="edgeLabel" transform="translate(146.67258834838867, 92.40909099578857)">
+          <g class="label" data-id="L_A_B_0" transform="translate(0.22727203369140625, -12.95454478263855)">
+            <g>
+              <rect class="background" style="" x="-18.768465042114258" y="-0.18181824684143066" width="37.0823860168457" height="26.27272605895996"/>
+              <text y="-10.1" text-anchor="middle" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Yes
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="edgeLabel" transform="translate(45.11505889892578, 214.95454502105713)">
+          <g class="label" data-id="L_B_C_0" transform="translate(0.22727203369140625, -12.95454478263855)">
+            <g>
+              <rect class="background" style="" x="-18.768465042114258" y="-0.18181824684143066" width="37.0823860168457" height="26.27272605895996"/>
+              <text y="-10.1" text-anchor="middle" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Yes
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="edgeLabel" transform="translate(248.23011779785156, 214.95454502105713)">
+          <g class="label" data-id="L_B_D_0" transform="translate(0, -12.95454478263855)">
+            <g>
+              <rect class="background" style="" x="-14.784090042114258" y="-0.18181824684143066" width="29.568180084228516" height="26.27272605895996"/>
+              <text y="-10.1" text-anchor="middle" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">No
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="edgeLabel" transform="translate(757.5923309326172, 92.40909099578857)">
+          <g class="label" data-id="L_A_E_0" transform="translate(0, -12.95454478263855)">
+            <g>
+              <rect class="background" style="" x="-14.784090042114258" y="-0.18181824684143066" width="29.568180084228516" height="26.27272605895996"/>
+              <text y="-10.1" text-anchor="middle" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">No
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="edgeLabel">
+          <g class="label" data-id="L_E_F_0" transform="translate(0, 0)">
+            <text y="-10.1" text-anchor="middle">
+              <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>
+            </text>
+          </g>
+        </g>
+        <g>
+          <rect class="background" style="stroke: none"/>
+        </g>
+        <g class="edgeLabel">
+          <g class="label" data-id="L_E_G_0" transform="translate(0, 0)">
+            <text y="-10.1" text-anchor="middle">
+              <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>
+            </text>
+          </g>
+        </g>
+        <g>
+          <rect class="background" style="stroke: none"/>
+        </g>
+        <g class="edgeLabel">
+          <g class="label" data-id="L_E_H_0" transform="translate(0, 0)">
+            <text y="-10.1" text-anchor="middle">
+              <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>
+            </text>
+          </g>
+        </g>
+        <g>
+          <rect class="background" style="stroke: none"/>
+        </g>
+        <g class="edgeLabel">
+          <g class="label" data-id="L_F_Z1_0" transform="translate(0, 0)">
+            <text y="-10.1" text-anchor="middle">
+              <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>
+            </text>
+          </g>
+        </g>
+        <g>
+          <rect class="background" style="stroke: none"/>
+        </g>
+        <g class="edgeLabel">
+          <g class="label" data-id="L_G_Z2_0" transform="translate(0, 0)">
+            <text y="-10.1" text-anchor="middle">
+              <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>
+            </text>
+          </g>
+        </g>
+        <g>
+          <rect class="background" style="stroke: none"/>
+        </g>
+        <g class="edgeLabel">
+          <g class="label" data-id="L_H_Z3_0" transform="translate(0, 0)">
+            <text y="-10.1" text-anchor="middle">
+              <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>
+            </text>
+          </g>
+        </g>
+        <g>
+          <rect class="background" style="stroke: none"/>
+        </g>
+      </g>
+      <g class="nodes">
+        <g class="node default" id="diagram-graph-flowchart-A-0" data-look="neo" data-id="A" data-node="true" data-et="node" transform="translate(401.3536949157715, 31.136363983154297)">
+          <rect class="basic label-container" style="" data-id="A" x="-146" y="-23.13636302947998" width="292" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">完整训练状态能放进单卡吗？
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-B-1" data-look="neo" data-id="B" data-node="true" data-et="node" transform="translate(146.67258834838867, 153.68181800842285)">
+          <rect class="basic label-container" style="" data-id="B" x="-135.99999237060547" y="-23.13636302947998" width="271.99998474121094" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">主要问题是训练吞吐量吗？
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-C-3" data-look="neo" data-id="C" data-node="true" data-et="node" transform="translate(45.11505889892578, 276.2272720336914)">
+          <rect class="basic label-container" style="" data-id="C" x="-37.11505699157715" y="-23.13636302947998" width="74.2301139831543" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">DDP
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-D-5" data-look="neo" data-id="D" data-node="true" data-et="node" transform="translate(248.23011779785156, 276.2272720336914)">
+          <rect class="basic label-container" style="" data-id="D" x="-116" y="-23.13636302947998" width="232" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">单卡训练可能已经足够
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-E-7" data-look="neo" data-id="E" data-node="true" data-et="node" transform="translate(757.5923309326172, 153.68181800842285)">
+          <rect class="basic label-container" style="" data-id="E" x="-164.92755126953125" y="-23.13636302947998" width="329.8551025390625" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">主要是哪部分
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Model
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> State
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 太大？
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-F-9" data-look="neo" data-id="F" data-node="true" data-et="node" transform="translate(504.14347076416016, 276.2272720336914)">
+          <rect class="basic label-container" style="" data-id="F" x="-89.9133529663086" y="-23.13636302947998" width="179.8267059326172" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Optimizer
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> States
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-G-11" data-look="neo" data-id="G" data-node="true" data-et="node" transform="translate(757.5923309326172, 276.2272720336914)">
+          <rect class="basic label-container" style="" data-id="G" x="-113.53550720214844" y="-23.13636302947998" width="227.07101440429688" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Optimizer
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> +
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Gradients
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-H-13" data-look="neo" data-id="H" data-node="true" data-et="node" transform="translate(1051.0589447021484, 276.2272720336914)">
+          <rect class="basic label-container" style="" data-id="H" x="-129.9311065673828" y="-23.13636302947998" width="259.8622131347656" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Parameters
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 也需要
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Shard
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-Z1-15" data-look="neo" data-id="Z1" data-node="true" data-et="node" transform="translate(504.14347076416016, 372.5)">
+          <rect class="basic label-container" style="" data-id="Z1" x="-51.56462860107422" y="-23.13636302947998" width="103.12925720214844" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">ZeRO-1
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-Z2-17" data-look="neo" data-id="Z2" data-node="true" data-et="node" transform="translate(757.5923309326172, 372.5)">
+          <rect class="basic label-container" style="" data-id="Z2" x="-51.56462860107422" y="-23.13636302947998" width="103.12925720214844" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">ZeRO-2
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+        <g class="node default" id="diagram-graph-flowchart-Z3-19" data-look="neo" data-id="Z3" data-node="true" data-et="node" transform="translate(1051.0589447021484, 372.5)">
+          <rect class="basic label-container" style="" data-id="Z3" x="-86.57173156738281" y="-23.13636302947998" width="173.14346313476562" height="46.27272605895996" stroke="url(#gradient)"/>
+          <g class="label" style="" transform="translate(0, -12.95454478263855)">
+            <rect/>
+            <g>
+              <rect class="background" style="stroke: none"/>
+              <text y="-10.1" style="">
+                <tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal">ZeRO-3
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> /
+                  </tspan>
+                  <tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> FSDP
+                  </tspan>
+                </tspan>
+              </text>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+  <defs>
+    <filter id="diagram-graph-drop-shadow" height="130%" width="130%">
+      <feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/>
+    </filter>
+  </defs>
+  <defs>
+    <filter id="diagram-graph-drop-shadow-small" height="150%" width="150%">
+      <feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/>
+    </filter>
+  </defs>
+  <linearGradient id="diagram-graph-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#296bb7" stop-opacity="1"/>
+    <stop offset="100%" stop-color="hsl(91.5789473684, 36%, 85.0980392157%)" stop-opacity="1"/>
+  </linearGradient>
+</svg>

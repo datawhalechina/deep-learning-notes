@@ -1,0 +1,43 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 20px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  flowchart:
+    wrappingWidth: 300
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A[完整训练状态能放进单卡吗？] -->| Yes | B[主要问题是训练吞吐量吗？]
+    B -->| Yes | C[DDP]
+    B -->| No  | D[单卡训练可能已经足够]
+
+    A -->| No | E[主要是哪部分 Model State 太大？]
+    E --> F[Optimizer States]
+    E --> G[Optimizer + Gradients]
+    E --> H[Parameters 也需要 Shard]
+
+    F --> Z1[ZeRO-1]
+    G --> Z2[ZeRO-2]
+    H --> Z3[ZeRO-3 / FSDP]
