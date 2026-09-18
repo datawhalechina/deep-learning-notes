@@ -9,6 +9,8 @@ title: "19.9 分布式训练入门：DDP、ZeRO 与 FSDP 的直觉"
 order: 9
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.9-distributed-training.ipynb){fig-align="left"}
+
 前面几节里，我们一直默认训练发生在一张 GPU 上。Gradient accumulation 可以把大 batch 拆成多个 micro-batch，activation checkpointing 可以用重计算减少 activation memory，mixed precision 也可以降低很多 tensor 的存储和计算成本。
 
 但这些方法都有一个共同点：

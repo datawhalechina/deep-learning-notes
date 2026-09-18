@@ -9,6 +9,8 @@ title: "19.8 Triton 入门：什么时候需要自己写 Kernel"
 order: 8
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.8-triton.ipynb){fig-align="left"}
+
 前面我们已经从 FLOPs、Memory 和 Arithmetic Intensity 的角度分析过算子的性能，也学习了怎样用 profiler 找到真正的瓶颈。到这里，一个自然的问题是：
 
 > **如果 profiler 已经告诉我们某一小段 GPU 计算很慢，接下来还能做什么？**

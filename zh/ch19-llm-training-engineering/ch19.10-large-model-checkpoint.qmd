@@ -9,6 +9,8 @@ title: "19.10 大模型 Checkpoint：模型、优化器与分布式状态如何�
 order: 10
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch19-llm-training-engineering/ch19.10-large-model-checkpoint.ipynb){fig-align="left"}
+
 Chapter 2 里我们已经介绍过最基本的 checkpoint：保存 `model.state_dict()`、`optimizer.state_dict()`，然后在新的训练进程里重新构造对象并恢复状态。
 
 到了大模型训练，这套基本原则没有改变，真正变复杂的是：
