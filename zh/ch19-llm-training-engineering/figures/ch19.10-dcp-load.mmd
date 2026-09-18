@@ -1,0 +1,40 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 24px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  flowchart:
+    wrappingWidth: 400
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A["Each rank"] --> B["TrainingState.load_state_dict()"]
+    B --> C["Prepare current distributed state"]
+    C --> D["Create local load plan"]
+    D --> E["Collect / coordinate plans"]
+    E --> F["Create global load plan"]
+    F --> G["Read assigned checkpoint chunks"]
+    G --> H["Reshard / map into current layout"]
+    H --> I["set_state_dict()"]
+    I --> J["Restore model and optimizer state"]

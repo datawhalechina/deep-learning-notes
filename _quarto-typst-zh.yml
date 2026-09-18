@@ -158,3 +158,4 @@ book:
         - "zh/ch19-llm-training-engineering/ch19.7-modern-attention-apis.qmd"
         - "zh/ch19-llm-training-engineering/ch19.8-triton.qmd"
         - "zh/ch19-llm-training-engineering/ch19.9-distributed-training.qmd"
+        - "zh/ch19-llm-training-engineering/ch19.10-large-model-checkpoint.qmd"

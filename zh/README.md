@@ -124,3 +124,4 @@
 - 19.7 现代 Attention API 与 Hugging Face Kernels
 - 19.8 Triton 入门：什么时候需要自己写 Kernel
 - 19.9 分布式训练入门：DDP、ZeRO 与 FSDP 的直觉
+- 19.10 大模型 Checkpoint：模型、优化器与分布式状态如何恢复

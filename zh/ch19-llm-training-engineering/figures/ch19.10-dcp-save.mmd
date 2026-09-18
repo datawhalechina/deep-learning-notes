@@ -1,0 +1,39 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 24px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  flowchart:
+    wrappingWidth: 400
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A["Each rank"] --> B["TrainingState.state_dict()"]
+    B --> C["get_state_dict()"]
+    C --> D["Local distributed state"]
+    D --> E["Create local save plan"]
+    E --> F["Collect / coordinate plans"]
+    F --> G["Create global plan"]
+    G --> H["Each rank writes its assigned chunks"]
+    H --> I["Commit metadata"]

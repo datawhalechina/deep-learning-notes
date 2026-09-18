@@ -1,0 +1,34 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A[P0 / P1 / P2 / P3]
+    B[All-Gather]
+    C[Full Parameter]
+    D[Rank 0 Save]
+
+    A --> B --> C --> D
