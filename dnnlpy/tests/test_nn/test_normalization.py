@@ -50,13 +50,8 @@ def _copy(x: Tensor, mode: bool = True) -> Tensor:
             lambda x: F.group_norm(x, 2),
             (2, 4, 5, 6),
         ),
-        (
-            lambda x: dF.local_response_norm(x, 3),
-            lambda x: F.local_response_norm(x, 3),
-            (2, 4, 5, 6),
-        ),
     ],
-    ids=['batch', 'instance', 'layer', 'rms', 'group', 'local-response'],
+    ids=['batch', 'instance', 'layer', 'rms', 'group'],
 )
 def test_normalization_function_gradients_match_torch(
     custom_fn: Callable[[Tensor], Tensor],
@@ -661,22 +656,3 @@ def test_group_norm_module_rejects_wrong_channel_count():
 
     with pytest.raises(AssertionError):
         custom(torch.randn(2, 3, 5))
-
-
-@pytest.mark.parametrize('shape', [(2, 4, 5), (2, 4, 5, 6)])
-def test_local_response_norm_function_matches_torch(shape: tuple[int, ...]):
-    x = torch.randn(shape)
-
-    actual = dF.local_response_norm(x, 3, alpha=1e-3, beta=0.5, k=2.0)
-    expected = F.local_response_norm(x, 3, alpha=1e-3, beta=0.5, k=2.0)
-
-    assert_close(actual, expected)
-
-
-def test_local_response_norm_module_matches_torch():
-    x = torch.randn(2, 4, 5, 6)
-
-    custom = dnn.LocalResponseNorm(3, alpha=1e-3, beta=0.5, k=2.0)
-    reference = nn.LocalResponseNorm(3, alpha=1e-3, beta=0.5, k=2.0)
-
-    assert_close(custom(x), reference(x))

@@ -63,7 +63,6 @@ from .normalization import (
     InstanceNorm2d as InstanceNorm2d,
     InstanceNorm3d as InstanceNorm3d,
     LayerNorm as LayerNorm,
-    LocalResponseNorm as LocalResponseNorm,
     RMSNorm as RMSNorm,
 )
 from .pooling import (

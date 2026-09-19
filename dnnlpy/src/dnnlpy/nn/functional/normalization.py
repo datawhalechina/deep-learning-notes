@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 from torch import Tensor
 
 __all__ = [
@@ -7,7 +6,6 @@ __all__ = [
     'group_norm',
     'instance_norm',
     'layer_norm',
-    'local_response_norm',
     'rms_norm',
 ]
 
@@ -289,51 +287,6 @@ def layer_norm(
         y = y + bias
 
     return y
-
-
-def local_response_norm(
-    x: Tensor,
-    size: int,
-    alpha: float = 1e-4,
-    beta: float = 0.75,
-    k: float = 1.0,
-) -> Tensor:
-    """Apply local response normalization to an input tensor.
-
-    Args:
-        x (Tensor): Input tensor wOth shape `(N, C, ...)`.
-        size (int): Number of neighboring channels used for normalization.
-        alpha (float, default: 1e-4): Scaling factor applied to the local squared response.
-        beta (float, default: 0.75): Exponent applied to the normalization term.
-        k (float, default: 1.0): Additive constant in the normalization term.
-
-    Returns:
-        Tensor: Normalized tensor with the same shape as `x`.
-    """
-    if x.ndim < 3:
-        raise AssertionError(
-            'Expected an input with at least 3 dimensions, '
-            f'but got input shape {tuple(x.shape)}.'
-        )
-
-    # Move the channel dimension to the end:
-    # (N, C, ...) -> (N, ..., C)
-    squared = x.square().movedim(1, -1)
-
-    # avg_pool1d expects an input with shape (B, C, L).
-    # Flatten every dimension except the channel dimension.
-    flat_squared = squared.reshape(-1, 1, x.size(1))
-
-    # PyTorch pads asymmetrically when size is even.
-    left_padding = size // 2
-    right_padding = (size - 1) // 2
-
-    padded_squared = F.pad(flat_squared, (left_padding, right_padding))
-    local_mean_square = F.avg_pool1d(padded_squared, kernel_size=size, stride=1)
-    local_mean_square = local_mean_square.reshape_as(squared).movedim(-1, 1)
-
-    scale = k + alpha * local_mean_square
-    return x * scale.pow(-beta)
 
 
 def rms_norm(

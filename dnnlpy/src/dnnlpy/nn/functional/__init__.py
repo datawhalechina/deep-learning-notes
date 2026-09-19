@@ -61,7 +61,6 @@ from .normalization import (
     group_norm as group_norm,
     instance_norm as instance_norm,
     layer_norm as layer_norm,
-    local_response_norm as local_response_norm,
     rms_norm as rms_norm,
 )
 from .pooling import (

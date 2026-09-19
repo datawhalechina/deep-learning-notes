@@ -19,7 +19,6 @@ __all__ = [
     'InstanceNorm2d',
     'InstanceNorm3d',
     'LayerNorm',
-    'LocalResponseNorm',
     'RMSNorm',
 ]
 
@@ -521,57 +520,6 @@ class LayerNorm(nn.Module):
             f'elementwise_affine={self.elementwise_affine}, '
             f'bias={self.bias is not None}'
         )
-
-
-class LocalResponseNorm(nn.Module):
-    """Apply local response normalization across neighboring channels."""
-
-    def __init__(
-        self,
-        size: int,
-        alpha: float = 1e-4,
-        beta: float = 0.75,
-        k: float = 1.0,
-        *,
-        fast: bool = False,
-    ):
-        """Initialize a local response normalization module.
-
-        Args:
-            size (int): Number of neighboring channels used for normalization.
-            alpha (float, default: 1e-4): Scaling factor applied to the local squared
-                response.
-            beta (float, default: 0.75): Exponent applied to the normalization term.
-            k (float, default: 1.0): Additive constant in the normalization term.
-            fast (bool, default: False): If set to True, will use the fast implementation
-                from :func:`torch.nn.functional`. Default: False.
-        """
-        super().__init__()
-        self.size = size
-        self.alpha = alpha
-        self.beta = beta
-        self.k = k
-        self.fast = fast
-
-    def forward(self, x: Tensor) -> Tensor:
-        if self.fast:
-            return F.local_response_norm(
-                x,
-                self.size,
-                alpha=self.alpha,
-                beta=self.beta,
-                k=self.k,
-            )
-        return dF.local_response_norm(
-            x,
-            self.size,
-            alpha=self.alpha,
-            beta=self.beta,
-            k=self.k,
-        )
-
-    def extra_repr(self) -> str:
-        return f'{self.size}, alpha={self.alpha}, beta={self.beta}, k={self.k}'
 
 
 class RMSNorm(nn.Module):
