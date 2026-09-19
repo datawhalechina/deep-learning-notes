@@ -38,7 +38,7 @@ def batch_norm(
     Returns:
         Tensor: Normalized tensor with the same shape as `x`.
     """
-    if (running_mean is None) != (running_var is None):
+    if (running_mean is None) ^ (running_var is None):
         raise AssertionError(
             '`running_mean` and `running_var` must either both be tensors or both be None.'
         )
@@ -59,8 +59,7 @@ def batch_norm(
                 f'but got input shape {tuple(x.shape)}.'
             )
 
-        batch_mean = x.mean(dim=reduce_dims)
-        batch_var = x.var(dim=reduce_dims, correction=0)
+        batch_var, batch_mean = torch.var_mean(x, dim=reduce_dims, correction=0)
 
         # Only update running stats when in training mode and running stats are provided
         if running_mean is not None and running_var is not None:
@@ -72,7 +71,12 @@ def batch_norm(
 
     # Hit this branch when in evaluation mode and running stats are provided.
     else:
-        assert running_mean is not None and running_var is not None
+        if running_mean is None or running_var is None:
+            raise AssertionError(
+                'Expected `running_mean` and `running_var` to be provided '
+                'when `use_batch_stats=False`.'
+            )
+
         batch_mean = running_mean
         batch_var = running_var
 
@@ -112,7 +116,6 @@ def group_norm(
         raise AssertionError(
             f'Expected input tensor to have at least 2 dimensions, but got {x.ndim}.'
         )
-
     if num_groups <= 0:
         raise AssertionError(
             f'Expected `num_groups` to be greater than 0, but got {num_groups}.'
@@ -133,9 +136,9 @@ def group_norm(
     # Reduce over the channels in each group and all spatial dimensions.
     # (N, G, C // G, H, W) -> reduce_dims = (2, 3, 4)
     reduce_dims = tuple(range(2, grouped_x.ndim))
-
-    group_mean = grouped_x.mean(dim=reduce_dims, keepdim=True)
-    group_var = grouped_x.var(dim=reduce_dims, correction=0, keepdim=True)
+    group_var, group_mean = torch.var_mean(
+        grouped_x, reduce_dims, correction=0, keepdim=True
+    )
 
     grouped_y = (grouped_x - group_mean) * (group_var + eps).rsqrt()
     y = grouped_y.reshape_as(x)
@@ -181,7 +184,7 @@ def instance_norm(
     Returns:
         Tensor: Normalized tensor with the same shape as `x`.
     """
-    if (running_mean is None) != (running_var is None):
+    if (running_mean is None) ^ (running_var is None):
         raise AssertionError(
             '`running_mean` and `running_var` must either both be tensors or both be None.'
         )
@@ -207,27 +210,31 @@ def instance_norm(
             )
 
         # Each sample and channel has its own mean and variance.
-        instance_mean = x.mean(dim=reduce_dims)
-        instance_var = x.var(dim=reduce_dims, correction=0)
+        instance_var, instance_mean = torch.var_mean(x, reduce_dims, correction=0)
 
         # Running statistics are shared across the batch, so average the
         # per-instance statistics over the batch dimension.
         if running_mean is not None and running_var is not None:
-            mean_for_running = instance_mean.mean(dim=0)
+            avg_mean = instance_mean.mean(0)
 
             unbiased_var = instance_var * sample_count / (sample_count - 1)
-            var_for_running = unbiased_var.mean(dim=0)
+            avg_var = unbiased_var.mean(0)
 
             with torch.no_grad():
-                running_mean.lerp_(mean_for_running, momentum)
-                running_var.lerp_(var_for_running, momentum)
+                running_mean.lerp_(avg_mean, momentum)
+                running_var.lerp_(avg_var, momentum)
 
         instance_mean = instance_mean.reshape(input_stats_shape)
         instance_var = instance_var.reshape(input_stats_shape)
 
     # Hit this branch when in evaluation mode and running stats are provided.
     else:
-        assert running_mean is not None and running_var is not None
+        if running_mean is None or running_var is None:
+            raise AssertionError(
+                'Expected `running_mean` and `running_var` to be provided '
+                'when `use_instance_stats=False`.'
+            )
+
         instance_mean = running_mean.reshape(broadcast_shape)
         instance_var = running_var.reshape(broadcast_shape)
 
@@ -235,7 +242,6 @@ def instance_norm(
 
     if weight is not None:
         y = y * weight.reshape(broadcast_shape)
-
     if bias is not None:
         y = y + bias.reshape(broadcast_shape)
 
@@ -276,8 +282,7 @@ def layer_norm(
         )
 
     dims = tuple(range(x.ndim - len(normalized_shape), x.ndim))
-    layer_mean = x.mean(dim=dims, keepdim=True)
-    layer_var = x.var(dim=dims, correction=0, keepdim=True)
+    layer_var, layer_mean = torch.var_mean(x, dims, correction=0, keepdim=True)
 
     y = (x - layer_mean) * (layer_var + eps).rsqrt()
 
@@ -329,7 +334,7 @@ def rms_norm(
     if x.dtype in (torch.float16, torch.bfloat16):
         x = x.to(torch.float32)
 
-    mean_square = x.square().mean(dim=reduce_dims, keepdim=True)
+    mean_square = x.square().mean(reduce_dims, keepdim=True)
     y = x * (mean_square + eps).rsqrt()
     y = y.to(dtype)
 
