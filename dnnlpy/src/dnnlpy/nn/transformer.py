@@ -25,7 +25,7 @@ __all__ = [
 def _get_activation_fn(act_fn: str | Activation, *, fast: bool = False) -> Activation:
     """Resolve a transformer activation name or callable."""
     if act_fn == 'relu':
-        return F.relu if fast else dF.relu  # type: ignore
+        return F.relu if fast else dF.relu
     if act_fn == 'gelu':
         return F.gelu if fast else dF.gelu
     if callable(act_fn):
@@ -56,7 +56,7 @@ class LearnablePositionalEmbedding(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.max_len = max_len
-        self.pe = nn.Embedding(max_len, embed_dim)
+        self.pos_embed = nn.Embedding(max_len, embed_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         """Add positional encodings to `x`."""
@@ -65,8 +65,8 @@ class LearnablePositionalEmbedding(nn.Module):
 
         seq_len = x.size(1)
         positions = torch.arange(seq_len, device=x.device)
-        pos_emb = self.pe(positions)
-        x = x + pos_emb.unsqueeze(0)
+        pos_embed = self.pos_embed(positions)
+        x = x + pos_embed.unsqueeze(0)
         return x
 
     def extra_repr(self) -> str:
@@ -75,6 +75,8 @@ class LearnablePositionalEmbedding(nn.Module):
 
 class SinusoidalPositionalEncoding(nn.Module):
     """Add fixed sinusoidal position encodings to batch-first sequences."""
+    
+    pos_embed: Tensor
 
     def __init__(self, embed_dim: int, max_len: int = 5000):
         """Precompute sinusoidal encodings.
@@ -84,19 +86,22 @@ class SinusoidalPositionalEncoding(nn.Module):
             max_len (int, default: 5000): Maximum supported sequence length.
         """
         super().__init__()
+        if embed_dim % 2 != 0:
+            raise AssertionError('`embed_dim` must be even.')
+
         self.embed_dim = embed_dim
         self.max_len = max_len
 
-        position = torch.arange(max_len).unsqueeze(1)
+        pos = torch.arange(max_len).unsqueeze(1)
         exp_term = torch.arange(0, embed_dim, 2) / embed_dim
         div_term = torch.pow(10000.0, exp_term)
 
-        pe = torch.zeros(max_len, embed_dim)
-        pe[:, 0::2] = torch.sin(position / div_term)
-        pe[:, 1::2] = torch.cos(position / div_term[: pe[:, 1::2].size(1)])
+        pos_embed = torch.zeros(max_len, embed_dim)
+        pos_embed[:, 0::2] = pos.div(div_term).sin()
+        pos_embed[:, 1::2] = pos.div(div_term).cos()
 
         # Add a batch dimension for broadcasting
-        self.register_buffer('pe', pe.unsqueeze(0))
+        self.register_buffer('pos_embed', pos_embed.unsqueeze(0))
 
     def forward(self, x: Tensor) -> Tensor:
         """Add positional encodings to `x`."""
@@ -104,7 +109,7 @@ class SinusoidalPositionalEncoding(nn.Module):
             raise AssertionError(f'Sequence length {x.size(1)} exceeds {self.max_len}.')
 
         seq_len = x.size(1)
-        x = x + self.pe[:, :seq_len]  # type: ignore
+        x = x + self.pos_embed[:, :seq_len]
         return x
 
     def extra_repr(self) -> str:
