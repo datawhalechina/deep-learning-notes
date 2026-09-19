@@ -6,12 +6,6 @@ from torch.testing import assert_close
 import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
 
-BATCH_SIZE = 2
-SRC_LEN = 4
-TGT_LEN = 8
-D_MODEL = 8
-NUM_HEADS = 2
-
 
 @torch.no_grad()
 def _copy_mha_to_torch(
@@ -99,8 +93,10 @@ def _copy_decoder_to_torch(
 
 
 @pytest.mark.parametrize('norm_first', [False, True])
-def test_transformer_encoder_layer_matches_torch(norm_first: bool):
-    src = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
+def test_transformer_encoder_layer_matches_torch(
+    norm_first: bool, batch_size: int, src_len: int, d_model: int, num_heads: int
+):
+    src = torch.randn(batch_size, src_len, d_model)
     src_mask = torch.tensor(
         [
             [False, True, False, False],
@@ -116,15 +112,15 @@ def test_transformer_encoder_layer_matches_torch(norm_first: bool):
         ]
     )
     custom = dnn.TransformerEncoderLayer(
-        d_model=D_MODEL,
-        num_heads=NUM_HEADS,
+        d_model=d_model,
+        num_heads=num_heads,
         dim_feedforward=16,
         dropout=0.0,
         norm_first=norm_first,
     )
     reference = nn.TransformerEncoderLayer(
-        d_model=D_MODEL,
-        nhead=NUM_HEADS,
+        d_model=d_model,
+        nhead=num_heads,
         dim_feedforward=16,
         dropout=0.0,
         batch_first=True,
@@ -146,25 +142,27 @@ def test_transformer_encoder_layer_matches_torch(norm_first: bool):
     assert_close(actual, expected, rtol=1e-5, atol=1e-6)
 
 
-def test_transformer_encoder_matches_torch_stack_with_norm():
-    src = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
+def test_transformer_encoder_matches_torch_stack_with_norm(
+    batch_size: int, src_len: int, d_model: int, num_heads: int
+):
+    src = torch.randn(batch_size, src_len, d_model)
     custom_layer = dnn.TransformerEncoderLayer(
-        d_model=D_MODEL,
-        num_heads=NUM_HEADS,
+        d_model=d_model,
+        num_heads=num_heads,
         dim_feedforward=16,
         dropout=0.0,
     )
-    custom_norm = dnn.LayerNorm(D_MODEL)
+    custom_norm = dnn.LayerNorm(d_model)
     custom = dnn.TransformerEncoder(custom_layer, num_layers=2, norm=custom_norm)
 
     reference_layer = nn.TransformerEncoderLayer(
-        d_model=D_MODEL,
-        nhead=NUM_HEADS,
+        d_model=d_model,
+        nhead=num_heads,
         dim_feedforward=16,
         dropout=0.0,
         batch_first=True,
     )
-    reference_norm = nn.LayerNorm(D_MODEL)
+    reference_norm = nn.LayerNorm(d_model)
     reference = nn.TransformerEncoder(
         reference_layer, num_layers=2, norm=reference_norm
     )
@@ -174,10 +172,17 @@ def test_transformer_encoder_matches_torch_stack_with_norm():
 
 
 @pytest.mark.parametrize('norm_first', [False, True])
-def test_transformer_decoder_layer_matches_torch(norm_first: bool):
-    tgt = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    memory = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
-    tgt_mask = dF.generate_causal_mask(TGT_LEN)
+def test_transformer_decoder_layer_matches_torch(
+    norm_first: bool,
+    batch_size: int,
+    src_len: int,
+    tgt_len: int,
+    d_model: int,
+    num_heads: int,
+):
+    tgt = torch.randn(batch_size, tgt_len, d_model)
+    memory = torch.randn(batch_size, src_len, d_model)
+    tgt_mask = dF.generate_causal_mask(tgt_len)
     memory_key_padding_mask = torch.tensor(
         [
             [False, False, False, True],
@@ -186,16 +191,16 @@ def test_transformer_decoder_layer_matches_torch(norm_first: bool):
     )
 
     custom = dnn.TransformerDecoderLayer(
-        d_model=D_MODEL,
-        num_heads=NUM_HEADS,
+        d_model=d_model,
+        num_heads=num_heads,
         dim_feedforward=16,
         dropout=0.0,
         activation='gelu',
         norm_first=norm_first,
     )
     reference = nn.TransformerDecoderLayer(
-        d_model=D_MODEL,
-        nhead=NUM_HEADS,
+        d_model=d_model,
+        nhead=num_heads,
         dim_feedforward=16,
         dropout=0.0,
         activation='gelu',
@@ -220,27 +225,29 @@ def test_transformer_decoder_layer_matches_torch(norm_first: bool):
     assert_close(actual, expected, rtol=1e-5, atol=1e-6)
 
 
-def test_transformer_decoder_matches_torch_stack_with_norm():
-    tgt = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    memory = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
+def test_transformer_decoder_matches_torch_stack_with_norm(
+    batch_size: int, src_len: int, tgt_len: int, d_model: int, num_heads: int
+):
+    tgt = torch.randn(batch_size, tgt_len, d_model)
+    memory = torch.randn(batch_size, src_len, d_model)
 
     custom_layer = dnn.TransformerDecoderLayer(
-        d_model=D_MODEL,
-        num_heads=NUM_HEADS,
+        d_model=d_model,
+        num_heads=num_heads,
         dim_feedforward=16,
         dropout=0.0,
     )
-    custom_norm = dnn.LayerNorm(8)
+    custom_norm = dnn.LayerNorm(d_model)
     custom = dnn.TransformerDecoder(custom_layer, num_layers=2, norm=custom_norm)
 
     reference_layer = nn.TransformerDecoderLayer(
-        d_model=D_MODEL,
-        nhead=NUM_HEADS,
+        d_model=d_model,
+        nhead=num_heads,
         dim_feedforward=16,
         dropout=0.0,
         batch_first=True,
     )
-    reference_norm = nn.LayerNorm(8)
+    reference_norm = nn.LayerNorm(d_model)
     reference = nn.TransformerDecoder(
         reference_layer, num_layers=2, norm=reference_norm
     )
@@ -252,20 +259,22 @@ def test_transformer_decoder_matches_torch_stack_with_norm():
     assert_close(actual, expected, rtol=1e-5, atol=1e-6)
 
 
-def test_transformer_matches_torch_batch_first_transformer():
-    src = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
-    tgt = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
+def test_transformer_matches_torch_batch_first_transformer(
+    batch_size: int, src_len: int, tgt_len: int, d_model: int, num_heads: int
+):
+    src = torch.randn(batch_size, src_len, d_model)
+    tgt = torch.randn(batch_size, tgt_len, d_model)
     src_key_padding_mask = torch.tensor(
         [
             [False, False, False, True],
             [False, True, False, True],
         ]
     )
-    tgt_mask = dF.generate_causal_mask(TGT_LEN)
+    tgt_mask = dF.generate_causal_mask(tgt_len)
 
     custom = dnn.Transformer(
-        d_model=D_MODEL,
-        num_heads=NUM_HEADS,
+        d_model=d_model,
+        num_heads=num_heads,
         num_encoder_layers=2,
         num_decoder_layers=2,
         dim_feedforward=16,
@@ -273,8 +282,8 @@ def test_transformer_matches_torch_batch_first_transformer():
         norm_first=False,
     )
     reference = nn.Transformer(
-        d_model=D_MODEL,
-        nhead=NUM_HEADS,
+        d_model=d_model,
+        nhead=num_heads,
         num_encoder_layers=2,
         num_decoder_layers=2,
         dim_feedforward=16,
@@ -302,16 +311,18 @@ def test_transformer_matches_torch_batch_first_transformer():
     assert_close(actual, expected, rtol=1e-5, atol=1e-6)
 
 
-def test_transformer_omits_batch_first_parameter():
+def test_transformer_omits_batch_first_parameter(
+    batch_size: int, src_len: int, tgt_len: int, d_model: int, num_heads: int
+):
     with pytest.raises(TypeError):
-        dnn.TransformerEncoderLayer(D_MODEL, NUM_HEADS, batch_first=False)  # type: ignore[call-arg]
+        dnn.TransformerEncoderLayer(d_model, num_heads, batch_first=False)  # type: ignore[call-arg]
 
-    src = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
-    tgt = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
+    src = torch.randn(batch_size, src_len, d_model)
+    tgt = torch.randn(batch_size, tgt_len, d_model)
 
     custom = dnn.Transformer(
-        d_model=D_MODEL,
-        num_heads=NUM_HEADS,
+        d_model=d_model,
+        num_heads=num_heads,
         num_encoder_layers=1,
         num_decoder_layers=1,
     )

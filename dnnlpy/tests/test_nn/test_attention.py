@@ -10,27 +10,18 @@ from torch.testing import assert_close
 import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
 
-BATCH_SIZE = 4
-SRC_LEN = 8
-TGT_LEN = 4
-D_MODEL = 6
-NUM_HEADS = 2
-HEAD_DIM = D_MODEL // NUM_HEADS
-KEY_DIM = 6
-VALUE_DIM = 8
-
 
 def _copy(x: Tensor, mode: bool = True) -> Tensor:
     """Returns a copy of the input tensor with `requires_grad` set to True."""
     return x.detach().clone().requires_grad_(mode)
 
 
-def test_basic_attention():
+def test_basic_attention(batch_size: int, src_len: int, tgt_len: int, d_model: int):
     options = {'dtype': torch.float64, 'requires_grad': True}
 
-    q1 = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL, **options)
-    k1 = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL, **options)
-    v1 = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL, **options)
+    q1 = torch.randn(batch_size, tgt_len, d_model, **options)
+    k1 = torch.randn(batch_size, src_len, d_model, **options)
+    v1 = torch.randn(batch_size, src_len, d_model, **options)
 
     q2 = _copy(q1)
     k2 = _copy(k1)
@@ -52,12 +43,14 @@ def test_basic_attention():
     assert_close(v1.grad, v2.grad)
 
 
-def test_scaled_dot_product_attention():
+def test_scaled_dot_product_attention(
+    batch_size: int, src_len: int, tgt_len: int, d_model: int
+):
     options = {'dtype': torch.float64, 'requires_grad': True}
 
-    q1 = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL, **options)
-    k1 = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL, **options)
-    v1 = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL, **options)
+    q1 = torch.randn(batch_size, tgt_len, d_model, **options)
+    k1 = torch.randn(batch_size, src_len, d_model, **options)
+    v1 = torch.randn(batch_size, src_len, d_model, **options)
 
     q2 = _copy(q1)
     k2 = _copy(k1)
@@ -81,21 +74,15 @@ def test_scaled_dot_product_attention():
     assert_close(v1.grad, v2.grad, rtol=1e-5, atol=1e-6)
 
 
-def test_scaled_dot_product_attention_boolean_mask():
-    query = torch.randn(BATCH_SIZE, NUM_HEADS, TGT_LEN, HEAD_DIM)
-    key = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
-    value = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
+def test_scaled_dot_product_attention_boolean_mask(
+    batch_size: int, src_len: int, tgt_len: int, num_heads: int, head_dim: int
+):
+    query = torch.randn(batch_size, num_heads, tgt_len, head_dim)
+    key = torch.randn(batch_size, num_heads, src_len, head_dim)
+    value = torch.randn(batch_size, num_heads, src_len, head_dim)
 
-    attn_mask = torch.tensor(
-        [
-            [
-                [True, True, False, True, False, False, True, False],
-                [False, True, True, True, False, False, False, True],
-                [True, False, True, False, True, False, True, False],
-                [False, False, True, False, True, True, False, True],
-            ]
-        ]
-    )
+    attn_mask = torch.zeros(1, tgt_len, src_len, dtype=torch.bool)
+    attn_mask[..., ::2] = True
 
     actual, actual_weights = dF.scaled_dot_product_attention(
         query, key, value, attn_mask=attn_mask
@@ -109,12 +96,14 @@ def test_scaled_dot_product_attention_boolean_mask():
     assert_close(masked_weights, torch.zeros_like(masked_weights))
 
 
-def test_scaled_dot_product_attention_supports_additive_mask():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    key = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
-    value = torch.randn(BATCH_SIZE, SRC_LEN, D_MODEL)
+def test_scaled_dot_product_attention_supports_additive_mask(
+    batch_size: int, src_len: int, tgt_len: int, d_model: int
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    key = torch.randn(batch_size, src_len, d_model)
+    value = torch.randn(batch_size, src_len, d_model)
 
-    attn_mask = torch.zeros(TGT_LEN, SRC_LEN)
+    attn_mask = torch.zeros(tgt_len, src_len)
     attn_mask[:, -1] = -torch.inf
 
     actual, actual_weights = dF.scaled_dot_product_attention(
@@ -127,16 +116,18 @@ def test_scaled_dot_product_attention_supports_additive_mask():
     assert_close(actual_weights[..., -1], torch.zeros_like(actual_weights[..., -1]))
 
 
-def test_scaled_dot_product_attention_supports_causal_mode():
-    query = torch.randn(BATCH_SIZE, NUM_HEADS, TGT_LEN, HEAD_DIM)
-    key = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
-    value = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
+def test_scaled_dot_product_attention_supports_causal_mode(
+    batch_size: int, src_len: int, tgt_len: int, num_heads: int, head_dim: int
+):
+    query = torch.randn(batch_size, num_heads, tgt_len, head_dim)
+    key = torch.randn(batch_size, num_heads, src_len, head_dim)
+    value = torch.randn(batch_size, num_heads, src_len, head_dim)
 
     actual, actual_weights = dF.scaled_dot_product_attention(
         query, key, value, is_causal=True
     )
     expected = F.scaled_dot_product_attention(query, key, value, is_causal=True)
-    forbidden = torch.ones(TGT_LEN, SRC_LEN, dtype=torch.bool).triu(diagonal=1)
+    forbidden = torch.ones(tgt_len, src_len, dtype=torch.bool).triu(diagonal=1)
 
     assert actual_weights is not None
     assert_close(actual, expected, rtol=1e-5, atol=1e-6)
@@ -160,11 +151,13 @@ def test_generate_causal_mask_masks_future_positions():
     assert torch.equal(actual, expected)
 
 
-def test_scaled_dot_product_attention_causal_uses_boolean_mask():
-    query = torch.randn(BATCH_SIZE, NUM_HEADS, TGT_LEN, HEAD_DIM)
-    key = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
-    value = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
-    mask = torch.ones(TGT_LEN, SRC_LEN, dtype=torch.bool).triu(diagonal=1)
+def test_scaled_dot_product_attention_causal_uses_boolean_mask(
+    batch_size: int, src_len: int, tgt_len: int, num_heads: int, head_dim: int
+):
+    query = torch.randn(batch_size, num_heads, tgt_len, head_dim)
+    key = torch.randn(batch_size, num_heads, src_len, head_dim)
+    value = torch.randn(batch_size, num_heads, src_len, head_dim)
+    mask = torch.ones(tgt_len, src_len, dtype=torch.bool).triu(diagonal=1)
 
     actual_causal, actual_causal_weights = dF.scaled_dot_product_attention(
         query, key, value, is_causal=True
@@ -179,10 +172,12 @@ def test_scaled_dot_product_attention_causal_uses_boolean_mask():
     assert_close(actual_causal_weights, actual_masked_weights)
 
 
-def test_scaled_dot_product_attention_respects_scale_and_training_dropout_flag():
-    query = torch.randn(BATCH_SIZE, NUM_HEADS, TGT_LEN, HEAD_DIM)
-    key = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
-    value = torch.randn(BATCH_SIZE, NUM_HEADS, SRC_LEN, HEAD_DIM)
+def test_scaled_dot_product_attention_respects_scale_and_training_dropout_flag(
+    batch_size: int, src_len: int, tgt_len: int, num_heads: int, head_dim: int
+):
+    query = torch.randn(batch_size, num_heads, tgt_len, head_dim)
+    key = torch.randn(batch_size, num_heads, src_len, head_dim)
+    value = torch.randn(batch_size, num_heads, src_len, head_dim)
 
     actual, _ = dF.scaled_dot_product_attention(
         query, key, value,
@@ -199,24 +194,33 @@ def test_scaled_dot_product_attention_respects_scale_and_training_dropout_flag()
     assert_close(actual, expected, rtol=1e-5, atol=1e-6)
 
 
-def test_multi_head_attention_matches_explicit_cross_attention_with_bias():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    key = torch.randn(BATCH_SIZE, SRC_LEN, KEY_DIM)
-    value = torch.randn(BATCH_SIZE, SRC_LEN, VALUE_DIM)
-    W_Q = torch.randn(D_MODEL, D_MODEL)
-    W_K = torch.randn(KEY_DIM, D_MODEL)
-    W_V = torch.randn(VALUE_DIM, D_MODEL)
-    W_O = torch.randn(D_MODEL, D_MODEL)
-    b_Q = torch.randn(D_MODEL)
-    b_K = torch.randn(D_MODEL)
-    b_V = torch.randn(D_MODEL)
-    b_O = torch.randn(D_MODEL)
+def test_multi_head_attention_matches_explicit_cross_attention_with_bias(
+    batch_size: int,
+    src_len: int,
+    tgt_len: int,
+    d_model: int,
+    num_heads: int,
+    head_dim: int,
+    key_dim: int,
+    value_dim: int,
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    key = torch.randn(batch_size, src_len, key_dim)
+    value = torch.randn(batch_size, src_len, value_dim)
+    W_Q = torch.randn(d_model, d_model)
+    W_K = torch.randn(key_dim, d_model)
+    W_V = torch.randn(value_dim, d_model)
+    W_O = torch.randn(d_model, d_model)
+    b_Q = torch.randn(d_model)
+    b_K = torch.randn(d_model)
+    b_V = torch.randn(d_model)
+    b_O = torch.randn(d_model)
 
     actual, actual_weights = dF.multi_head_attention(
         query,
         key,
         value,
-        NUM_HEADS,
+        num_heads,
         q_proj_weight=W_Q,
         k_proj_weight=W_K,
         v_proj_weight=W_V,
@@ -228,16 +232,16 @@ def test_multi_head_attention_matches_explicit_cross_attention_with_bias():
         need_weights=True,
     )
 
-    Q = ((query @ W_Q) + b_Q).view(BATCH_SIZE, TGT_LEN, NUM_HEADS, HEAD_DIM)
-    K = ((key @ W_K) + b_K).view(BATCH_SIZE, SRC_LEN, NUM_HEADS, HEAD_DIM)
-    V = ((value @ W_V) + b_V).view(BATCH_SIZE, SRC_LEN, NUM_HEADS, HEAD_DIM)
+    Q = ((query @ W_Q) + b_Q).view(batch_size, tgt_len, num_heads, head_dim)
+    K = ((key @ W_K) + b_K).view(batch_size, src_len, num_heads, head_dim)
+    V = ((value @ W_V) + b_V).view(batch_size, src_len, num_heads, head_dim)
 
     Q = Q.transpose(1, 2)
     K = K.transpose(1, 2)
     V = V.transpose(1, 2)
 
     actual_head, actual_head_weights = dF.scaled_dot_product_attention(Q, K, V)
-    expected = actual_head.transpose(1, 2).reshape(BATCH_SIZE, TGT_LEN, D_MODEL)
+    expected = actual_head.transpose(1, 2).reshape(batch_size, tgt_len, d_model)
     expected = (expected @ W_O) + b_O
 
     assert actual_weights is not None
@@ -246,26 +250,34 @@ def test_multi_head_attention_matches_explicit_cross_attention_with_bias():
     assert_close(actual, expected)
 
 
-def test_multi_head_attention_matches_torch_cross_attention_with_bias():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    key = torch.randn(BATCH_SIZE, SRC_LEN, KEY_DIM)
-    value = torch.randn(BATCH_SIZE, SRC_LEN, VALUE_DIM)
+def test_multi_head_attention_matches_torch_cross_attention_with_bias(
+    batch_size: int,
+    src_len: int,
+    tgt_len: int,
+    d_model: int,
+    num_heads: int,
+    key_dim: int,
+    value_dim: int,
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    key = torch.randn(batch_size, src_len, key_dim)
+    value = torch.randn(batch_size, src_len, value_dim)
 
-    q_weight = torch.randn(D_MODEL, D_MODEL)
-    k_weight = torch.randn(KEY_DIM, D_MODEL)
-    v_weight = torch.randn(VALUE_DIM, D_MODEL)
-    out_weight = torch.randn(D_MODEL, D_MODEL)
+    q_weight = torch.randn(d_model, d_model)
+    k_weight = torch.randn(key_dim, d_model)
+    v_weight = torch.randn(value_dim, d_model)
+    out_weight = torch.randn(d_model, d_model)
 
-    q_bias = torch.randn(D_MODEL)
-    k_bias = torch.randn(D_MODEL)
-    v_bias = torch.randn(D_MODEL)
-    out_bias = torch.randn(D_MODEL)
+    q_bias = torch.randn(d_model)
+    k_bias = torch.randn(d_model)
+    v_bias = torch.randn(d_model)
+    out_bias = torch.randn(d_model)
 
     actual, actual_weights = dF.multi_head_attention(
         query,
         key,
         value,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight,
         k_proj_weight=k_weight,
         v_proj_weight=v_weight,
@@ -280,8 +292,8 @@ def test_multi_head_attention_matches_torch_cross_attention_with_bias():
         query.transpose(0, 1),
         key.transpose(0, 1),
         value.transpose(0, 1),
-        embed_dim_to_check=D_MODEL,
-        num_heads=NUM_HEADS,
+        embed_dim_to_check=d_model,
+        num_heads=num_heads,
         in_proj_weight=None,
         in_proj_bias=torch.concat([q_bias, k_bias, v_bias]),
         bias_k=None,
@@ -306,17 +318,25 @@ def test_multi_head_attention_matches_torch_cross_attention_with_bias():
     assert_close(actual_weights, expected_weights, rtol=1e-5, atol=1e-6)
 
 
-def test_multi_head_attention_gradients_match_torch():
+def test_multi_head_attention_gradients_match_torch(
+    batch_size: int,
+    src_len: int,
+    tgt_len: int,
+    d_model: int,
+    num_heads: int,
+    key_dim: int,
+    value_dim: int,
+):
     custom_tensors = [
         torch.randn(shape, dtype=torch.float64, requires_grad=True)
         for shape in [
-            (BATCH_SIZE, TGT_LEN, D_MODEL),
-            (BATCH_SIZE, SRC_LEN, KEY_DIM),
-            (BATCH_SIZE, SRC_LEN, VALUE_DIM),
-            (D_MODEL, D_MODEL),
-            (KEY_DIM, D_MODEL),
-            (VALUE_DIM, D_MODEL),
-            (D_MODEL, D_MODEL),
+            (batch_size, tgt_len, d_model),
+            (batch_size, src_len, key_dim),
+            (batch_size, src_len, value_dim),
+            (d_model, d_model),
+            (key_dim, d_model),
+            (value_dim, d_model),
+            (d_model, d_model),
         ]
     ]
     reference_tensors = [_copy(tensor) for tensor in custom_tensors]
@@ -326,7 +346,7 @@ def test_multi_head_attention_gradients_match_torch():
 
     actual, _ = dF.multi_head_attention(
         q1, k1, v1,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight1,
         k_proj_weight=k_weight1,
         v_proj_weight=v_weight1,
@@ -336,8 +356,8 @@ def test_multi_head_attention_gradients_match_torch():
         q2.transpose(0, 1),
         k2.transpose(0, 1),
         v2.transpose(0, 1),
-        embed_dim_to_check=D_MODEL,
-        num_heads=NUM_HEADS,
+        embed_dim_to_check=d_model,
+        num_heads=num_heads,
         in_proj_weight=None,
         in_proj_bias=None,
         bias_k=None,
@@ -364,24 +384,32 @@ def test_multi_head_attention_gradients_match_torch():
         assert_close(custom_grad.grad, reference_grad.grad, rtol=1e-5, atol=1e-6)
 
 
-def test_fast_multi_head_attention_matches_slow_boolean_mask():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    key = torch.randn(BATCH_SIZE, SRC_LEN, KEY_DIM)
-    value = torch.randn(BATCH_SIZE, SRC_LEN, VALUE_DIM)
+def test_fast_multi_head_attention_matches_slow_boolean_mask(
+    batch_size: int,
+    src_len: int,
+    tgt_len: int,
+    d_model: int,
+    num_heads: int,
+    key_dim: int,
+    value_dim: int,
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    key = torch.randn(batch_size, src_len, key_dim)
+    value = torch.randn(batch_size, src_len, value_dim)
 
-    q_weight = torch.randn(D_MODEL, D_MODEL)
-    k_weight = torch.randn(KEY_DIM, D_MODEL)
-    v_weight = torch.randn(VALUE_DIM, D_MODEL)
-    out_weight = torch.randn(D_MODEL, D_MODEL)
+    q_weight = torch.randn(d_model, d_model)
+    k_weight = torch.randn(key_dim, d_model)
+    v_weight = torch.randn(value_dim, d_model)
+    out_weight = torch.randn(d_model, d_model)
 
-    attn_mask = torch.zeros(TGT_LEN, SRC_LEN, dtype=torch.bool)
+    attn_mask = torch.zeros(tgt_len, src_len, dtype=torch.bool)
     attn_mask[:, -1] = True
 
     actual_slow, actual_slow_weights = dF.multi_head_attention(
         query,
         key,
         value,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight,
         k_proj_weight=k_weight,
         v_proj_weight=v_weight,
@@ -392,7 +420,7 @@ def test_fast_multi_head_attention_matches_slow_boolean_mask():
         query,
         key,
         value,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight,
         k_proj_weight=k_weight,
         v_proj_weight=v_weight,
@@ -406,21 +434,29 @@ def test_fast_multi_head_attention_matches_slow_boolean_mask():
     assert_close(actual_fast, actual_slow, rtol=1e-5, atol=1e-6)
 
 
-def test_fast_multi_head_attention_respects_training_dropout_flag():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    key = torch.randn(BATCH_SIZE, SRC_LEN, KEY_DIM)
-    value = torch.randn(BATCH_SIZE, SRC_LEN, VALUE_DIM)
+def test_fast_multi_head_attention_respects_training_dropout_flag(
+    batch_size: int,
+    src_len: int,
+    tgt_len: int,
+    d_model: int,
+    num_heads: int,
+    key_dim: int,
+    value_dim: int,
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    key = torch.randn(batch_size, src_len, key_dim)
+    value = torch.randn(batch_size, src_len, value_dim)
 
-    q_weight = torch.randn(D_MODEL, D_MODEL)
-    k_weight = torch.randn(KEY_DIM, D_MODEL)
-    v_weight = torch.randn(VALUE_DIM, D_MODEL)
-    out_weight = torch.randn(D_MODEL, D_MODEL)
+    q_weight = torch.randn(d_model, d_model)
+    k_weight = torch.randn(key_dim, d_model)
+    v_weight = torch.randn(value_dim, d_model)
+    out_weight = torch.randn(d_model, d_model)
 
     actual_slow, _ = dF.multi_head_attention(
         query,
         key,
         value,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight,
         k_proj_weight=k_weight,
         v_proj_weight=v_weight,
@@ -432,7 +468,7 @@ def test_fast_multi_head_attention_respects_training_dropout_flag():
         query,
         key,
         value,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight,
         k_proj_weight=k_weight,
         v_proj_weight=v_weight,
@@ -446,21 +482,29 @@ def test_fast_multi_head_attention_respects_training_dropout_flag():
     assert_close(actual_fast, actual_slow, rtol=1e-5, atol=1e-6)
 
 
-def test_fast_multi_head_attention_returns_no_weights():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    key = torch.randn(BATCH_SIZE, SRC_LEN, KEY_DIM)
-    value = torch.randn(BATCH_SIZE, SRC_LEN, VALUE_DIM)
+def test_fast_multi_head_attention_returns_no_weights(
+    batch_size: int,
+    src_len: int,
+    tgt_len: int,
+    d_model: int,
+    num_heads: int,
+    key_dim: int,
+    value_dim: int,
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    key = torch.randn(batch_size, src_len, key_dim)
+    value = torch.randn(batch_size, src_len, value_dim)
 
-    q_weight = torch.randn(D_MODEL, D_MODEL)
-    k_weight = torch.randn(KEY_DIM, D_MODEL)
-    v_weight = torch.randn(VALUE_DIM, D_MODEL)
-    out_weight = torch.randn(D_MODEL, D_MODEL)
+    q_weight = torch.randn(d_model, d_model)
+    k_weight = torch.randn(key_dim, d_model)
+    v_weight = torch.randn(value_dim, d_model)
+    out_weight = torch.randn(d_model, d_model)
 
     actual_slow, actual_slow_weights = dF.multi_head_attention(
         query,
         key,
         value,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight,
         k_proj_weight=k_weight,
         v_proj_weight=v_weight,
@@ -471,7 +515,7 @@ def test_fast_multi_head_attention_returns_no_weights():
         query,
         key,
         value,
-        num_heads=NUM_HEADS,
+        num_heads=num_heads,
         q_proj_weight=q_weight,
         k_proj_weight=k_weight,
         v_proj_weight=v_weight,
@@ -485,27 +529,25 @@ def test_fast_multi_head_attention_returns_no_weights():
     assert actual_fast_weights is None
 
 
-def test_fast_multihead_attention_module_rejects_weight_return():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    custom = dnn.MultiheadAttention(D_MODEL, NUM_HEADS, fast=True)
+def test_fast_multihead_attention_module_rejects_weight_return(
+    batch_size: int, tgt_len: int, d_model: int, num_heads: int
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    custom = dnn.MultiheadAttention(d_model, num_heads, fast=True)
 
     with pytest.raises(AssertionError, match='need_weights=True'):
         custom(query, query, query, need_weights=True)
 
 
-def test_multihead_attention_module_matches_torch():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
-    key_padding_mask = torch.tensor(
-        [
-            [False, False, True, False],
-            [False, True, True, False],
-            [False, False, False, True],
-            [False, True, False, True],
-        ]
-    )
+def test_multihead_attention_module_matches_torch(
+    batch_size: int, tgt_len: int, d_model: int, num_heads: int
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
+    key_padding_mask = torch.zeros(batch_size, tgt_len, dtype=torch.bool)
+    key_padding_mask[:, -1] = True
 
-    custom = dnn.MultiheadAttention(D_MODEL, NUM_HEADS)
-    reference = nn.MultiheadAttention(D_MODEL, NUM_HEADS)
+    custom = dnn.MultiheadAttention(d_model, num_heads)
+    reference = nn.MultiheadAttention(d_model, num_heads)
 
     with torch.no_grad():
         reference.in_proj_weight.copy_(
@@ -558,11 +600,13 @@ def test_multihead_attention_module_matches_torch():
     assert_close(actual_weights, expected_weights, rtol=1e-5, atol=1e-6)
 
 
-def test_multihead_attention_module_matches_torch_without_bias():
-    query = torch.randn(BATCH_SIZE, TGT_LEN, D_MODEL)
+def test_multihead_attention_module_matches_torch_without_bias(
+    batch_size: int, tgt_len: int, d_model: int, num_heads: int
+):
+    query = torch.randn(batch_size, tgt_len, d_model)
 
-    custom = dnn.MultiheadAttention(D_MODEL, NUM_HEADS, bias=False)
-    reference = nn.MultiheadAttention(D_MODEL, NUM_HEADS, bias=False)
+    custom = dnn.MultiheadAttention(d_model, num_heads, bias=False)
+    reference = nn.MultiheadAttention(d_model, num_heads, bias=False)
 
     assert custom.bias is False
     assert custom.q_proj.bias is None
@@ -601,9 +645,9 @@ def test_multihead_attention_module_matches_torch_without_bias():
     assert_close(actual_weights, expected_weights, rtol=1e-5, atol=1e-6)
 
 
-def test_sinusoidal_positional_encoding():
-    x = torch.zeros(BATCH_SIZE, SRC_LEN, D_MODEL)
-    custom = dnn.SinusoidalPositionalEncoding(D_MODEL, max_len=SRC_LEN)
+def test_sinusoidal_positional_encoding(batch_size: int, src_len: int, d_model: int):
+    x = torch.zeros(batch_size, src_len, d_model)
+    custom = dnn.SinusoidalPositionalEncoding(d_model, max_len=src_len)
 
     actual = custom(x)
     expected = custom.pe.expand_as(actual)  # type: ignore

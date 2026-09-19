@@ -204,7 +204,7 @@ def theta() -> float:
 @pytest.fixture
 def token_ids(batch_size: int, n_queries: int) -> Tensor:
     torch.manual_seed(6)
-    return torch.randint(0, 10_000, (batch_size, n_queries))
+    return torch.randint(0, 10000, (batch_size, n_queries))
 
 
 @pytest.fixture
