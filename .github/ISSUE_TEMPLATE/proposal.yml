@@ -1,0 +1,47 @@
+name: DNEP Proposal
+description: Propose a major project change that requires discussion and documentation
+title: "[DNEP] "
+labels:
+  - proposal
+assignees:
+  - jshn9515
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to propose a major change to the project.
+
+        A DNEP should explain **why the change is needed** and **what decision is being proposed**.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Explain why this change is needed.
+      placeholder: |
+        Describe the current problem, limitation, maintenance cost, or design issue.
+
+        Explain why the existing approach is no longer sufficient and why this change should be considered.
+    validations:
+      required: true
+
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision
+      description: Describe the proposed change.
+      placeholder: |
+        Describe the proposed decision clearly.
+
+        Include what will change, what will remain unchanged, and any important implications for the project.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add related issues, alternatives, migration notes, examples, or other useful context.
+      placeholder: |
+        Optional context, alternatives considered, migration details, or relevant references.
