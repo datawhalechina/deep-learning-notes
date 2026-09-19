@@ -25,7 +25,7 @@ body:
     attributes:
       label: Location
       description: Where did you encounter the issue?
-      placeholder: "e.g. 9.3 Self-Attention, ch9.3-self-attention.qmd"
+      placeholder: "e.g. ch9.3-self-attention.qmd"
     validations:
       required: true
 

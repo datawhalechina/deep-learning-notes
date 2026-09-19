@@ -16,8 +16,6 @@ body:
         - New topic, section, or chapter
         - New code example in notebook
         - New feature in dnnlpy package
-        - Tutorial or code example improvement
-        - Build, CI, or repository tooling improvement
         - Other
     validations:
       required: true
