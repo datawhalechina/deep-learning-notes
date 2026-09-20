@@ -18,7 +18,7 @@ jobs:
   deploy-preview:
     name: Deploy PR docs preview
     if: >-
-      github.repository == 'jshn9515/deep-learning-notes' &&
+      github.repository == 'datawhalechina/deep-learning-notes' &&
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
