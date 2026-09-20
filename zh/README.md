@@ -50,16 +50,16 @@
 - 5.5 搭建一个简单 CNN：从特征提取到图像分类
 - 5.6 LeNet：卷积、池化与全连接的早期模板
 
-## Chapter 7: 正则化与归一化：让深层网络更稳定
+## Chapter 6: 正则化与归一化：让深层网络更稳定
 
-- 7.1 为什么深层网络需要正则化与归一化
-- 7.2 Dropout：通过随机失活减少过拟合
-- 7.3 BatchNorm：利用 batch 统计量稳定训练
-- 7.4 LayerNorm：在单个样本内部归一化特征
-- 7.5 InstanceNorm：对样本的每个通道进行归一化
-- 7.6 GroupNorm：在通道组内归一化特征
-- 7.7 RMSNorm：不做均值中心化的特征尺度归一化
-- 7.8 归一化方法的统一视角：统计量到底在哪些维度上计算
+- 6.1 为什么深层网络需要正则化与归一化
+- 6.2 Dropout：通过随机失活减少过拟合
+- 6.3 BatchNorm：利用 batch 统计量稳定训练
+- 6.4 LayerNorm：在单个样本内部归一化特征
+- 6.5 InstanceNorm：对样本的每个通道进行归一化
+- 6.6 GroupNorm：在通道组内归一化特征
+- 6.7 RMSNorm：不做均值中心化的特征尺度归一化
+- 6.8 归一化方法的统一视角：统计量到底在哪些维度上计算
 
 ## Chapter 9: Attention 与 Transformer：从动态检索到序列建模
 
@@ -80,49 +80,25 @@
 - 10.1 为什么 Attention 是 IO-Bound
 - 10.2 FlashAttention v1：消除 Attention 的 IO 瓶颈
 
-## Chapter 11: Vision Transformer：从图像分类到视觉序列建模
+## Chapter 11: 从零实现 GPT：从 Transformer Decoder 到 GPT-2
 
-- 11.1 从 CNN 到 Vision Transformer：把图像当成序列
-- 11.2 Patch Embedding：把图像切成 Token
-- 11.3 Class Token 与 Positional Embedding：让序列表示整张图
-- 11.4 ViT Encoder：让 Patch Token 之间交换信息
-- 11.5 ViT Backbone：预训练与微调
+- 11.1 语言模型在预测什么：Next-Token Prediction
+- 11.2 MiniGPT：从 Causal GPT Block 到语言模型
+- 11.3 Tokenizer：字符、BPE 与词表
+- 11.4 Embedding、LM Head 与 Weight Tying
+- 11.5 在 TinyStories 上训练 MiniGPT
+- 11.6 从训练到生成：Temperature、Top-k、Top-p
+- 11.7 GPT-2：从 MiniGPT 到预训练语言模型
 
-## Chapter 13: VAE：从潜空间到概率生成
+## Chapter 12: LLM 训练工程：显存、计算与并行训练
 
-- 13.1 AutoEncoder：从压缩与重建开始
-- 13.2 VAE：概率建模与重参数化技巧
-- 13.3 ELBO：VAE 的目标函数从哪里来
-- 13.4 VAE 的训练现象与潜空间直觉
-- 13.5 VAE 的优点、局限与后续发展
-
-## Chapter 14: Diffusion Models：从扩散过程到生成模型
-
-- 14.1 DDPM：从去噪到生成
-- 14.2 DDPM 的前向加噪过程
-- 14.3 DDPM 的反向去噪过程与训练目标
-- 14.4 DDPM 的网络结构与采样过程
-- 14.5 从变分推导看 DDPM：ELBO 从哪里来
-
-## Chapter 18: 从零实现 GPT：从 Transformer Decoder 到 GPT-2
-
-- 18.1 语言模型在预测什么：Next-Token Prediction
-- 18.2 MiniGPT：从 Causal GPT Block 到语言模型
-- 18.3 Tokenizer：字符、BPE 与词表
-- 18.4 Embedding、LM Head 与 Weight Tying
-- 18.5 在 TinyStories 上训练 MiniGPT
-- 18.6 从训练到生成：Temperature、Top-k、Top-p
-- 18.7 GPT-2：从 MiniGPT 到预训练语言模型
-
-## Chapter 19: LLM 训练工程：显存、计算与并行训练
-
-- 19.1 LLM 训练显存账本：参数、激活与状态
-- 19.2 FLOPs、Memory 与 Arithmetic Intensity：为什么不是只看计算量
-- 19.3 Profiling：怎么知道代码慢在哪里
-- 19.4 Mixed Precision：FP32、FP16、BF16 与 Loss Scaling
-- 19.5 Gradient Accumulation：显存不够时如何模拟大 Batch
-- 19.6 Activation Checkpointing：用重计算换显存
-- 19.7 现代 Attention API 与 Hugging Face Kernels
-- 19.8 Triton 入门：什么时候需要自己写 Kernel
-- 19.9 分布式训练入门：DDP、ZeRO 与 FSDP 的直觉
-- 19.10 大模型 Checkpoint：模型、优化器与分布式状态如何恢复
+- 12.1 LLM 训练显存账本：参数、激活与状态
+- 12.2 FLOPs、Memory 与 Arithmetic Intensity：为什么不是只看计算量
+- 12.3 Profiling：怎么知道代码慢在哪里
+- 12.4 Mixed Precision：FP32、FP16、BF16 与 Loss Scaling
+- 12.5 Gradient Accumulation：显存不够时如何模拟大 Batch
+- 12.6 Activation Checkpointing：用重计算换显存
+- 12.7 现代 Attention API 与 Hugging Face Kernels
+- 12.8 Triton 入门：什么时候需要自己写 Kernel
+- 12.9 分布式训练入门：DDP、ZeRO 与 FSDP 的直觉
+- 12.10 大模型 Checkpoint：模型、优化器与分布式状态如何恢复

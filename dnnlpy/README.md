@@ -6,7 +6,7 @@ The package structure is similar to PyTorch, but keeps a clear boundary between 
 
 - `dnnlpy.cs224n` contains implementations and utilities for the CS224N assignments.
 - `dnnlpy.cs336` contains implementations and utilities for the CS336 assignments.
-- `dnnlpy.models` contains higher-level model architectures or model-specific components, such as ViT, DDPM, or other models introduced in the notes.
+- `dnnlpy.models` contains higher-level model architectures or model-specific components, such as MiniGPT and other models introduced in the notes.
 - `dnnlpy.nn` contains general neural network modules, such as attention layers, positional encodings, and other reusable components.
 - `dnnlpy.nn.functional` contains stateless helper functions, such as functional attention implementations.
 - `dnnlpy.optim` contains small optimizer implementations for teaching purposes, such as SGD and Adam.
@@ -103,20 +103,19 @@ Higher-level model architectures live under `dnnlpy.models`:
 
 ```python
 import torch
-import dnnlpy.models.vit as vit
+import dnnlpy.models.gpt as gpt
 
-model = vit.ViTForImageClassification(
-    image_size=224,
-    patch_size=16,
-    in_channels=3,
-    num_classes=1000,
-    embed_dim=768,
-    num_heads=12,
-    num_layers=12,
+model = gpt.MiniGPT(
+    vocab_size=1000,
+    block_size=128,
+    embed_dim=256,
+    num_layers=4,
+    num_heads=4,
+    hidden_dim=1024,
 )
 
-images = torch.randn(2, 3, 224, 224)
-logits = model(images)
+input_ids = torch.randint(0, 1000, (2, 32))
+logits = model(input_ids)
 ```
 
 The `dnnlpy.models.mlp` package contains small NumPy modules for teaching manual

@@ -91,30 +91,20 @@ website:
           contents:
             - section: "Chapter 5: 卷积神经网络：从局部感知到全局建模"
               contents: "zh/ch5-convolutional-neural-network/*.qmd"
-            - section: "Chapter 7: 正则化与归一化：让深层网络更稳定"
-              contents: "zh/ch7-regularization-and-normalization/*.qmd"
+            - section: "Chapter 6: 正则化与归一化：让深层网络更稳定"
+              contents: "zh/ch6-regularization-and-normalization/*.qmd"
         - section: "Part 4: Attention 机制与 Transformer"
           contents:
             - section: "Chapter 9: Attention 与 Transformer：从动态检索到序列建模"
               contents: "zh/ch9-attention-and-transformer/*.qmd"
             - section: "Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention"
               contents: "zh/ch10-efficient-attention/*.qmd"
-        - section: "Part 5: 现代计算机视觉"
-          contents:
-            - section: "Chapter 11: Vision Transformer：从图像分类到视觉序列建模"
-              contents: "zh/ch11-vision-transformers/*.qmd"
-        - section: "Part 6: 生成模型"
-          contents:
-            - section: "Chapter 13: VAE：从潜空间到概率生成"
-              contents: "zh/ch13-autoencoders-and-vaes/*.qmd"
-            - section: "Chapter 14: Diffusion Models：从扩散过程到生成模型"
-              contents: "zh/ch14-diffusion-models/*.qmd"
         - section: "Part 8: LLM 基础：以 GPT-2 为例"
           contents:
-            - section: "Chapter 18: 从零实现 GPT：从 Transformer Decoder 到 GPT-2"
-              contents: "zh/ch18-gpt2-from-scratch/*.qmd"
-            - section: "Chapter 19: LLM 训练工程：显存、计算与并行训练"
-              contents: "zh/ch19-llm-training-engineering/*.qmd"
+            - section: "Chapter 11: 从零实现 GPT：从 Transformer Decoder 到 GPT-2"
+              contents: "zh/ch11-gpt2-from-scratch/*.qmd"
+            - section: "Chapter 12: LLM 训练工程：显存、计算与并行训练"
+              contents: "zh/ch12-llm-training-engineering/*.qmd"
     - id: en
       style: floating
       contents:
@@ -132,25 +122,15 @@ website:
           contents:
             - section: "Chapter 5: Convolutional Neural Networks: From Local Perception to Global Modeling"
               contents: "en/ch5-convolutional-neural-network/*.qmd"
-            - section: "Chapter 7: Regularization and Normalization: Making Deep Networks More Stable"
-              contents: "en/ch7-regularization-and-normalization/*.qmd"
+            - section: "Chapter 6: Regularization and Normalization: Making Deep Networks More Stable"
+              contents: "en/ch6-regularization-and-normalization/*.qmd"
         - section: "Part 4: Attention Mechanism and Transformer"
           contents:
             - section: "Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling"
               contents: "en/ch9-attention-and-transformer/*.qmd"
             - section: "Chapter 10: Efficient Attention Implementations: From Memory-Efficient Attention to FlashAttention"
               contents: "en/ch10-efficient-attention/*.qmd"
-        - section: "Part 5: Modern Computer Vision"
-          contents:
-            - section: "Chapter 11: Vision Transformer: From Image Classification to Visual Sequence Modeling"
-              contents: "en/ch11-vision-transformers/*.qmd"
-        - section: "Part 6: Generative Models"
-          contents:
-            - section: "Chapter 13: VAE: From Latent Space to Probabilistic Generation"
-              contents: "en/ch13-autoencoders-and-vaes/*.qmd"
-            - section: "Chapter 14: Diffusion Models: From the Diffusion Process to Generative Models"
-              contents: "en/ch14-diffusion-models/*.qmd"
         - section: "Part 8: LLM Fundamentals: Using GPT-2 as an Example"
           contents:
-            - section: "Chapter 18: Implementing GPT from Scratch: From the Transformer Decoder to GPT-2"
-              contents: "en/ch18-gpt2-from-scratch/*.qmd"
+            - section: "Chapter 11: Implementing GPT from Scratch: From the Transformer Decoder to GPT-2"
+              contents: "en/ch11-gpt2-from-scratch/*.qmd"

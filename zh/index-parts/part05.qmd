@@ -1,5 +1,5 @@
 ---
-title: "Part 5：现代计算机视觉"
+title: "Part 5：LLM 基础：以 GPT-2 为例"
 author: jshn9515
 date: 2026-05-05
 date-modified: today
@@ -8,13 +8,14 @@ comments: false
 
 listing:
   contents:
-    - "../ch11-vision-transformers/*.qmd"
+    - "../ch11-gpt2-from-scratch/*.qmd"
+    - "../ch12-llm-training-engineering/*.qmd"
   sort: title asc
   type: table
   fields: [title, author, date]
   date-format: iso
 
 open-graph:
-  title: part5-modern-computer-vision
-  description: "Part 5: Modern Computer Vision"
+  title: part8-fundamentals-of-llm
+  description: "Part 8: Fundamentals of LLM"
 ---

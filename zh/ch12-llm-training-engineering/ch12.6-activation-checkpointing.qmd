@@ -1,0 +1,504 @@
+---
+author: jshn9515
+date: 2026-09-13
+date-modified: 2026-09-13
+open-graph:
+  title: ch12.6-activation-checkpointing
+  description: "12.6 Activation Checkpointing: Trading Compute for Memory"
+title: "12.6 Activation Checkpointing：用重计算换显存"
+order: 6
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch12-llm-training-engineering/ch12.6-activation-checkpointing.ipynb){fig-align="left"}
+
+上一节里，我们通过 gradient accumulation 把一个大 batch 拆成多个 micro-batch，让 GPU 每次只处理其中一部分样本。这样可以明显降低和 batch size 相关的 activation 峰值。但这个办法有一个很明显的下限：
+
+> **Micro-batch size 最小只能降到 1。**
+
+如果 batch size 已经是 1，单个 sequence 的 forward 仍然放不下怎么办？或者 sequence length 很长、Transformer 层数很多，即使每次只处理一个样本，forward 为 backward 保存的中间结果仍然占据大量显存怎么办？
+
+这时，我们就需要直接对 activation 本身下手。
+
+正常训练时，forward 会保存 backward 之后还要使用的中间结果。**Activation Checkpointing** 的想法是：其中一部分中间结果先不保存，等 backward 真正需要它们时，再重新做一次 forward 把它们算出来。也就是说，它做的是一个非常直接的交换：
+
+$$
+\text{less memory} \longleftrightarrow \text{more computation}
+$$
+
+这一节，我们就来看看 activation checkpointing 到底省掉了什么、重计算发生在哪里，以及在 Transformer 训练里应该怎样使用它。
+
+```{python}
+import dnnlpy
+import torch
+import torch.accelerator as accl
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.utils.checkpoint as ckpt
+from torch import Tensor
+
+print('PyTorch version:', torch.__version__)
+```
+
+```{python}
+device = dnnlpy.get_default_device()
+print('Using device:', device)
+```
+
+## 12.6.1 Backward 为什么需要保存 Activation
+
+先从最基本的问题开始：为什么 forward 结束以后，中间 activation 不能直接全部丢掉？
+
+考虑一个非常简单的计算：
+
+$$
+y = Wx
+$$
+
+如果 loss 对输出的梯度是：
+
+$$
+\frac{\partial L}{\partial y}
+$$
+
+那么计算权重梯度时需要：
+
+$$
+\frac{\partial L}{\partial W} = \frac{\partial L}{\partial y}x^T
+$$
+
+也就是说，backward 想计算 $W$ 的梯度，就需要重新拿到 forward 时的输入 $x$。
+
+神经网络里的情况也是一样。一个 Transformer block 里可能有 LayerNorm、QKV projection、attention、MLP、activation function 和 residual connection。backward 并不只是知道最终输出就够了，它还需要其中很多中间 tensor。
+
+所以正常训练过程更接近：
+
+![图 12.6.1 正常训练中的 activation](figures/ch12.6-activation.svg){width=70%}
+
+这些 activation 的生命周期和普通临时 tensor 不一样。很多临时结果虽然 forward 中已经用完，但因为 backward 之后还需要，它们不能立刻释放。
+
+对于深层网络，这些被保存的 tensor 会沿着网络不断积累。粗略地看，如果每层都要保存一组与 batch size、sequence length 和 hidden size 成比例的 activation，那么层数越深，forward 结束时留下来的 activation 通常越多。
+
+这就是 activation checkpointing 想解决的问题：
+
+> **不是让 activation 不再存在，而是不把所有 activation 从 forward 一直保存到 backward。**
+
+## 12.6.2 Activation Checkpointing 在保存什么
+
+假设一个模型由四个 block 组成。正常训练时，每个 block 内部为了 backward 可能保存很多 internal activation：
+
+![图 12.6.2.2 正常训练过程](figures/ch12.6-forward-normal.svg){width=70%}
+
+Activation checkpointing 会选择某些边界作为 **checkpoint**。例如我们把 Block 2 和 Block 4 做 checkpoint，此时 forward 时重点保留的是 block 的输入，而不是 block 内部所有原本要为 backward 保存的 tensor：
+
+![图 12.6.2.3 开启 Activation Checkpoint 过程](figures/ch12.6-forward-checkpoint.svg){height=450px}
+
+这里的 `checkpoint` 和 12.10 要讲的模型 checkpoint 不是一回事。
+
+- **Model checkpoint**：把参数、optimizer state 等写到磁盘，之后可以恢复训练；
+- **Activation checkpoint**：训练过程中保留少量边界 tensor，backward 时用它们重算中间 activation。
+
+所以 activation checkpointing 也经常被叫做 **gradient checkpointing**，但它实际上 checkpoint 的不是 gradient，而是为了重新构造 backward 所需 activation 的边界信息。
+
+一个很重要的地方是：
+
+> **checkpointing 并不会让 activation memory 变成 0。**
+
+至少下面这些东西仍然需要存在：
+
+- Checkpoint 区域的输入；
+- Checkpoint 区域之外正常保存的 activation；
+- Backward 当前正在使用或重算出来的 tensor；
+- Parameters、gradients 和 optimizer states。
+
+所以它减少的是需要跨越 forward → backward 长时间保存的中间 activation，而不是把训练显存里的所有内容都压缩掉。
+
+## 12.6.3 Backward 时发生了什么：重新做一次 Forward
+
+Checkpointing 最关键的一步发生在 backward。
+
+假设 Block 2 和 Block 4 被 checkpoint。正常情况下，forward 会保存它内部 backward 需要的 activation。但开启 checkpointing 后，forward 不再保留这些内部 activation。等 backward 来到这一段时，它先从 checkpoint 输入重新运行这段 forward，把原本 forward 时的中间结果重新算出来，然后再继续 backward。
+
+![图 12.6.3 Backward 时的重计算](figures/ch12.6-backward-checkpoint.svg){height=800px}
+
+所以对于被 checkpoint 的区域，计算过程从原来的：
+
+$$
+\text{Forward} + \text{Backward}
+$$
+
+变成：
+
+$$
+\text{Forward} + \text{Recompute Forward} + \text{Backward}
+$$
+
+这就是它为什么能够省显存，同时又会增加计算量。
+
+如果把 forward 的计算量记作 $F$，backward 的计算量记作 $B$，普通训练大致是：
+
+$$
+C_{\text{normal}} = F + B
+$$
+
+如果所有 forward 计算都需要在 backward 中完整重算一次，那么大致变成：
+
+$$
+C_{\text{checkpoint}} \approx 2F + B
+$$
+
+在很多 dense neural network 中，backward 本身通常比 forward 更贵，所以这不代表训练时间一定直接翻倍。如果只是为了建立直觉，假设 $B \approx 2F$，那么 $F+B \approx 3F$，而加入一次额外 forward 后，$2F+B \approx 4F$。理论计算量大约从 $3F$ 增加到 $4F$，也就是增加三分之一左右。
+
+不过这只是帮助理解的近似。真实 wall-clock time 还会受到 kernel efficiency、memory bandwidth、checkpoint 粒度以及具体算子实现影响，所以不能看到 checkpointing 就直接假设训练一定慢 33%。真正的代价应该像 12.3 一样通过 profiling 和 benchmark 测出来。
+
+## 12.6.4 PyTorch 里最基本的 Checkpoint
+
+PyTorch 提供了：
+
+```python
+from torch.utils.checkpoint import checkpoint
+```
+
+假设原本有一个 block：
+
+```python
+x = block(x)
+```
+
+最基本的 checkpoint 写法就是：
+
+```python
+x = checkpoint(block, x, use_reentrant=False)
+```
+
+当前 PyTorch 更推荐使用非 reentrant 实现，因此这里显式写：
+
+```python
+use_reentrant = False
+```
+
+我们会在后面解释为什么推荐 `use_reentrant=False`。
+
+现在，我们先实现一个简单的 residual MLP block。它不试图完整模拟 Transformer，只保留一个很重要的特点：中间会产生一个比 hidden state 更大的 activation。
+
+```{python}
+class MLPBlock(nn.Module):
+    """A simple residual MLP block with LayerNorm and SiLU activation."""
+
+    def __init__(self, hidden_size: int, intermediate_size: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(hidden_size)
+        self.fc1 = nn.Linear(hidden_size, intermediate_size)
+        self.fc2 = nn.Linear(intermediate_size, hidden_size)
+
+    def forward(self, x: Tensor) -> Tensor:
+        residual = x
+        x = self.norm(x)
+        x = F.silu(self.fc1(x))
+        x = self.fc2(x)
+        return residual + x
+```
+
+普通 forward：
+
+```{python}
+block = MLPBlock(hidden_size=64, intermediate_size=256)
+x = torch.randn(2, 16, 64)
+
+y = block(x)
+print('y.shape:', y.shape)
+```
+
+Checkpointed forward：
+
+```{python}
+y = ckpt.checkpoint(block, x, use_reentrant=False)
+print('y.shape:', y.shape)
+```
+
+从输出看，两者没有什么区别。Activation checkpointing 改变的并不是模型定义，也不是 forward 的具体实现。它改变的是 autograd 为 backward 保留中间 tensor 的策略。
+
+然后，我们写一个简化版 Transformer block stack，支持按 block checkpoint：
+
+```{python}
+class MLPBlockStack(nn.Module):
+    """Create a stack of MLP blocks with optional activation checkpointing."""
+
+    def __init__(
+        self,
+        num_layers: int,
+        hidden_size: int,
+        intermediate_size: int,
+        act_ckpt: bool = False,
+    ):
+        super().__init__()
+        self.act_ckpt = act_ckpt
+        self.blocks = nn.ModuleList(
+            [MLPBlock(hidden_size, intermediate_size) for _ in range(num_layers)]
+        )
+        self.final_norm = nn.LayerNorm(hidden_size)
+
+    def forward(self, x: Tensor) -> Tensor:
+        for block in self.blocks:
+            if self.training and self.act_ckpt:
+                x = ckpt.checkpoint(block, x, use_reentrant=False)
+            else:
+                x = block(x)
+
+        return self.final_norm(x)
+```
+
+这里特意加了：
+
+```python
+if self.training and self.act_ckpt:
+    x = ckpt.checkpoint(block, x, use_reentrant=False)
+else:
+    x = block(x)
+```
+
+因为 activation checkpointing 本质上是为了减少 **training backward** 所需的 activation memory。推理阶段没有 backward，也就没有必要为了这个目的重新组织 forward。
+
+使用时只需要控制一个开关：
+
+```{python}
+model = MLPBlockStack(
+    num_layers=4,
+    hidden_size=64,
+    intermediate_size=256,
+    act_ckpt=True,
+)
+
+x = torch.randn(2, 16, 64)
+y = torch.randn(2, 16, 64)
+
+loss = F.mse_loss(model(x), y)
+loss.backward()
+
+print('Loss:', loss.item())
+```
+
+真实 Transformer block 里当然还会包含 attention、LayerNorm / RMSNorm 和其他组件，但 checkpoint 的思路没有变化。这样我们不需要手动告诉 PyTorch Autograd “MLP 的中间结果要不要保存”。我们只是定义一个 checkpoint 区域，PyTorch 在 backward 需要内部 activation 时再自动重新执行这段 forward。
+
+## 12.6.5 实测 Peak Memory：显存到底能省多少
+
+概念上知道 checkpointing 会减少 activation 还不够，我们可以直接在 GPU 上测量 peak allocated memory。
+
+下面使用刚才的 `MLPBlockStack`，分别运行 `act_ckpt=False` 和 `act_ckpt=True`，然后比较显存占用。同时，我们使用 12.3 讲过的 `torch.Event` 测量平均 step time，看看显存下降的同时付出了多少额外计算时间。
+
+```{python}
+def benchmark_checkpointing(
+    act_ckpt: bool,
+    warmup_steps: int = 2,
+    measure_steps: int = 5,
+) -> tuple[float, float]:
+    """Benchmark peak memory and step time with or without activation checkpointing."""
+    if device.type == 'cpu':
+        raise RuntimeError('GPU is required for this benchmark.')
+
+    model = MLPBlockStack(
+        num_layers=8,
+        hidden_size=1024,
+        intermediate_size=4096,
+        act_ckpt=act_ckpt,
+    ).to(device)
+
+    model.train()
+    x = torch.randn(16, 512, 1024, device=device)
+    y = torch.randn(16, 512, 1024, device=device)
+
+    def training_step():
+        model.zero_grad()
+        output = model(x)
+        loss = F.mse_loss(output, y)
+        loss.backward()
+
+    for _ in range(warmup_steps):
+        training_step()
+
+    accl.synchronize()
+    accl.reset_peak_memory_stats()
+
+    start = torch.Event(enable_timing=True)
+    end = torch.Event(enable_timing=True)
+
+    start.record()
+    for _ in range(measure_steps):
+        training_step()
+    end.record()
+    end.synchronize()
+
+    peak_mem = dnnlpy.bytes_to_gib(accl.max_memory_allocated())
+    step_time = start.elapsed_time(end) / measure_steps
+
+    return peak_mem, step_time
+```
+
+然后分别运行两个配置：
+
+```{python}
+#| eval: false
+for enabled in [False, True]:
+    peak_mem, step_time = benchmark_checkpointing(enabled)
+    print(
+        f'Checkpoint: {str(enabled):<5} | '
+        f'Peak memory: {peak_mem:.4f} GiB | '
+        f'Step time: {step_time:.4f} ms.'
+    )
+```
+
+```code
+Checkpoint: False | Peak memory: 3.0168 GiB | Step time: 1463.0235 ms.
+Checkpoint: True  | Peak memory: 1.0474 GiB | Step time: 1708.7957 ms.
+```
+
+当然，具体 peak memory 数值和 step time 会受到模型结构和多种因素影响。这里真正应该观察的是两个方向：
+
+- Peak Activation Memory 逐渐下降；
+- Training Compute / Time 逐渐上升。
+
+这就是 activation checkpointing 最核心的 trade-off。
+
+如果想进一步知道**哪一段**的 activation 被省掉，可以结合 12.3 的 profiler 和 memory profiling 工具继续分析，而不是只看最终一个 peak memory 数字。
+
+## 12.6.6 Checkpoint 粒度：不是越细越好
+
+知道 `checkpoint()` 怎么用之后，一个很自然的问题是：到底应该 checkpoint 多大一段？
+
+一种极端做法是只 checkpoint 很小的 operator，例如 `Linear`、`GELU`、`LayerNorm` 等；另一种做法是直接 checkpoint 一个完整 Transformer block，例如 `nn.TransformerEncoderLayer`。粒度越小，理论上可以更精细地决定哪些 activation 保存、哪些重算，但也会带来更复杂的边界、更频繁的 checkpoint 管理，以及不一定值得的重计算开销。
+
+对于 Transformer，**按 block checkpoint** 往往是一个很自然的起点，因为：
+
+1. Block 本身有清晰的输入输出；
+2. Block 内部有较多中间 activation 可以释放；
+3. 不需要把 checkpoint 逻辑散落到每个 operator；
+4. 实现简单，方便逐层开启和关闭。
+
+但是否让每一层都 checkpoint 也不是唯一选择。假设 Transformer 有 24 层，我们完全可以只 checkpoint 其中一部分，也可以把多层组织成更大的 checkpoint 区域。选择粒度本质上是在调一个连续的 trade-off：
+
+- 保存的 activation 越多，forward → backward 的显存占用越大，但重计算越少；
+- 保存的 activation 越少，forward → backward 的显存占用越小，但重计算越多。
+
+所以不要把 activation checkpointing 理解成一个只有 `True` 或 `False` 的选择。对于大模型训练，真正的问题通常是：
+
+> **在当前显存预算下，需要 checkpoint 到什么程度，才能让 batch size 和 sequence length 放得下，同时又不要付出不必要的重计算。**
+
+## 12.6.7 Dropout、随机性和有状态 Forward
+
+另外一个问题是 checkpointing 对 forward 的正确性要求。由于 checkpointing 会在 backward 中重新执行 forward，这带来了一个非常重要的问题：
+
+> **Recompute 出来的结果必须和原来 forward 在语义上保持一致。**
+
+最典型的问题就是 dropout。
+
+假设第一次 forward 的 dropout mask 是：
+
+```text
+[1, 0, 1, 1, 0, ...]
+```
+
+如果 backward 重算 forward 时随机得到另一组 mask：
+
+```text
+[0, 1, 1, 0, 1, ...]
+```
+
+那么重算出来的 activation 已经不是原来那次 forward 对应的 activation，梯度自然也会发生变化。
+
+PyTorch 的 `checkpoint()` 默认会保存和恢复相关 RNG state，使包含 dropout 等随机操作的 checkpoint 区域能够在 recompute 时保持一致。这个过程本身也有额外开销，但正常情况下不应该为了省这一点开销就随意关闭。如果确定 checkpoint 区域里没有任何随机操作，可以显式传入 `preserve_rng_state=False` 来节省这部分开销。
+
+::: {.callout-note}
+关于 RNG state 的保存和恢复，PyTorch 只保证在同一设备上是可重现的。如果 checkpoint 区域跨设备，或者 forward 和 backward 在不同设备上执行，那么就不一定能保证随机性的一致性。具体可以参考 [PyTorch 官方文档](https://pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint)。
+:::
+
+更危险的是 forward 中存在依赖外部状态的逻辑。例如：
+
+```python
+if GLOBAL_STEP < 100:
+    ...
+else:
+    ...
+```
+
+如果原始 forward 和 backward 时的 recompute 看到的外部状态不同，那么两次执行可能走不同分支，从而无法保证梯度计算的正确性。同样，下面这些行为也需要特别小心：
+
+- Forward 修改 global state；
+- Forward 对输入之外的 mutable object 有副作用（比如 list）；
+- Recompute 时读取了已经变化的缓存；
+- Forward 根据某个外部计数器改变计算路径。
+
+因此，一个适合 checkpoint 的函数最好接近纯函数：
+
+$$
+\text{output} = f(\text{input},\theta)
+$$
+
+给定相同输入、参数和随机状态时，应该产生一致的计算语义。这也是为什么 Transformer block 这种边界明确、主要由 tensor operation 组成的模块非常适合 activation checkpointing。
+
+## 12.6.8 为什么推荐 use_reentrant 等于 False
+
+现在使用 PyTorch activation checkpointing 时，经常会看到：
+
+```python
+checkpoint(block, x, use_reentrant=False)
+```
+
+这里的 `use_reentrant` 来自 PyTorch 两套 checkpoint 实现。我们不需要深入 autograd engine 的内部实现，只需要记住一个实践结论：
+
+> **现代 PyTorch 推荐优先使用 `use_reentrant=False`。**
+
+非 reentrant 版本有几个对实际训练很有用的特点，例如：
+
+- Forward 时仍然记录 autograd graph，从而支持 early stopping；
+- 对 backward API 的支持更加完整；
+- 不要求 checkpoint 输入和输出中必须至少有一个 tensor 请求梯度；
+- 可以在需要的 activation 已经重算出来后提前停止，而不一定每次都把整个 checkpoint function 完整重跑到底。
+
+::: {.callout-note}
+完整对比可以参考 [PyTorch 官方文档](https://pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint)中的 `use_reentrant` 部分。
+:::
+
+因此，在新的训练代码里，不建议继续依赖默认值，而是显式写：
+
+```python
+use_reentrant = False
+```
+
+这样一方面避免 PyTorch 版本升级后默认行为变化，另一方面也让代码明确表达自己使用的是哪一种 checkpoint 机制。
+
+不过，不管使用哪一种实现，核心思想都没有变化：**forward 少保存，backward 再重算。** `use_reentrant` 改变的是 PyTorch 怎样实现这个过程，而不是 activation checkpointing 本身的目标。
+
+## 12.6.9 Activation Checkpointing 的代价与使用边界
+
+Activation checkpointing 很适合解决深层 Transformer 的 activation memory 问题，但它并不是一个显存优化开关，单纯把它打开就完事了。
+
+首先，它主要减少 activation，而不会直接减少：
+
+- Parameters；
+- Optimizer states；
+- Gradient tensor 本身。
+
+如果一个模型连参数都已经放不进单卡，那么单独开启 activation checkpointing 并不能解决这个问题。这时需要的是后面分布式训练里要讲的参数、梯度和 optimizer state sharding，或者更低精度的模型状态。
+
+其次，它和 gradient accumulation 解决的是两个不同方向的问题：
+
+![图 12.6.10 Activation Checkpointing 与 Gradient Accumulation](figures/ch12.6-reduce-activation-mem.svg){width=60%}
+
+所以这两种方法完全可以同时使用。例如：
+
+```text
+micro-batch size = 2
+accumulation steps = 8
+activation checkpointing = True
+```
+
+此时 gradient accumulation 控制每次送进 GPU 的样本量，而 activation checkpointing 继续压低这 2 个样本在深层网络内部产生的 activation peak。
+
+一个比较实用的调整顺序是：先确定训练真正需要的 sequence length 和 global batch，再在当前显存预算下找到尽可能合理的 micro-batch size。如果 activation 仍然占据大量显存，再开启 block-level activation checkpointing，并重新 profile peak memory 和 throughput。
+
+也就是说，不应该只问要不要开 checkpointing，更应该问：
+
+> **为了让目标 batch size 和模型结构放进当前 GPU，我愿意用多少额外计算换多少 activation memory？**
+
+这就是 activation checkpointing 的本质。
+
+到这里，我们已经有了两种非常常见的训练显存工具：gradient accumulation 通过拆 micro-batch 控制一次 forward 的规模，activation checkpointing 则通过 recompute 减少 forward 必须一直保存到 backward 的中间结果。下一节会进入另一种完全不同的 checkpoint：**训练状态 checkpoint**。它不再讨论 GPU 里暂时保存什么 activation，而是讨论一次长时间 LLM 训练中，模型参数、optimizer state、scheduler 和训练进度应该怎样保存到磁盘，并在训练中断后正确恢复。

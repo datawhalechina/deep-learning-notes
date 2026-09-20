@@ -50,16 +50,16 @@
 - 5.5 Building a Simple CNN: From Feature Extraction to Image Classification
 - 5.6 LeNet: The Early Template of Convolution, Pooling, and Fully Connected Layers
 
-## Chapter 7: Regularization and Normalization: Making Deep Networks More Stable
+## Chapter 6: Regularization and Normalization: Making Deep Networks More Stable
 
-- 7.1 Why Deep Networks Need Regularization and Normalization
-- 7.2 Dropout: Reducing Overfitting through Random Deactivation
-- 7.3 BatchNorm: Stabilizing Training with Batch Statistics
-- 7.4 LayerNorm: Normalizing Features Within Each Sample
-- 7.5 InstanceNorm: Normalizing Each Channel Within Each Sample
-- 7.6 GroupNorm: Normalizing Features Within Channel Groups
-- 7.7 RMSNorm: Normalizing Feature Magnitudes Without Mean Centering
-- 7.8 A Unified View of Normalization: Which Dimensions Are Normalized?
+- 6.1 Why Deep Networks Need Regularization and Normalization
+- 6.2 Dropout: Reducing Overfitting through Random Deactivation
+- 6.3 BatchNorm: Stabilizing Training with Batch Statistics
+- 6.4 LayerNorm: Normalizing Features Within Each Sample
+- 6.5 InstanceNorm: Normalizing Each Channel Within Each Sample
+- 6.6 GroupNorm: Normalizing Features Within Channel Groups
+- 6.7 RMSNorm: Normalizing Feature Magnitudes Without Mean Centering
+- 6.8 A Unified View of Normalization: Which Dimensions Are Normalized?
 
 ## Chapter 9: Attention and Transformer: From Dynamic Retrieval to Sequence Modeling
 
@@ -80,36 +80,12 @@
 - 10.1 Why Attention Is IO-Bound
 - 10.2 FlashAttention v1: Eliminating the IO Bottleneck in Attention Mechanisms
 
-## Chapter 11: Vision Transformer: From Image Classification to Visual Sequence Modeling
+## Chapter 11: Implementing GPT from Scratch: From the Transformer Decoder to GPT-2
 
-- 11.1 From CNN to Vision Transformer: Treating Images as Sequences
-- 11.2 Patch Embedding: Cutting Images into Tokens
-- 11.3 Class Token and Positional Embedding: Letting a Sequence Represent the Whole Image
-- 11.4 ViT Encoder: Letting Patch Tokens Exchange Information
-- 11.5 ViT Backbone: Pretraining and Fine-Tuning
-
-## Chapter 13: VAE: From Latent Space to Probabilistic Generation
-
-- 13.1 AutoEncoder: Starting with Compression and Reconstruction
-- 13.2 VAE: Probabilistic Modeling and the Reparameterization Trick
-- 13.3 ELBO: Where Does the VAE Objective Function Come From?
-- 13.4 VAE Training Phenomena and Latent Space Intuition
-- 13.5 VAE: Advantages, Limitations, and Future Developments
-
-## Chapter 14: Diffusion Models: From the Diffusion Process to Generative Models
-
-- 14.1 DDPM: From Denoising to Generation
-- 14.2 The Forward Process of DDPM: From Image to Noise
-- 14.3 DDPM's Reverse Denoising Process and Training Objective
-- 14.4 DDPM Network Structure and Sampling Process
-- 14.5 DDPM from a Variational Derivation: Where Does the ELBO Come From?
-
-## Chapter 18: Implementing GPT from Scratch: From the Transformer Decoder to GPT-2
-
-- 18.1 What Language Models Predict: Next-Token Prediction
-- 18.2 MiniGPT: From a Causal GPT Block to a Decoder-only Language Model
-- 18.3 Tokenizer: Characters, BPE, and Vocabulary
-- 18.4 Embedding, LM Head, and Weight Tying
-- 18.5 Training MiniGPT on TinyStories
-- 18.6 From Training to Generation: Temperature, Top-k, and Top-p
-- 18.7 GPT-2: From MiniGPT to a Pretrained Language Model
+- 11.1 What Language Models Predict: Next-Token Prediction
+- 11.2 MiniGPT: From a Causal GPT Block to a Decoder-only Language Model
+- 11.3 Tokenizer: Characters, BPE, and Vocabulary
+- 11.4 Embedding, LM Head, and Weight Tying
+- 11.5 Training MiniGPT on TinyStories
+- 11.6 From Training to Generation: Temperature, Top-k, and Top-p
+- 11.7 GPT-2: From MiniGPT to a Pretrained Language Model

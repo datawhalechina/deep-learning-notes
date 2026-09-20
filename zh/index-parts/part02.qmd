@@ -9,7 +9,7 @@ comments: false
 listing:
   contents:
     - "../ch5-convolutional-neural-network/*.qmd"
-    - "../ch7-regularization-and-normalization/*.qmd"
+    - "../ch6-regularization-and-normalization/*.qmd"
   sort: title asc
   type: table
   fields: [title, author, date]
