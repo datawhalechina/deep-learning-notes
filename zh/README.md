@@ -102,3 +102,7 @@
 - 12.8 Triton 入门：什么时候需要自己写 Kernel
 - 12.9 分布式训练入门：DDP、ZeRO 与 FSDP 的直觉
 - 12.10 大模型 Checkpoint：模型、优化器与分布式状态如何恢复
+
+## Chapter 19: SGLang：从请求调度到 Cache-Aware Serving
+
+- 19.1 From vLLM to SGLang：相同的 Serving 问题，不同的设计

@@ -1,0 +1,217 @@
+---
+author: jshn9515
+date: 2026-09-20
+date-modified: 2026-09-20
+open-graph:
+  title: ch19.1-from-vllm-to-sglang
+  description: "19.1 From vLLM to SGLang: Same Serving Problems, Different Designs"
+title: "19.1 From vLLM to SGLang：相同的 Serving 问题，不同的设计"
+order: 1
+---
+
+在上一章里，我们已经从 vLLM 的角度看过一次 LLM serving。一个请求进入推理引擎以后，需要经过调度、KV cache 分配、模型前向、采样和输出，多个请求还要通过 continuous batching 动态地共享 GPU。
+
+到了 SGLang，这些问题并没有消失。SGLang 仍然需要回答同样的问题：
+
+- 新请求什么时候进入 GPU？
+- Prefill 和 decode 怎么安排？
+- KV Cache 放在哪里？
+- 多个请求共享前缀时，已经算过的结果能不能直接复用？
+- GPU 显存不够时，哪些缓存应该被保留，哪些应该被淘汰？
+- 一个 token 生成以后，怎么继续进入下一轮 decode，最后又怎么流式返回给用户？
+
+所以，SGLang 并不是在解决一种完全不同的推理问题。真正值得注意的是：
+
+> **面对同一套 serving 问题，vLLM 和 SGLang 选择了不同的系统抽象和组织方式。**
+
+这一章不会重新从头介绍 LLM serving，而是沿着一个请求在 SGLang runtime 中的完整生命周期，看看 SGLang 是怎么组织这些问题的。
+
+## 19.1.1 vLLM 已经解决了什么
+
+先回忆上一章的核心思路。
+
+我们知道，如果直接使用普通的 `model.generate()`，一次请求通常会独占一次完整的生成过程。请求之间很难动态合并，KV cache 也很难由一个全局运行时统一管理。因此，vLLM 做的第一件事情，就是把“模型生成”改造成“推理引擎”。在这个引擎里，请求不再直接控制模型，而是先进入 scheduler，再由 scheduler 决定这一轮哪些 token 可以进入 GPU。
+
+整个过程可以粗略写成：
+
+![图 19.1.1 vLLM 的推理引擎](figures/ch19.1-vllm-engine.svg){height=400px}
+
+其中，paged KV cache 把每个请求不断增长的 KV cache 拆成固定大小的 block，再通过 block table 把逻辑 token 位置映射到实际的物理显存。这样可以减少连续显存分配带来的浪费，也让请求更容易动态加入和离开 batch。在这个基础上，vLLM 再实现 continuous batching、chunked prefill、prefix caching、preemption、speculative decoding 等机制。
+
+所以，从 vLLM 学到的最重要的一件事不是某一个 kernel，而是：
+
+> **Serving 的核心不是调用一次模型，而是持续管理一组状态不断变化的请求。**
+
+SGLang 仍然建立在这个基本事实之上。
+
+## 19.1.2 SGLang 为什么还需要另一套 Runtime
+
+如果 vLLM 已经有 continuous batching、PagedAttention 和 prefix caching，为什么还需要 SGLang？一个重要原因是：真实 LLM 应用中的请求经常不是完全独立的。
+
+例如，多轮对话可能不断重复之前的聊天历史：
+
+```text
+Request 1:
+System Prompt + User A
+
+Request 2:
+System Prompt + User A + Assistant A + User B
+
+Request 3:
+System Prompt + User A + Assistant A + User B + Assistant B + User C
+```
+
+Few-shot prompting 也经常让大量请求共享相同的示例：
+
+```text
+Shared Examples + Question 1
+Shared Examples + Question 2
+Shared Examples + Question 3
+```
+
+在 RAG、agent、tree search 和结构化生成里，也可能出现大量重复前缀。如果每个请求都被看成一条完全独立的 sequence，那么即使 KV cache 本身已经被分页管理，运行时仍然需要额外判断：
+
+> **这个请求前面的 token，是不是以前已经算过？**
+
+SGLang 的一个代表性设计就是 **RadixAttention** [@zheng2024SGLang]。它不只关心一个请求的 KV cache 放在哪些 page，还会维护不同请求之间的共享前缀关系，使已经计算过的 prefix KV cache 可以被后续请求复用。
+
+这里先避免一个容易产生的误解：虽然名字里有 attention，但这里的 RadixAttention 不是像 FlashAttention 那样单纯负责计算 $QK^\top$ 的 GPU kernel，它描述的是一种跨请求复用 KV cache 的运行时机制。真正这一轮 attention 用什么 kernel、怎样读取 paged KV cache，是 attention backend 要解决的问题。
+
+因此，可以先建立一个很粗略的区别：
+
+- Paged KV cache 的重点是如何管理 KV cache 的物理显存；
+- Radix cache 的重点是哪些 token prefix 的计算结果可以被不同请求复用。
+
+这两件事并不冲突。实际上，现代推理系统通常同时需要物理 KV cache 管理和 prefix caching。SGLang 的特点是，它把 prefix 复用放到了运行时设计中非常显眼的位置，并进一步让调度器能够利用这些缓存信息。
+
+## 19.1.3 从 Memory-Aware 到 Cache-Aware
+
+假设现在有三个等待中的请求：
+
+```text
+A: [system prompt][document 1][question 1]
+B: [system prompt][document 1][question 2]
+C: [system prompt][document 2][question 3]
+```
+
+其中，A 和 B 共享很长的前缀，而 C 和它们只共享最开始的 system prompt。
+
+如果 scheduler 完全只按照请求到达顺序处理，那么它关注的主要是：
+
+- 谁先来？
+- 这一轮还有多少 token 预算？
+- KV cache 还有没有空间？
+
+但如果运行时已经知道 A 和 B 共享大量 prefix，那么调度还可以多考虑一个问题：
+
+- 先处理谁，可以让已经存在的 KV cache 被更多请求复用？
+
+这就是这一章里会反复出现的 **Cache-Aware Serving**。
+
+这里的 cache-aware 并不意味着 scheduler 只根据缓存做决定。请求等待时间、batch token 数量、KV cache 空间、prefill 长度和 decode 请求仍然都会影响调度。它真正表达的是：
+
+> **Cache 不再只是模型 forward 背后的一个被动存储区，而可以成为调度决策的一部分。**
+
+这也是为什么在 SGLang 里，radix cache 和 scheduler 不能分开理解。Scheduler 需要知道哪些 prefix 已经命中，cache 也需要随着请求进入、运行和结束不断更新自己的状态。后面的 19.3、19.4 和 19.5 会把这部分拆开来看。
+
+## 19.1.4 Radix Cache 管的是可复用的历史计算
+
+在最普通的 KV cache 视角下，我们经常会说：
+
+> **每个请求有自己的 KV cache。**
+
+这个说法用来理解单个请求没有问题，但在 prefix caching 场景下，它并不完整。
+
+假设两个请求的 token 是：
+
+```text
+Request A: [1, 5, 8, 9, 3]
+Request B: [1, 5, 8, 7, 2]
+```
+
+它们的前三个 token 完全相同。如果 `[1, 5, 8]` 已经完成 prefill，那么对应的 KV cache 其实没有必要分别保存两份，也没有必要重新计算两次。我们更希望把它看成一段共享的历史：
+
+![图 19.1.4 两个请求可以共享前缀](figures/ch19.1-predix-cache.svg){width=60%}
+
+这个结构天然是一棵前缀树。
+
+SGLang 使用 radix tree 组织这样的共享 prefix，并把树节点和底层 KV cache 位置联系起来。这样，当新请求到来时，运行时可以先找到最长可复用前缀，再只对剩下还没有计算过的 token 做 prefill。因此，从 SGLang 的视角来看，KV cache 不再只是某个请求独占的一组缓存块。SGLang 进一步将 token prefix 与已经计算得到的 KV cache 关联起来，使相同或重叠前缀对应的 KV cache 能够在不同请求之间被复用。
+
+这一层就是后面理解 radix cache 的关键。不过这一节先只建立直觉，具体的 prefix matching、引用计数、cache eviction 和 KV page 分配会留到 19.4。
+
+## 19.1.5 SGLang Runtime 里的一个请求怎么走
+
+为了方便后面读源码，我们先把 SGLang runtime (srt) 的主路径看一遍。
+
+一个在线请求大致会经过：
+
+![图 19.1.5 SGLang Runtime 的请求路径](figures/ch19.1-sglang-runtime.png)
+
+这里先只需要记住几个角色：
+
+- HTTP Server：接收外部请求；
+- TokenizerManager：把文本请求转换成模型可以处理的 tokenized request，并维护用户侧请求状态；
+- Scheduler：维护 waiting / running request，决定这一轮执行 prefill 还是 decode，以及哪些请求进入 batch；
+- Radix Cache / KV Cache Pool：记录哪些 prefix 已经计算过，以及实际 KV cache 存在哪里；
+- ModelRunner：真正准备 GPU 输入并执行模型 forward；
+- Attention Backend：根据当前 batch 和 KV cache metadata 选择合适的 attention kernel；
+- Sampling：从 logits 得到新的 token；
+- DetokenizerManager：把 token ID 转换回文本，并最终返回给用户。
+
+注意，这不是八个完全独立的模块。真正运行时，它们之间会交换 request state、token position、KV cache 位置、sampling result 和 streaming state。
+
+这一章我们会沿着 request lifecycle 一步一步往下走，看看每个阶段的主要问题和 SGLang 的设计选择。
+
+## 19.1.6 vLLM 和 SGLang 的区别
+
+第一次比较两个推理框架时，可能很多人喜欢按照功能来对比，比如是否支持 continuous batching、paged KV cache、prefix caching、speculative decoding，等等。但是，这种表现在越来越没有意义。现代 serving 框架会快速吸收彼此验证过的优化，很多功能最终都会同时存在。
+
+更有用的比较方式，是看它们如何组织这些功能。比如在 prefix caching 上，现代 vLLM 会对已经计算完成的 KV block 建立基于 token prefix 的 hash，并通过 KV cache manager 查找可复用 block；SGLang 则使用 radix tree 直接组织共享 token prefix。两者都在复用历史 KV，但索引缓存、表达共享关系以及把这些信息交给调度器使用的方式并不一样。
+
+我们可以列一个这样的表格：
+
+::: {.list-table tbl-colwidths="[20,40,40]"}
+表 19.1.6 vLLM 和 SGLang 的对比
+
+- - 视角
+  - vLLM
+  - SGLang
+
+- - 主要问题
+  - 高吞吐地管理大量并发请求
+  - 高吞吐地管理大量并发请求
+
+- - KV Cache 基础
+  - 分页式 KV Cache 管理
+  - 分页式 KV Cache 管理
+
+- - Prefix Reuse
+  - Automatic Prefix Caching
+  - Radix Cache / RadixAttention
+
+- - Scheduler
+  - 根据 token budget、KV 空间等构造执行批次
+  - 可以进一步利用 prefix cache 信息
+
+- - Runtime 重点
+  - Engine、Scheduler、KV Cache Manager、Model Runner
+  - TokenizerManager、Scheduler、Radix Cache、ModelRunner、DetokenizerManager
+:::
+
+当然，这里也不能简单理解成 vLLM 是 memory-aware，SGLang 是 cache-aware。现代 vLLM 同样支持 prefix caching，SGLang 也同样需要 page-based KV memory management。
+
+真正的区别更像是：
+
+> **SGLang 把共享前缀、radix cache 和调度之间的关系暴露得更加直接，因此很适合从 cache-aware serving 的角度理解整个 runtime。**
+
+## 19.1.7 本章小结
+
+接下来，我们会沿着一次请求真实经过 SGLang runtime 的顺序继续往下，后面再继续扩展到 speculative decoding、PD disaggregation，以及 SGLang-Omni 的多阶段推理。
+
+这一章最重要的阅读主线，是始终问三个问题：
+
+1. 这个 request 现在处于什么状态？
+2. 这一轮 scheduler 为什么让这些 token 进入 GPU？
+3. 这些 token 对应的 KV cache 是新计算的，还是从已有 prefix 复用的？
+
+但在真正进入各个模块之前，我们先做一件更简单的事情：直接使用一个现成模型启动 SGLang server，通过它的 API 发送几种最基本的请求，先看看一个 SGLang 服务实际是怎么使用的。等这条最外层的请求路径跑通之后，我们再从 HTTP server 和 TokenizerManager 开始，顺着一个 request 真正进入 SGLang runtime。

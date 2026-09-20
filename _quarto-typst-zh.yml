@@ -139,3 +139,6 @@ book:
         - "zh/ch12-llm-training-engineering/ch12.8-triton.qmd"
         - "zh/ch12-llm-training-engineering/ch12.9-distributed-training.qmd"
         - "zh/ch12-llm-training-engineering/ch12.10-large-model-checkpoint.qmd"
+    - part: "Chapter 19: SGLang：从请求调度到 Cache-Aware Serving"
+      chapters:
+        - "zh/ch19-sglang-serving/ch19.1-from-vllm-to-sglang.qmd"

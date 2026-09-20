@@ -99,12 +99,16 @@ website:
               contents: "zh/ch9-attention-and-transformer/*.qmd"
             - section: "Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention"
               contents: "zh/ch10-efficient-attention/*.qmd"
-        - section: "Part 8: LLM 基础：以 GPT-2 为例"
+        - section: "Part 5: LLM 基础：以 GPT-2 为例"
           contents:
             - section: "Chapter 11: 从零实现 GPT：从 Transformer Decoder 到 GPT-2"
               contents: "zh/ch11-gpt2-from-scratch/*.qmd"
             - section: "Chapter 12: LLM 训练工程：显存、计算与并行训练"
               contents: "zh/ch12-llm-training-engineering/*.qmd"
+        - section: "Part 7: LLM Serving：vLLM 与 SGLang"
+          contents:
+            - section: "Chapter 19: SGLang：从请求调度到 Cache-Aware Serving"
+              contents: "zh/ch19-sglang-serving/*.qmd"
     - id: en
       style: floating
       contents:
