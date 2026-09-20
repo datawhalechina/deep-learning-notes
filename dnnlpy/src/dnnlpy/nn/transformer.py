@@ -75,7 +75,7 @@ class LearnablePositionalEmbedding(nn.Module):
 
 class SinusoidalPositionalEncoding(nn.Module):
     """Add fixed sinusoidal position encodings to batch-first sequences."""
-    
+
     pos_embed: Tensor
 
     def __init__(self, embed_dim: int, max_len: int = 5000):
