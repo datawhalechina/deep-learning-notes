@@ -650,7 +650,7 @@ def test_sinusoidal_positional_encoding(batch_size: int, src_len: int, d_model: 
     custom = dnn.SinusoidalPositionalEncoding(d_model, max_len=src_len)
 
     actual = custom(x)
-    expected = custom.pe.expand_as(actual)  # type: ignore
+    expected = custom.pos_embed.expand_as(actual)
 
     assert actual.shape == x.shape
     assert_close(actual, expected)
