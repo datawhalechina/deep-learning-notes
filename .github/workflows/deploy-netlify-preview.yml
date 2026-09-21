@@ -24,41 +24,58 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Resolve pull request number
+      - name: Download Netlify metadata
+        uses: actions/download-artifact@v8
+        with:
+          name: netlify-metadata
+          path: ${{ runner.temp }}/netlify-metadata
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read and validate Netlify metadata
         id: pr
         uses: actions/github-script@v9
+        env:
+          METADATA_PATH: ${{ runner.temp }}/netlify-metadata/metadata.json
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require("node:fs");
             const workflowRun = context.payload.workflow_run;
-            let pullRequest = workflowRun.pull_requests?.[0];
+            const metadata = JSON.parse(fs.readFileSync(process.env.METADATA_PATH, "utf8"));
+            const pullRequestNumber = metadata?.pr_number;
 
-            if (!pullRequest) {
-              const candidates = await github.paginate(
-                github.rest.repos.listPullRequestsAssociatedWithCommit,
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  commit_sha: workflowRun.head_sha,
-                  per_page: 100,
-                },
-              );
-              const matching = candidates.filter(
-                (candidate) =>
-                  candidate.head.sha === workflowRun.head_sha &&
-                  candidate.base.repo.full_name === context.payload.repository.full_name,
-              );
-              if (matching.length !== 1) {
-                throw new Error(
-                  `Expected one PR for ${workflowRun.head_sha}, found ${matching.length}.`,
-                );
-              }
-              [pullRequest] = matching;
+            if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+              throw new Error(`Invalid PR number: ${pullRequestNumber}`);
+            }
+            if (typeof metadata.head_sha !== "string" || metadata.head_sha !== workflowRun.head_sha) {
+              throw new Error("Metadata commit SHA does not match the source workflow run.");
+            }
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullRequestNumber,
+            });
+
+            // PR artifacts are untrusted: verify the target before any writes.
+            if (
+              pullRequest.base.repo.full_name !== context.payload.repository.full_name ||
+              pullRequest.head.repo?.full_name !== workflowRun.head_repository?.full_name ||
+              pullRequest.head.ref !== workflowRun.head_branch
+            ) {
+              throw new Error(`PR #${pullRequestNumber} does not match the source workflow run.`);
+            }
+            if (pullRequest.state !== "open" || pullRequest.head.sha !== workflowRun.head_sha) {
+              core.info(`Skipping closed or outdated preview for PR #${pullRequestNumber}.`);
+              return;
             }
 
             core.setOutput("number", pullRequest.number);
+            core.setOutput("head_sha", metadata.head_sha);
 
       - name: Download rendered website artifact
+        if: steps.pr.outputs.number != ''
         uses: actions/download-artifact@v8
         with:
           name: dnnl-website-pr-${{ steps.pr.outputs.number }}
@@ -68,16 +85,18 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
+        if: steps.pr.outputs.number != ''
         uses: actions/setup-node@v7
         with:
           node-version: 24
 
       - name: Register GitHub deployment
+        if: steps.pr.outputs.number != ''
         id: deployment
         uses: actions/github-script@v9
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_SHA: ${{ steps.pr.outputs.head_sha }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -110,13 +129,14 @@ jobs:
             });
 
       - name: Deploy preview to Netlify
+        if: steps.pr.outputs.number != ''
         id: netlify
         shell: bash
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
 
@@ -181,11 +201,12 @@ jobs:
             await github.rest.repos.createDeploymentStatus(status);
 
       - name: Comment preview URL on pull request
+        if: steps.pr.outputs.number != ''
         uses: actions/github-script@v9
         env:
           PREVIEW_URL: ${{ steps.netlify.outputs.url }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_SHA: ${{ steps.pr.outputs.head_sha }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

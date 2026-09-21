@@ -120,3 +120,27 @@ jobs:
         with:
           name: dnnl-website-pr-${{ github.event.pull_request.number }}
           path: _site
+          if-no-files-found: error
+
+      - name: Write Netlify metadata
+        uses: actions/github-script@v9
+        env:
+          METADATA_PATH: ${{ runner.temp }}/netlify-metadata/metadata.json
+        with:
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const pullRequest = context.payload.pull_request;
+            const metadata = {
+              pr_number: pullRequest.number,
+              head_sha: pullRequest.head.sha,
+            };
+            fs.mkdirSync(path.dirname(process.env.METADATA_PATH), { recursive: true });
+            fs.writeFileSync(process.env.METADATA_PATH, JSON.stringify(metadata) + "\n");
+
+      - name: Upload Netlify metadata
+        uses: actions/upload-artifact@v7
+        with:
+          name: netlify-metadata
+          path: ${{ runner.temp }}/netlify-metadata/metadata.json
+          if-no-files-found: error
