@@ -15,7 +15,7 @@ order: 1
 
 - 新请求什么时候进入 GPU？
 - Prefill 和 decode 怎么安排？
-- KV Cache 放在哪里？
+- KV cache 放在哪里？
 - 多个请求共享前缀时，已经算过的结果能不能直接复用？
 - GPU 显存不够时，哪些缓存应该被保留，哪些应该被淘汰？
 - 一个 token 生成以后，怎么继续进入下一轮 decode，最后又怎么流式返回给用户？
@@ -177,7 +177,7 @@ SGLang 使用 radix tree 组织这样的共享 prefix，并把树节点和底层
   - vLLM
   - SGLang
 
-- - 主要问题
+- - 主要目标
   - 高吞吐地管理大量并发请求
   - 高吞吐地管理大量并发请求
 
@@ -190,8 +190,8 @@ SGLang 使用 radix tree 组织这样的共享 prefix，并把树节点和底层
   - Radix Cache / RadixAttention
 
 - - Scheduler
-  - 根据 token budget、KV 空间等构造执行批次
-  - 可以进一步利用 prefix cache 信息
+  - 根据 token budget、可用 KV Cache block 等构造执行批次
+  - 在计算预算和 KV Cache 容量之外，还可以进一步利用 Prefix Cache 信息
 
 - - Runtime 重点
   - Engine、Scheduler、KV Cache Manager、Model Runner
