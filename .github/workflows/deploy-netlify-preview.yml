@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: netlify-docs-preview-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  group: netlify-docs-preview-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
