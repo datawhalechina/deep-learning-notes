@@ -15,7 +15,7 @@ WORKDIR /workspace
 COPY . .
 
 RUN uv venv --python 3.14 --no-project /opt/venv \
-    && uv pip install --python /opt/venv/bin/python "pyyaml>=6.0,<6.1"
+    && uv pip install --python /opt/venv/bin/python "pyyaml"
 
 ENV PATH="/opt/venv/bin:$PATH"
 
