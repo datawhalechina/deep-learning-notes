@@ -1,0 +1,129 @@
+---
+author: xcherry9988-code
+date: 2026-09-21
+date-modified: 2026-09-21
+open-graph:
+  title: ch3.9-exercises
+  description: "3.9 Chapter 3 Exercises: Multi-Layer Perceptron"
+title: "3.9 Chapter 3 练习题：多层感知机"
+order: 9
+---
+
+## 练习题
+
+1\. 如果连续堆叠多个线性层，但层与层之间没有加入任何非线性操作，那么整个模型最终仍然等价于一个 ______ 模型。因此，MLP 会在线性层之间加入 ______，使模型能够表示更加复杂的非线性关系。
+
+2\. 在 PyTorch 中使用 `nn.CrossEntropyLoss()` 完成多分类任务时，模型最后一层应该传给损失函数什么？
+
+A. 已经经过 softmax 的类别概率。  
+B. 模型直接输出的 logits。  
+C. `torch.argmax` 得到的类别编号。  
+D. 转换成 one-hot 形式的预测结果。
+
+3\. 按照本章 NumPy 实现采用的矩阵形式，线性层前向传播为：
+
+$$
+Y = XW + b
+$$
+
+如果上游梯度为：
+
+$$
+G = \frac{\partial L}{\partial Y}
+$$
+
+则反向传播中的三个梯度分别为：
+
+$$
+\begin{align}
+\frac{\partial L}{\partial X} &= \underline{\hspace{2cm}} \\
+\frac{\partial L}{\partial W} &= \underline{\hspace{2cm}} \\
+\frac{\partial L}{\partial b} &= \underline{\hspace{2cm}}
+\end{align}
+$$
+
+4\. 关于数值梯度检查，下列说法正确的是：
+
+A. 常用中心差分近似梯度，并与手写 backward 得到的解析梯度比较。  
+B. 数值梯度检查比反向传播快，因此应该在每个训练 step 都执行。  
+C. 数值梯度检查可以严格证明模型在所有输入下的 backward 都绝对正确。  
+D. ReLU 在 0 附近最适合做梯度检查，因为该位置的导数最稳定。
+
+5\. 运行下面的代码：
+
+```python
+import torch
+import torch.nn as nn
+
+
+model = nn.Sequential(
+    nn.Flatten(),
+    nn.Linear(28 * 28, 128),
+    nn.ReLU(),
+    nn.Linear(128, 10),
+)
+
+x = torch.randn(32, 1, 28, 28)
+logits = model(x)
+
+print('logits.shape:', logits.shape)
+print('weight.shape:', model[1].weight.shape)
+```
+
+写出两个输出的形状，并解释它们分别代表什么。
+
+## 参考答案
+
+1\. <span style="color: #1565C0;">**答案：线性；激活函数**</span>
+
+如果两个线性层连续连接：
+
+$$
+\begin{align}
+H &= XW_1 + b_1 \\
+Z &= HW_2 + b_2
+\end{align}
+$$
+
+把前一个式子代入后，仍然可以整理成一次线性变换。因此只有在线性层之间加入非线性激活函数，模型的表达能力才会发生本质变化。
+
+2\. <span style="color: #1565C0;">**答案：B**</span>
+
+`nn.CrossEntropyLoss()` 接收的是模型直接输出的 logits，而不是已经经过 softmax 的概率。PyTorch 会在内部以数值稳定的方式完成 log-softmax 和对应的分类损失计算，因此通常不应该在调用 `CrossEntropyLoss` 前手动执行 softmax。
+
+3\. <span style="color: #1565C0;">**答案：**</span>
+
+$$
+\begin{align}
+\frac{\partial L}{\partial X} &= GW^\top \\
+\frac{\partial L}{\partial W} &= X^\top G \\
+\frac{\partial L}{\partial b} &= \sum_{i=1}^{B}G_i
+\end{align}
+$$
+
+其中，输入梯度的形状与 $X$ 一致，权重梯度的形状与 $W$ 一致，偏置梯度则需要沿 batch 维度求和。
+
+4\. <span style="color: #1565C0;">**答案：A**</span>
+
+中心差分通过分别对参数增加和减小一个很小的 $\epsilon$，利用两次前向计算近似真实导数。它通常只适合小模型和少量参数的调试，因为如果有 $N$ 个参数，就可能需要大约 $2N$ 次前向传播，计算成本远高于普通反向传播。
+
+5\. <span style="color: #1565C0;">**答案：**</span>
+
+```text
+torch.Size([32, 10])
+torch.Size([128, 784])
+```
+
+输入共有 32 张图片，每张图片的形状为 $1\times 28\times 28$，`nn.Flatten()` 会把每张图片展平成 784 维向量。最后一个线性层输出 10 个类别的 logits，因此整个 batch 的输出形状为 $32\times 10$。
+
+网络第一层为：
+
+```python
+nn.Linear(784, 128)
+```
+
+PyTorch 中 `nn.Linear` 的权重形状按照 `(out_features, in_features)` 保存，所以：
+
+```text
+model[1].weight.shape == (128, 784)
+```

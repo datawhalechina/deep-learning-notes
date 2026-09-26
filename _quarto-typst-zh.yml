@@ -53,6 +53,7 @@ book:
         - "zh/ch1-introduction/ch1.3-computation-graph.qmd"
         - "zh/ch1-introduction/ch1.4-gradient-descent.qmd"
         - "zh/ch1-introduction/ch1.5-why-neural-networks-can-be-trained.qmd"
+        - "zh/ch1-introduction/ch1.6-exercises.qmd"
     - part: "Chapter 2: PyTorch 入门"
       chapters:
         - "zh/ch2-pytorch-introduction/ch2.1-automatic-differentiation.qmd"
@@ -62,6 +63,7 @@ book:
         - "zh/ch2-pytorch-introduction/ch2.5-optimizer.qmd"
         - "zh/ch2-pytorch-introduction/ch2.6-training-loop.qmd"
         - "zh/ch2-pytorch-introduction/ch2.7-checkpoint-resuming.qmd"
+        - "zh/ch2-pytorch-introduction/ch2.8-exercises.qmd"
     - part: "Chapter 3: 多层感知机：从单层到深层的非线性建模"
       chapters:
         - "zh/ch3-multi-layer-perceptron/ch3.1-from-linear-model-to-mlp.qmd"
@@ -72,6 +74,7 @@ book:
         - "zh/ch3-multi-layer-perceptron/ch3.6-train-mlp-on-mnist.qmd"
         - "zh/ch3-multi-layer-perceptron/ch3.7-gradient-checking.qmd"
         - "zh/ch3-multi-layer-perceptron/ch3.8-mlp-with-pytorch.qmd"
+        - "zh/ch3-multi-layer-perceptron/ch3.9-exercises.qmd"
     - part: "Chapter 4: 优化算法：神经网络如何更新参数"
       chapters:
         - "zh/ch4-optimization-algorithms/ch4.1-gradient-descent.qmd"
@@ -83,6 +86,7 @@ book:
         - "zh/ch4-optimization-algorithms/ch4.7-muon.qmd"
         - "zh/ch4-optimization-algorithms/ch4.8-optimizer-practice.qmd"
         - "zh/ch4-optimization-algorithms/ch4.9-learning-rate-schedulers.qmd"
+        - "zh/ch4-optimization-algorithms/ch4.10-exercises.qmd"
     - part: "Chapter 5: 卷积神经网络：从局部感知到全局建模"
       chapters:
         - "zh/ch5-convolutional-neural-network/ch5.1-from-mlp-to-cnn.qmd"

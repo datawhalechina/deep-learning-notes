@@ -1,0 +1,136 @@
+---
+author: xcherry9988-code
+date: 2026-09-21
+date-modified: 2026-09-21
+open-graph:
+  title: ch4.10-exercises
+  description: "4.10 Chapter 4 Exercises: Optimization Algorithms"
+title: "4.10 Chapter 4 练习题：优化算法"
+order: 10
+---
+
+## 练习题
+
+1\. Momentum 不再只使用当前 mini-batch 的梯度，而是维护一个动量变量 $v_t=$ ______，然后使用 $\theta_{t+1}=$ ______ 更新参数。当多个 step 的梯度方向比较一致时，这些方向会在 $v_t$ 中不断 ______；如果某个方向上的梯度反复改变正负，则会在一定程度上相互 ______。
+
+2\. RMSprop 相比 Adagrad 最核心的改进是什么？
+
+A. RMSprop 不再使用梯度，而只根据参数大小更新模型。  
+B. RMSprop 把历史平方梯度完整累计改成平方梯度的指数滑动平均，使很久以前的梯度影响逐渐减弱。  
+C. RMSprop 使用完整 Hessian 矩阵计算参数更新方向。  
+D. RMSprop 给所有参数重新使用完全相同的固定学习率。
+
+3\. Adam 同时维护两个主要状态。$m_t$ 是梯度的 ______ 估计，主要用于平滑更新方向；$v_t$ 是梯度平方的 ______ 估计，主要用于衡量不同参数的梯度尺度。由于二者通常从 0 初始化，训练初期会偏向 0，因此 Adam 还需要进行 ______。
+
+4\. 关于 AdamW 的 weight decay，下列说法正确的是：
+
+A. AdamW 先把 $\lambda\theta$ 加入梯度，再让它参与一阶矩和二阶矩计算。  
+B. AdamW 完全取消了 weight decay。  
+C. AdamW 将 weight decay 与梯度更新解耦，直接对参数进行衰减，而一阶矩和二阶矩仍由原始梯度更新。  
+D. AdamW 的 weight decay 只会影响 bias，不影响权重矩阵。
+
+5\. 下面使用 `OneCycleLR` 构造了一个按 mini-batch 更新学习率的训练循环。请在注释位置补充缺少的一行代码，使 scheduler 按本章介绍的方式正确更新。
+
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.optim.lr_scheduler as lr
+
+num_epochs = 3
+steps_per_epoch = 10
+
+model = nn.Linear(10, 2)
+optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+scheduler = lr.OneCycleLR(
+    optimizer,
+    max_lr=1e-3,
+    epochs=num_epochs,
+    steps_per_epoch=steps_per_epoch,
+)
+
+for epoch in range(num_epochs):
+    for _ in range(steps_per_epoch):
+        X = torch.randn(16, 10)
+        y = torch.randn(16, 2)
+
+        optimizer.zero_grad()
+        pred = model(X)
+        loss = F.mse_loss(pred, y)
+
+        loss.backward()
+        optimizer.step()
+
+        # TODO: Add the missing line here to update the scheduler
+```
+
+并解释为什么这行代码应该放在 mini-batch 循环内部，而不是每个 epoch 结束后才执行一次。
+
+## 参考答案
+
+1\. <span style="color: #1565C0;">**答案：**</span>
+
+- $v_t = \beta v_{t-1} + g_t$；
+- $\theta_{t+1} = \theta_t - \eta v_t$；
+- 累积；
+- 抵消。
+
+Momentum 会把过去的梯度方向保留下来。如果很多步的梯度方向一致，这些方向会不断累积，使参数在该方向上加速；如果某个方向上的梯度来回变化，则正负方向会部分抵消，从而减轻震荡。
+
+2\. <span style="color: #1565C0;">**答案：B**</span>
+
+Adagrad 使用：
+
+$$
+s_t = s_{t-1} + g_t^2
+$$
+
+历史平方梯度只会持续增加，因此有效学习率可能越来越小。
+
+RMSprop 改为：
+
+$$
+v_t = \rho v_{t-1} + (1-\rho)g_t^2
+$$
+
+通过指数滑动平均让旧梯度的影响逐渐衰减，从而避免 Adagrad 长期累计造成的有效学习率持续下降问题。
+
+3\. <span style="color: #1565C0;">**答案：一阶矩；二阶矩；偏差修正**</span>
+
+Adam 中，$m_t$ 用于估计最近一段时间的梯度方向，而 $v_t$ 用于估计最近一段时间的梯度平方尺度。
+
+由于二者从 0 开始，训练初期会受到初始 0 的影响，因此 Adam 使用
+
+$$
+\begin{align}
+\hat{m}_t &= \frac{m_t}{1-\beta_1^t} \\
+\hat{v}_t &= \frac{v_t}{1-\beta_2^t}
+\end{align}
+$$
+
+进行 bias correction。
+
+4\. <span style="color: #1565C0;">**答案：C**</span>
+
+AdamW 的核心是 decoupled weight decay。
+
+Adam 的一阶矩和二阶矩仍然只根据原始梯度计算，而 weight decay 独立作用在参数上：
+
+$$
+\theta_t = (1-\eta\lambda)\theta_{t-1} - \eta\frac{\hat{m}_t}{\sqrt{\hat{v}_t}+\epsilon}
+$$
+
+这样 weight decay 不会进入 Adam 的一阶矩和二阶矩统计，也不会被自适应梯度缩放重新加权。
+
+5\. <span style="color: #1565C0;">**答案：scheduler.step()**</span>
+
+补充完整后：
+
+```python
+loss.backward()
+optimizer.step()
+scheduler.step()
+```
+
+`OneCycleLR` 是按照训练 step，也就是 mini-batch 来设计学习率变化的 scheduler，因此每完成一次参数更新，就应该同步调用一次 `scheduler.step()`。如果把它放到每个 epoch 结束后才调用一次，那么实际 scheduler 更新次数会远少于设计的总 step 数，学习率变化速度和预期 schedule 就会不一致。
