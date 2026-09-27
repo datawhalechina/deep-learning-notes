@@ -80,6 +80,7 @@
 - 9.9 KV Cache：为什么推理时不用重复算过去
 - 9.10 Transformer 的三种不同架构：理解、生成与输入输出转换
 - 9.11 Hugging Face Transformers API：从结构到调用
+- 9.12 Chapter 9 练习题：Attention 与 Transformer
 
 ## Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention
 
