@@ -1,6 +1,6 @@
 name: DNEP Proposal
 description: Propose a major project change that requires discussion and documentation
-title: "[DNEP] "
+title: "DNEP X: "
 labels:
   - proposal
 assignees:

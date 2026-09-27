@@ -1,6 +1,6 @@
 name: Feature Request
 description: Suggest a new topic, code example, or project feature
-title: "[FEA] "
+title: "FEA: "
 labels:
   - feature-request
 assignees:

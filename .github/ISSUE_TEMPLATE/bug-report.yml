@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report an error, bug, or problem
-title: "[BUG] "
+title: "BUG: "
 labels:
   - bug
 assignees:

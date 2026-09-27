@@ -1,6 +1,6 @@
 name: Improvement Request
 description: Suggest an improvement to the notes, code examples, or project features
-title: "[DOC] "
+title: "DOC: "
 labels:
   - feature-request
 assignees:
