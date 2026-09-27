@@ -53,6 +53,7 @@
 - 5.4 池化与下采样：Max Pooling，Avg Pooling 和 Adaptive Pooling
 - 5.5 搭建一个简单 CNN：从特征提取到图像分类
 - 5.6 LeNet：卷积、池化与全连接的早期模板
+- 5.7 Chapter 5 练习题：卷积神经网络
 
 ## Chapter 6: 正则化与归一化：让深层网络更稳定
 
@@ -64,6 +65,7 @@
 - 6.6 GroupNorm：在通道组内归一化特征
 - 6.7 RMSNorm：不做均值中心化的特征尺度归一化
 - 6.8 归一化方法的统一视角：统计量到底在哪些维度上计算
+- 6.9 Chapter 6 练习题：正则化与归一化
 
 ## Chapter 9: Attention 与 Transformer：从动态检索到序列建模
 

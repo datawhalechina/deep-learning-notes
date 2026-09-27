@@ -95,6 +95,7 @@ book:
         - "zh/ch5-convolutional-neural-network/ch5.4-pooling-and-downsampling.qmd"
         - "zh/ch5-convolutional-neural-network/ch5.5-build-a-simple-cnn.qmd"
         - "zh/ch5-convolutional-neural-network/ch5.6-lenet.qmd"
+        - "zh/ch5-convolutional-neural-network/ch5.7-exercises.qmd"
     - part: "Chapter 6: 正则化与归一化：让深层网络更稳定"
       chapters:
         - "zh/ch6-regularization-and-normalization/ch6.1-why-regularization-and-normalization.qmd"
@@ -105,6 +106,7 @@ book:
         - "zh/ch6-regularization-and-normalization/ch6.6-group-normalization.qmd"
         - "zh/ch6-regularization-and-normalization/ch6.7-rms-normalization.qmd"
         - "zh/ch6-regularization-and-normalization/ch6.8-normalization-unified-view.qmd"
+        - "zh/ch6-regularization-and-normalization/ch6.9-exercises.qmd"
     - part: "Chapter 9: Attention 与 Transformer：从动态检索到序列建模"
       chapters:
         - "zh/ch9-attention-and-transformer/ch9.1-bahdanau-attention.qmd"

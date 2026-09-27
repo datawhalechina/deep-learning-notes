@@ -1,0 +1,151 @@
+---
+author: Unicornlyy
+date: 2026-09-27
+date-modified: 2026-09-27
+open-graph:
+  title: ch6.9-exercises
+  description: "6.9 Chapter 6 Exercises: Regularization and Normalization"
+title: "6.9 Chapter 6 练习题：正则化与归一化"
+order: 9
+---
+
+## 练习题
+
+1\. Dropout 通过打破神经元之间的共适应现象来减少过拟合。训练时，它以概率 $p$ 随机把一部分中间激活 ______，并把保留下来的激活等比例 ______（放大 / 缩小），使输出的期望与不使用 Dropout 时保持一致。而在评估时，Dropout ______（仍然生效 / 不再生效），直接使用完整的网络进行前向计算。
+
+2\. 关于 PyTorch 中 Dropout 在训练与评估模式的行为，下列说法正确的是：
+
+A. 评估阶段时，只要使用了 `torch.no_grad()` 或 `torch.inference_mode()`，Dropout 就会自动关闭，无需再调用 `model.eval()`。  
+B. 评估阶段只需要调用 `model.eval()`，但每次前向传播的输出仍然是随机的。  
+C. Dropout 是否生效由模块自身的 `training` 属性决定。`torch.no_grad()` / `torch.inference_mode()` 只控制梯度记录，并不会关闭 Dropout，因此评估阶段二者需要配合使用。  
+D. `nn.Dropout` 与 `F.dropout` 在评估阶段的行为完全一致，与 `training` 参数无关。
+
+3\. 从统一视角看，各归一化方法的区别在于哪些元素被放在一起计算统计量。
+
+对形状为 $(N, C, H, W)$ 的特征图：
+
+- BatchNorm 固定每个通道，沿 ______ 维与空间维度统计；
+- LayerNorm 固定每个样本，沿通道与空间维度统计；
+- InstanceNorm 固定每个样本的每个 ______，只沿空间维度统计；
+- GroupNorm 先把 ______ 划分成若干组，再在组内统计。
+
+上述方法中，只有 ______ 需要维护 running statistics 供推理时使用。
+
+4\. 关于 RMSNorm 与 LayerNorm 的区别，下列说法正确的是：
+
+A. RMSNorm 不进行均值中心化，而是根据特征的均方根进行缩放，因此不会强制输出均值为 0。  
+B. RMSNorm 沿 batch 维计算统计量，因此推理时需要使用训练阶段保存的 running statistics。  
+C. RMSNorm 的主要作用是对不同样本之间的 batch 统计量进行对齐。  
+D. RMSNorm 会同时减去特征均值并除以标准差，与 LayerNorm 的归一化过程完全相同。
+
+5\. 某同学用一个内部包含 BatchNorm 和 Dropout 的 CNN 网络做图像分类。训练与验证代码如下：
+
+```python
+model = SimpleCNN()  # Including BatchNorm and Dropout
+loss_fn = nn.CrossEntropyLoss()
+
+for epoch in range(num_epochs):
+    model.train()
+    for X, y in train_dl:
+        optimizer.zero_grad()
+        loss = loss_fn(model(X), y)
+        loss.backward()
+        optimizer.step()
+
+    correct = 0
+    with torch.no_grad():
+        for X, y in val_dl:
+            pred = model(X)
+            correct += (pred.argmax(dim=1) == y).sum().item()
+
+    val_acc = correct / len(val_dl.dataset)
+    print(f'Epoch {epoch} | val_acc: {val_acc:.4f}')
+```
+
+他发现验证精度明显低于预期，且每次运行波动很大。请回答：
+
+(a) 这段验证代码缺失了哪一行关键代码？应该加在哪里？  
+(b) 缺失这一行后，Dropout 会如何影响验证结果？  
+(c) 缺失这一行后，BatchNorm 会如何影响验证结果？除了让指标失真之外，还有什么副作用？  
+(d) 为了不影响下一个 epoch 的训练，验证结束后还应该做什么？
+
+## 参考答案
+
+1\. <span style="color: #1565C0;">**答案：置为 0（失活）；放大；不再生效**</span>
+
+现代深度学习框架通常采用 inverted dropout。训练时，每个激活以概率 $p$ 被置为 0，以概率 $1-p$ 被保留。对于保留下来的激活，再除以 $1-p$，即按比例放大。
+
+设 $m_i \sim \operatorname{Bernoulli}(1-p)$，则 Dropout 后的激活可以写为：
+
+$$
+\tilde{x}_i=\frac{m_i x_i}{1-p}
+$$
+
+由于
+
+$$
+\mathbb{E}[m_i]=1-p
+$$
+
+因此
+
+$$
+\frac{x_i}{1-p}\mathbb{E}[m_i] = x_i
+$$
+
+也就是说，这种缩放使 Dropout 在训练阶段的输出期望与原始激活保持一致。进入评估模式后，Dropout 不再随机丢弃激活，而是直接使用完整输出，因此无需额外缩放。需要注意的是，Dropout 保持的是输出的期望，并不会保持方差不变。训练时随机失活会引入额外的随机扰动，这也是其正则化作用的来源之一。
+
+2\. <span style="color: #1565C0;">**答案：C**</span>
+
+`nn.Dropout` 是否生效由模块的 `self.training` 状态决定：`model.train()` 时随机失活，`model.eval()` 时恒等映射。而 `torch.no_grad()` / `torch.inference_mode()` 只控制是否记录梯度，与 Dropout 无关。因此，标准评估代码应**同时**使用 `model.eval()` 和 `torch.no_grad()` / `torch.inference_mode()`，二者不能互相替代。
+
+其他选项错误的原因：
+
+- A：`no_grad()` / `inference_mode()` 不会关闭 Dropout；
+- B：`model.eval()` 之后 Dropout 不再生效，每次前向输出是确定性的；
+- D：`F.dropout` 的 `training` 参数默认为 `True`，如果调用时不显式传入 `self.training`，即使模块已切换到 `eval()` 状态，它仍会执行 dropout。这正是函数形式的风险所在，所以一般优先使用模块形式。
+
+3\. <span style="color: #1565C0;">**答案：batch；通道；通道；BatchNorm**</span>
+
+理解归一化的关键问题是：对当前输入中的某个元素，哪些其他元素会和它共享同一组均值和方差？
+
+- BatchNorm 保留通道维、统计 $(N, H, W)$：统计集合中包含**其他样本**，当前样本的输出会受 batch 中其他样本影响；
+- LayerNorm 保留样本维、统计 $(C, H, W)$：每个样本独立归一化；
+- InstanceNorm 保留 $(N, C)$、只统计 $(H, W)$：统计集合最小，逐样本逐通道统计均值和方差；
+- GroupNorm 保留 $(N, G)$、统计组内的 $\left(\frac{C}{G}, H, W\right)$：介于 LayerNorm 与 InstanceNorm 之间。
+
+由于只有 BatchNorm 的统计维度包含 $N$，因此其归一化统计量依赖当前 batch。默认情况下，BatchNorm 还会维护 running statistics。训练时使用当前 batch 的均值和方差，并更新它们的移动平均；评估时则使用训练期间累积的 running mean 和 running variance。
+
+InstanceNorm 的统计量本身不跨样本计算，但在设置 `track_running_stats=True` 时也会额外维护 running statistics，因此 `train()` 和 `eval()` 行为同样会有所不同。
+
+除此之外，其余归一化方法通常都在单个样本内部计算统计量，因此训练和评估阶段的行为相同。
+
+4\. <span style="color: #1565C0;">**答案：A**</span>
+
+RMSNorm 与 LayerNorm 通常都在单个样本的特征维度上进行归一化。对于 Transformer 中形状为 $(B, T, D)$ 的输入，通常都是沿最后一个特征维 $D$ 计算统计量。与 LayerNorm 不同，RMSNorm 不会先减去特征均值，而是直接根据均方根进行缩放，因此不会强制归一化后的特征均值为 0。
+
+其他选项错误的原因：
+
+- B：RMSNorm 的统计量通常在单个样本的特征维度上计算，不依赖 batch，因此不需要像 BatchNorm 那样维护 running statistics。
+- C：RMSNorm 的作用不是对不同样本之间的 batch 统计量进行对齐，而是对每个样本自身的特征进行归一化。
+- D：RMSNorm 与 LayerNorm 的核心区别之一正是 RMSNorm 省略了减均值的中心化步骤，因此二者的归一化过程并不相同。
+
+5\. <span style="color: #1565C0;">**答案：**</span>
+
+\(a\) 缺失的是 `model.eval()`。它应该加在验证循环开始之前（建议紧跟 `model.train()` 的训练循环结束之后、进入验证之前），修正后的代码骨架如下：
+
+```python
+model.eval()
+
+correct = 0
+with torch.no_grad():
+    for X, y in val_dl:
+        pred = model(X)
+        correct += (pred.argmax(dim=1) == y).sum().item()
+```
+
+\(b\) 由于没有切换到 `eval()`，Dropout 在验证时仍处于训练模式，每次前向都会随机失活一部分神经元并放大保留的激活。这带来两个后果：同一个样本的预测结果每次都不同；大量特征被随机丢弃，验证精度会产生较大波动。需要注意，`torch.no_grad()` / `torch.inference_mode()` 并不能阻止这一切。
+
+\(c\) BatchNorm 在训练模式下使用**当前 mini-batch** 的均值和方差。验证 batch 通常远小于训练 batch，统计量的噪声很大，导致验证输出随 batch 波动、指标不稳定。同时，即使被 `no_grad()` 包裹，BatchNorm 在前向时仍会按 momentum 更新自己的 running statistics，验证数据会污染训练期间累积的统计量，把评估所用的统计量拉向验证集的分布。
+
+\(d\) 验证结束后应再次调用 `model.train()` 把模块切换回训练模式，再进入下一个 epoch。务必养成验证前 `model.eval()`、验证后 `model.train()` 成对出现的习惯，否则任何在验证与下一个 epoch 之间进行的计算都会让 Dropout 和 BatchNorm 处于错误状态。
