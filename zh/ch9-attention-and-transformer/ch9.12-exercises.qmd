@@ -1,0 +1,145 @@
+---
+author: xcherry9988-code
+date: 2026-09-27
+date-modified: 2026-09-27
+open-graph:
+  title: ch9.12-exercises
+  description: "9.12 Chapter 9 Exercises: Attention and Transformer"
+title: "9.12 Chapter 9 练习题：Attention 与 Transformer"
+order: 12
+---
+
+## 练习题
+
+1\. Scaled dot-product attention 的计算可以写成：
+
+$$
+\operatorname{Attention}(Q,K,V) =
+\operatorname{softmax} \left(\frac{QK^\top}{\underline{\hspace{2cm}}} \right)
+\underline{\hspace{2cm}}
+$$
+
+其中，query 表示当前想要 ______，key 用于和 query 进行 ______，value 表示最终被加权取回的 ______。
+
+2\. 关于 self-attention 和 cross-attention，下列说法正确的是：
+
+A. Self-attention 中的 query 来自当前序列，而 key 和 value 必须来自另一个序列。  
+B. Self-attention 中的 query、key 和 value 都来自同一个输入序列，而 cross-attention 中 query 和 key、value 可以来自不同序列。  
+C. Cross-attention 中 query、key 和 value 必须全部来自同一个序列。  
+D. Self-attention 只能让相邻 token 之间交换信息，不能直接建立长距离依赖。
+
+3\. Transformer 中，self-attention 本身没有天然的 ______ 信息，因此通常需要把 token embedding 和 ______ 相加。对于 Transformer Decoder，为了避免当前位置在训练时看到未来 token，还需要在 self-attention 中使用 ______。在 Encoder-Decoder Transformer 的 cross-attention 中，query 来自 ______，而 key 和 value 来自 ______。
+
+4\. 关于 KV cache，下列说法正确的是：
+
+A. KV cache 会缓存过去 token 的 query、key 和 value，主要用于加速普通训练。  
+B. KV cache 只缓存 query，因为每一步生成时过去的 key 和 value 都需要重新计算。  
+C. KV cache 缓存过去的 key 和 value，减少自回归生成中对历史 token 的重复计算，但会增加显存占用。  
+D. KV cache 会改变 attention 的数学定义，因此使用后模型输出不再等价于原始 attention。
+
+5\. 补全下面的 Hugging Face Transformers 代码，使其加载一个 Decoder-only 语言模型并进行自回归生成：
+
+```python
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+model_id = 'openai-community/gpt2'
+
+tokenizer = ______.from_pretrained(model_id)
+model = ______.from_pretrained(model_id)
+
+inputs = tokenizer('I love deep learning because', return_tensors='pt')
+generated_ids = model.______(**inputs, max_new_tokens=20, use_cache=True)
+```
+
+写出三个空分别应该填写什么，并说明 `use_cache=True` 对应本章介绍的什么机制。
+
+## 参考答案
+
+1\. <span style="color: #1565C0;">**答案：**</span>
+
+- $\sqrt{d_k}$；
+- $V$；
+- 查找的信息；
+- 匹配；
+- 内容。
+
+完整形式为：
+
+$$
+\operatorname{Attention}(Q,K,V) =
+\operatorname{softmax} \left(\frac{QK^\top}{\sqrt{d_k}} \right)V
+$$
+
+其中，query 表示当前想找什么，key 表示每个候选位置用什么信息参与匹配，value 则表示匹配完成后真正要取回的内容。除以 $\sqrt{d_k}$ 是为了避免 $d_k$ 较大时点积数值变得过大，使 softmax 分布过于尖锐，从而导致梯度消失或训练不稳定。
+
+2\. <span style="color: #1565C0;">**答案：B**</span>
+
+Self-attention 中的 query、key 和 value 都由同一个输入序列经过不同线性投影得到，因此序列中的每个 token 都可以根据整个上下文更新自己的表示。
+
+Cross-attention 则用于一个序列查询另一个序列。例如在 Transformer Decoder 中，query 来自 decoder 当前表示，而 key 和 value 来自 encoder 的输出。
+
+Self-attention 并不局限于局部窗口，同一层中任意两个位置都可以直接建立联系，路径长度为常数级，这也是它适合建模长距离依赖的重要原因之一。
+
+3\. <span style="color: #1565C0;">**答案：**</span>
+
+- 顺序；
+- positional encoding；
+- causal mask；
+- decoder；
+- encoder。
+
+Self-attention 本身只根据 token 之间的内容计算相关性，并不能天然区分 token 的先后顺序。因此 Transformer 通常需要位置编码加入 token embedding：
+
+$$
+z_i = x_i + p_i
+$$
+
+Decoder 的 masked self-attention 使用 causal mask，使第 $t$ 个位置只能看到自己和自己之前的位置，不能提前看到未来 token。否则，模型可能会在训练时作弊，直接利用未来 token 的信息。
+
+在 Encoder-Decoder Transformer 的 cross-attention 中，decoder 当前表示负责提出查询，因此生成 query；encoder 输出作为被检索的信息，生成 key 和 value。
+
+4\. <span style="color: #1565C0;">**答案：C**</span>
+
+自回归生成时，每一步都需要让当前 query 查询整个历史序列。过去 token 对应的 key 和 value 一旦计算完成，在后续生成过程中不会改变，因此可以直接缓存起来。下一步只需要计算新 token 的 query、key 和 value，再把新的 key 和 value 追加到缓存中，而不必重新计算全部历史 token。
+
+KV cache 的代价是额外显存，其规模大致与：
+
+$$
+2
+\times
+\text{num\_layers}
+\times
+\text{batch\_size}
+\times
+\text{seq\_len}
+\times
+d_{\mathrm{model}}
+$$
+
+成正比，前面的 2 表示同时保存 key 和 value。
+
+因此 KV cache 本质上是在推理阶段用更多显存换取更少的重复计算。
+
+5\. <span style="color: #1565C0;">**答案：**</span>
+
+- AutoTokenizer；
+- AutoModelForCausalLM；
+- generate
+
+补全后为：
+
+```python
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+model_id = 'openai-community/gpt2'
+
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+model = AutoModelForCausalLM.from_pretrained(model_id)
+
+inputs = tokenizer('I love deep learning because', return_tensors='pt')
+generated_ids = model.generate(**inputs, max_new_tokens=20, use_cache=True)
+```
+
+`AutoTokenizer` 负责把文本转换为模型需要的 token ids 等输入；`AutoModelForCausalLM` 对应 Decoder-only 的因果语言模型；`generate()` 封装了逐 token 的自回归生成过程。
+
+代码里的 `use_cache=True` 对应本章介绍的 KV cache。模型会保存已经计算过的 `past_key_values`，在后续生成步骤中复用历史 key 和 value，从而减少重复计算。
