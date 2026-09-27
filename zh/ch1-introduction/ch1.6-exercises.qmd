@@ -9,6 +9,8 @@ title: "1.6 Chapter 1 练习题：深度学习简介"
 order: 6
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch1-introduction/ch1.6-exercises.ipynb){fig-align="left"}
+
 1\. 神经网络可以看成一个带参数的函数：
 
 $$

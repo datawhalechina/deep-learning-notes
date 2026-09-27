@@ -9,6 +9,8 @@ title: "9.12 Chapter 9 练习题：Attention 与 Transformer"
 order: 12
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch9-attention-and-transformer/ch9.12-exercises.ipynb){fig-align="left"}
+
 ## 练习题
 
 1\. Scaled dot-product attention 的计算可以写成：

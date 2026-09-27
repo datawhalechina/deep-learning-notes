@@ -9,6 +9,8 @@ title: "3.9 Chapter 3 练习题：多层感知机"
 order: 9
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch3-multi-layer-perceptron/ch3.9-exercises.ipynb){fig-align="left"}
+
 ## 练习题
 
 1\. 如果连续堆叠多个线性层，但层与层之间没有加入任何非线性操作，那么整个模型最终仍然等价于一个 ______ 模型。因此，MLP 会在线性层之间加入 ______，使模型能够表示更加复杂的非线性关系。

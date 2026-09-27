@@ -9,6 +9,8 @@ title: "2.8 Chapter 2 练习题： PyTorch 基础与训练流程"
 order: 8
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch2-pytorch-introduction/ch2.8-exercises.ipynb){fig-align="left"}
+
 ## 练习题
 
 1\. 对于最常见的 map-style `Dataset`，通常需要实现 ______ 和 ______ 两个方法；而 `DataLoader` 的主要作用是把多个样本组织成可以用于训练的 ______。

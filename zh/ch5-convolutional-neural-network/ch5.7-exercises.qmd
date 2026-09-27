@@ -9,6 +9,8 @@ title: "5.7 Chapter 5 练习题：卷积神经网络"
 order: 7
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch5-convolutional-neural-network/ch5.7-exercises.ipynb){fig-align="left"}
+
 ## 练习题
 
 1\. 在图像分类任务中，CNN 之所以能用远少于 MLP 的参数取得更好的效果，主要依赖两个归纳偏置：一是 ______，即每个输出元素只与输入的一个局部窗口相连；二是 ______，即同一个卷积核在整张图像的所有位置上共用同一组参数。得益于此，卷积层的参数量只由输入通道数、输出通道数和卷积核大小决定，与输入图像的高宽 ______（有关 / 无关）。

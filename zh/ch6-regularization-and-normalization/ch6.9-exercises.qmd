@@ -9,6 +9,8 @@ title: "6.9 Chapter 6 练习题：正则化与归一化"
 order: 9
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch6-regularization-and-normalization/ch6.9-exercises.ipynb){fig-align="left"}
+
 ## 练习题
 
 1\. Dropout 通过打破神经元之间的共适应现象来减少过拟合。训练时，它以概率 $p$ 随机把一部分中间激活 ______，并把保留下来的激活等比例 ______（放大 / 缩小），使输出的期望与不使用 Dropout 时保持一致。而在评估时，Dropout ______（仍然生效 / 不再生效），直接使用完整的网络进行前向计算。

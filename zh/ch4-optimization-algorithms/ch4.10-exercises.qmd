@@ -9,6 +9,8 @@ title: "4.10 Chapter 4 练习题：优化算法"
 order: 10
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch4-optimization-algorithms/ch4.10-exercises.ipynb){fig-align="left"}
+
 ## 练习题
 
 1\. Momentum 不再只使用当前 mini-batch 的梯度，而是维护一个动量变量 $v_t=$ ______，然后使用 $\theta_{t+1}=$ ______ 更新参数。当多个 step 的梯度方向比较一致时，这些方向会在 $v_t$ 中不断 ______；如果某个方向上的梯度反复改变正负，则会在一定程度上相互 ______。
