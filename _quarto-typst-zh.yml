@@ -118,6 +118,7 @@ book:
         - "zh/ch9-attention-and-transformer/ch9.9-kv-cache.qmd"
         - "zh/ch9-attention-and-transformer/ch9.10-transformer-architectures.qmd"
         - "zh/ch9-attention-and-transformer/ch9.11-hugging-face-transformers-api.qmd"
+        - "zh/ch9-attention-and-transformer/ch9.12-exercises.qmd"
     - part: "Chapter 10: 高效 Attention 实现：从 Memory-Efficient Attention 到 FlashAttention"
       chapters:
         - "zh/ch10-efficient-attention/ch10.1-attention-is-io-bound.qmd"
