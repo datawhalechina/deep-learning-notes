@@ -57,9 +57,9 @@ def scaled_dot_product_attention(
 ) -> AttentionOutput:
     """Compute scaled dot-product attention.
 
-    Boolean masks use the same convention as `torch.nn.Transformer`:
-    `True` always means the element is masked out and `False` means the
-    element participates in attention. Float masks are additive attention biases.
+    Boolean masks use the same convention as `nn.Transformer`: `True` always
+    means the element is masked out and `False` means the element participates
+    in attention. Float masks are additive attention biases.
 
     Args:
         query (Tensor): Query tensor of shape `(batch, target_len, embed_dim)`.
@@ -141,9 +141,8 @@ def multi_head_attention(
 ) -> AttentionOutput:
     """Compute batch-first multi-head attention from explicit projection weights.
 
-    Projection weights are right-multiplied, so their shapes are
-    `(input_dim, embed_dim)`. Boolean masks use `True` to mask out
-    positions.
+    Projection weights are right-multiplied, so their shapes are `(input_dim,
+    embed_dim)`. Boolean masks use `True` to mask out positions.
 
     Args:
         query (Tensor): Query tensor of shape `(batch, target_len, embed_dim)`.
@@ -231,10 +230,7 @@ def multi_head_attention(
     return output, None
 
 
-def generate_causal_mask(
-    sz: int,
-    device: Device = None,
-) -> Tensor:
+def generate_causal_mask(sz: int, device: Device = None) -> Tensor:
     """Generate an upper-triangular causal attention mask.
 
     Args:
