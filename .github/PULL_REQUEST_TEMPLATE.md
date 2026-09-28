@@ -1,6 +1,6 @@
 <!-- markdownlint-disable-file MD041 -->
 
-## Type of Change
+## Type of change
 
 <!-- Check all that apply. -->
 
@@ -22,6 +22,6 @@
 
 - [ ] I've read the [Contributing Guidelines](https://github.com/jshn9515/deep-learning-notes/blob/main/CONTRIBUTING.md).
 
-## Related Issues
+## Related issues
 
 <!-- Link an issue if this PR resolves or discusses one. Example: Closes #123. -->
