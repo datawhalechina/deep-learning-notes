@@ -1,0 +1,100 @@
+---
+author: Unicornlyy
+date: 2026-09-28
+date-modified: 2026-09-28
+open-graph:
+  title: ch11.8-exercises
+  description: "11.8 Chapter 11 Exercises: Implementing GPT-2 from Scratch"
+title: "11.8 Chapter 11 练习题：从零实现 GPT-2"
+order: 8
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch11-gpt2-from-scratch/ch11.8-exercises.ipynb){fig-align="left"}
+
+## 练习题
+
+1\. 语言模型的训练目标是 next-token prediction，即根据已经出现的 token 预测紧接着的下一个 token。在代码中，输入和标签来自同一条 token 序列，但整体错开一位。给定 token 序列 `[10, 25, 31, 7, 42]`，则 `input_ids` 为 `[10, 25, 31, 7]`，`labels` 为 `[______, 31, 7, 42]`。模型在每个位置输出维度为词表大小的 logits，再通过 ______ 损失学习提高真实下一个 token 的概率。
+
+2\. Weight tying 让 token embedding 和 LM head 共享同一份权重。如果不做 weight tying，embedding 和 LM head 各自有一份独立的参数；开启后二者指向 ______ 的参数对象。反向传播时，输入端和输出端两条路径的梯度会自动 ______ 到同一个 `.grad` 中，优化器最后对该共享参数只更新 ______ 次。
+
+3\. 关于字符级、词级和 BPE 三种 tokenizer，下列说法正确的是：
+
+A. 字符级 tokenizer 序列最短，因此训练和推理的计算量最小。  
+B. 词级 tokenizer 不会遇到未知词（OOV）问题，适合开放文本场景。  
+C. Byte-level BPE 把常见片段整体表示，不常见词拆成更小的已知片段，因此能更好地处理开放词表。  
+D. GPT 系列只能使用字符级 tokenizer，不能使用 byte-level BPE。
+
+4\. 关于 temperature、top-k 和 top-p 三种生成策略，下列说法正确的是：
+
+A. Temperature 大于 1 时分布更尖锐，低概率 token 更难被选中。  
+B. Top-k 固定保留概率最高的 $k$ 个 token，但 $k$ 不一定适合所有位置。  
+C. Top-p 固定保留 $k$ 个 token，与当前概率分布的形状无关。  
+D. Greedy decoding 每次选概率最大的 token，输出稳定但容易保守和重复。
+
+5\. 下面代码片段来自一个简化版的自回归生成函数：
+
+```python
+@torch.inference_mode()
+def generate(
+    model: nn.Module,
+    input_ids: Tensor,
+    block_size: int,
+    temperature: float=1.0,
+    max_new_tokens: int=100
+):
+    model.eval()
+
+    for _ in range(max_new_tokens):
+        inputs = input_ids[:, -block_size:]
+        logits = model(inputs)
+
+        next_token_logits = logits[:, ?, :] / temperature
+        probs = next_token_logits.softmax(dim=-1)
+        next_token = probs.multinomial(num_samples=1)
+
+        input_ids = torch.concat([input_ids, next_token], dim=1)
+
+    return input_ids
+```
+
+回答以下问题：
+
+(1) 代码中 `?` 处应该填什么？为什么生成时只取这个位置的 logits，而不是像训练时那样使用所有位置？
+(2) 为什么要使用 `input_ids[:, -block_size:]` 而不是直接使用完整的 `input_ids`？
+(3) 如果训练模型时没有使用 causal mask，会发生什么问题？为什么生成阶段的影响尤其严重？
+
+## 参考答案
+
+1\. <span style="color: #1565C0;">**答案：25；交叉熵**</span>
+
+语言模型把一段文本拆成多个连续的预测任务。给定 token 序列 `[10, 25, 31, 7, 42]`，`labels` 是整体右移一位的结果 `[25, 31, 7, 42]`，因此第一个空缺的值是 25。
+
+模型在每个位置输出词表大小的 logits，再通过交叉熵损失学习提高真实下一个 token 的概率。在 PyTorch 中通常直接把 logits 交给 `F.cross_entropy`，不需要手动做 softmax。
+
+2\. <span style="color: #1565C0;">**答案：同一个（相同）；累加（相加）；一**</span>
+
+Weight tying 不是复制一份权重过去，而是让 token embedding 和 LM head 真的共享同一个可学习参数。因此反向传播时，输入端 embedding 查表和输出端 LM head 计算这两条路径会分别产生梯度贡献，并自动累加到同一个 `.grad` 中。优化器最后使用这个总梯度，对共享参数只更新一次。
+
+3\. <span style="color: #1565C0;">**答案：C**</span>
+
+- **A. 错误。**字符级 tokenizer 的词表最小，但每个 token 携带的信息量也最小，同样一段文本被切成的 token 序列也就越长。而更长的序列意味着更多的 forward 和更大的计算量。
+- **B. 错误。**词级 tokenizer 把整词放入词表，遇到训练时没见过的词没有对应 token，只能退回 `<unk>`。词表越大覆盖率越高，但 OOV 问题在开放文本场景下几乎无法避免，因此并非不会遇到未知词问题。
+- **C. 正确。**Byte-level BPE 通过反复合并语料中出现频率最高的相邻符号对，常见片段会被整体表示为一个 token，不常见词则会被拆成若干更小的已知子词片段。这样无论遇到什么词，都能用词表中已有的子词组合表示，不会出现真正的 OOV，因此更适合开放词表。
+- **D. 错误。**GPT 系列使用的不是字符级 tokenizer，而是 byte-level BPE：先把文本编码成 UTF-8 字节序列，再在字节层面做 BPE。这保证了任何字符串都能被编码（最坏情况退回单字节），不会出现无法 tokenize 的情况。
+
+4\. <span style="color: #1565C0;">**答案：B、D**</span>
+
+- **A. 错误。**Temperature 的作用是对 logits 做除法后再 softmax。Temperature 大于 1 时，logits 被缩小、分布变得更平坦，低概率 token 反而更容易被选中；Temperature 小于 1 时分布才更尖锐，高概率 token 更被强化。方向说反了。
+- **B. 正确。**Top-k 固定保留概率最高的 $k$ 个 token，把其余 token 概率置零后重新归一化采样。但不同位置的概率分布形状不同：有些位置可能只有 2 个合理 token，有些位置可能有 100 个都合理。固定的 $k$ 无法自适应所有位置，太小会过度截断，太大又起不到过滤作用。
+- **C. 错误。**Top-p 不是固定保留 $k$ 个 token，而是先把 token 按概率从高到低排序，然后从前往后累加，保留累计概率刚好达到 $p$ 的最小 token 集合。分布越集中，保留的 token 越少；分布越平坦，保留的 token 越多。
+- **D. 正确。**Greedy decoding 每一步都选概率最大的 token，没有随机性，因此同一模型同一输入的输出完全确定、稳定。但正因为总是选最安全的那一个，模型容易陷入重复循环，输出风格偏保守。
+
+5\. <span style="color: #1565C0;">**答案：**</span>
+
+\(1\) `?` 处应该填 `-1`。
+
+训练时，模型并行预测所有位置的下一个 token，并计算全部位置的 loss。生成时，给定一个已有前缀，我们只需要预测它后面的一个新 token，因此只取最后一个位置的 logits。最后一个位置的 hidden state 已经融合了它能够看到的全部左侧上下文，足以用来预测下一个 token。
+
+\(2\) `block_size` 是模型能够处理的最大上下文长度（context length）。如果已经生成了很长的文本，超过模型的 context length，那么模型不能一次看完整历史，只能保留最后 `block_size` 个 token 作为输入。这不是 tokenizer 的限制，而是模型结构里的最大上下文长度限制。
+
+\(3\) 如果训练时没有 causal mask，第 $t$ 个位置可能直接看到未来的 $x_{t+1}$。训练 loss 也许会很低，但模型实际上只是偷看了答案，并没有学会真正的自回归生成。生成阶段没有未来 token 可以偷看，而模型从未真正学到用前面的 token 预测后面的 token，生成质量会大幅下降。因此 causal mask 是自回归语言模型不可缺少的组件。

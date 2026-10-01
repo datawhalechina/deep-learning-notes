@@ -1,0 +1,129 @@
+---
+author: Unicornlyy
+date: 2026-09-28
+date-modified: 2026-09-28
+open-graph:
+  title: ch12.11-exercises
+  description: "12.11 Chapter 12 Exercises: LLM Training Engineering"
+title: "12.11 Chapter 12 练习题：LLM 训练工程"
+order: 11
+---
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch12-llm-training-engineering/ch12.11-exercises.ipynb){fig-align="left"}
+
+## 练习题
+
+1\. LLM 训练显存可以分成三部分：model states、saved activations 和 ______。其中 model states 又可以分成 parameters、______ 和 optimizer states。真正决定一次训练能否运行的不是模型权重文件有多大，而是训练过程中的 ______ 显存。
+
+2\. Gradient accumulation 通过把一个大 batch 拆成多个 micro-batch，让 GPU 每次只处理其中一部分样本。假设 micro-batch size 为 8，accumulation steps 为 4，则 effective batch size 为 ______。为了让累积梯度等价于完整大 batch 的平均梯度，每个 micro-batch 的 loss 应该 ______。在 accumulation window 中，模型参数必须保持 ______，因此 `optimizer.step()` 只能放在所有 micro-batch 都完成 backward 之后。
+
+3\. 关于 FP32、FP16 和 BF16 三种浮点数格式，下列说法正确的是：
+
+A. FP16 的动态范围比 BF16 更大，因此更适合 LLM 训练。  
+B. BF16 的尾数比 FP16 更长，因此数值精度更高。  
+C. BF16 的指数位数和 FP32 相同，动态范围接近 FP32，通常更适合稳定地训练大模型。  
+D. 使用 FP16 训练时，通常需要配合 loss scaling 来避免梯度下溢。
+
+4\. 关于 activation checkpointing 和分布式训练，下列说法正确的是：
+
+A. Activation checkpointing 会减少 parameters 和 optimizer states 的显存占用。  
+B. Activation checkpointing 通过在 backward 时重新执行 forward 来减少激活显存，代价是增加计算量。  
+C. DDP 中每个 rank 都保存一份完整的模型状态，因此增加 GPU 数量不会减少每个 rank 的显存占用。  
+D. ZeRO-3 / FSDP 的 `FULL_SHARD` 把 parameters、gradients 和 optimizer states 都分片到不同 rank，因此一定能比 DDP 训练更快。
+
+5\. 一个有 7B 参数的模型使用如下训练配置：
+
+```text
+Parameters:        BF16
+Gradients:         BF16
+Adam first moment:  FP32
+Adam second moment: FP32
+```
+
+回答以下问题（提示：$1\ \text{GiB} = 2^{30}\ \text{bytes}$）：
+
+(1) 该模型每个参数大约占用多少 bytes？完整 model states 总共大约需要多少 GiB 显存？
+(2) 如果 forward 和 backward 都能正常完成，但在第一次调用 `optimizer.step()` 时发生 OOM，最可能的原因是什么？
+(3) 如果模型参数本身已经放不进单张 GPU，应该优先使用哪种分布式训练策略？为什么单纯增加 DDP 的 GPU 数量无法解决这个问题？
+
+## 参考答案
+
+1\. <span style="color: #1565C0;">**答案：runtime memory；gradients；峰值**</span>
+
+训练显存可以粗略分成 model states、saved activations 和 runtime memory 三部分。其中 model states 包括 parameters、gradients 和 optimizer states。
+
+训练显存不是一张静态表，而是一组具有不同生命周期的 tensor。Forward 会不断产生 saved activations，backward 会消费这些 activations 并生成 gradients，optimizer step 又会访问甚至首次创建 optimizer states。真正决定一次训练能否运行的是峰值显存，而不是模型权重文件有多大。
+
+2\. <span style="color: #1565C0;">**答案：32；除以 accumulation steps；不变**</span>
+
+单卡训练中：
+
+$$
+B_{\text{effective}} = B_{\text{micro}} \times N_{\text{accum}} = 8 \times 4 = 32
+$$
+
+为了让累积梯度等价于完整大 batch 的平均梯度，每个 micro-batch 的 loss 应该除以 accumulation steps，这样累积起来的才是平均梯度而不是梯度之和。
+
+accumulation 能成立的一个重要前提是：在整个 accumulation window 中，模型参数必须保持不变。如果每个 micro-batch 都更新一次参数，那么后面的梯度已经是在不同参数上计算出来的，自然不再等价于一个大 batch。因此 `optimizer.step()` 只能放在所有 micro-batch 都完成 backward 之后。
+
+3\. <span style="color: #1565C0;">**答案：C、D**</span>
+
+- **A. 错误。**FP16 的 exponent 只有 5 位，BF16 的 exponent 有 8 位。exponent 越短，能表示的数值范围越小，因此 FP16 的动态范围比 BF16 更小，更容易遇到 overflow 和 underflow，并不更适合 LLM 训练。
+- **B. 错误。**BF16 的尾数只有 7 位，而 FP16 的尾数有 10 位。尾数越短，相邻可表示数之间的间距越大，数值精度越低。BF16 是用更短的尾数换取更大的动态范围，因此“尾数更长、精度更高”是反的。
+- **C. 正确。**BF16 的 exponent 有 8 位，和 FP32 完全相同，因此动态范围接近 FP32，远大于 FP16。这使得 BF16 在表示梯度和权重时不容易溢出，通常更适合稳定地训练大模型。
+- **D. 正确。**FP16 的动态范围较小，小梯度的绝对值容易被舍入成 0，这就是 gradient underflow。解决方法是在 backward 之前先把 loss 放大一个较大倍数，使反向传播后的梯度值落在 FP16 可表示的范围内，优化器更新前再缩回来。BF16 通常不需要 loss scaling。
+
+4\. <span style="color: #1565C0;">**答案：B、C**</span>
+
+- **A. 错误。**Activation checkpointing 减少的是 forward 阶段保存的中间 activation，并不直接触及 model-states 部分。Model-states 的显存占用是由模型大小和优化器类型决定的，activation checkpointing 不会减少它们。
+- **B. 正确。**Activation checkpointing 在 forward 时只保存少量关键节点，其余中间结果当场丢弃。当 backward 需要时再从最近的 checkpoint 重新执行一段 forward 来重算这些 activation。
+- **C. 正确。**DDP 中每个 rank 都持有完整的 model-states，彼此之间只做 gradient all-reduce 来同步梯度。增加 GPU 数量只是增加了更多份完整复制品，每个 rank 的 model-state 显存并不会减少。
+- **D. 错误。**ZeRO-3 / FSDP 的 `FULL_SHARD` 确实把 model-states 都分片到不同 rank，单卡显存大幅下降。但分片也带来了额外的通信开销：forward 需要做 parameter all-gather，backward 需要做 gradient reduce-scatter。它的首要目标是让大模型能放进多卡，并不保证一定比 DDP 更快。
+
+5\. <span style="color: #1565C0;">**答案：**</span>
+
+\(1\) 每个参数占用的 bytes 为：
+
+|        Item        | bytes / parameter |
+| :----------------: | :---------------: |
+|   BF16 parameter   |         2         |
+|   BF16 gradient    |         2         |
+| FP32 first moment  |         4         |
+| FP32 second moment |         4         |
+|       total        |      **12**       |
+
+完整 model states 显存约为：
+
+$$
+7 \times 10^9 \times 12 = 84 \times 10^9\ \text{bytes}
+$$
+
+换算成 GiB：
+
+$$
+\frac{84 \times 10^9}{2^{30}}
+\approx \frac{84 \times 10^9}{1{,}073{,}741{,}824}
+\approx 78.2\ \text{GiB}
+$$
+
+\(2\) 很多 PyTorch optimizer 的 state 是 lazy initialization 的。也就是说，创建 `optimizer` 时，并不代表所有 Adam state 已经立即分配。它们通常会在参数第一次真正参与 `optimizer.step()` 时才建立。
+
+执行 forward 和 backward 通常只需要 parameters + saved activations + gradients，因此可以正常完成。而第一次 `optimizer.step()` 会突然分配 Adam 的 first moment 和 second moment，这两部分每个参数各占 4 bytes，可能就是在这时导致显存不足。
+
+\(3\) 应该优先使用 ZeRO-3 / FSDP 的 `FULL_SHARD` 策略。
+
+DDP 中每个 rank 都保存一份完整的 parameters + gradients + optimizer states。即使增加 GPU 数量，每个 rank 上的 model-state 显存仍然约等于：
+
+$$
+M_{\text{DDP per rank}} \approx M_P + M_G + M_O
+$$
+
+因为每个 rank 保存的是完整的复制品，所以 DDP 主要解决的是模型能放进单卡，但希望用更多 GPU 提高吞吐量的问题。
+
+ZeRO-3 / FSDP 的 `FULL_SHARD` 把 parameters、gradients 和 optimizer states 都分片到不同 rank，每个 rank 只保存其中一部分：
+
+$$
+M_{\text{ZeRO-3 per rank}} \approx \frac{M_P + M_G + M_O}{N}
+$$
+
+这使得单卡显存需求随 world size 增大而线性下降，从而让单卡放不下的模型也能在多卡上训练。当然，分片也带来了额外的通信开销，因此它的首要目标是 memory scalability，而不保证一定比 DDP 更快。

@@ -96,6 +96,7 @@
 - 11.5 在 TinyStories 上训练 MiniGPT
 - 11.6 从训练到生成：Temperature、Top-k、Top-p
 - 11.7 GPT-2：从 MiniGPT 到预训练语言模型
+- 11.8 Chapter 11 练习题：从零实现 GPT-2
 
 ## Chapter 12: LLM 训练工程：显存、计算与并行训练
 
@@ -109,6 +110,7 @@
 - 12.8 Triton 入门：什么时候需要自己写 Kernel
 - 12.9 分布式训练入门：DDP、ZeRO 与 FSDP 的直觉
 - 12.10 大模型 Checkpoint：模型、优化器与分布式状态如何恢复
+- 12.11 Chapter 12 练习题：LLM 训练工程
 
 ## Chapter 19: SGLang：从请求调度到 Cache-Aware Serving
 
