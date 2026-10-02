@@ -1,5 +1,133 @@
 # Changelog
 
+## Sep 2026 Release
+
+This release narrows the project around deep-learning fundamentals and large-language-model systems, expands the Chinese LLM training engineering curriculum into a complete ten-part chapter, and adds new material on chapter exercises, as well as Stanford CS224N. It also extends `dnnlpy` with GPT-2 and `gensim`-compatible utilities, simplifies the package surface, and introduces a secure Netlify preview workflow for pull requests.
+
+### New Notebooks
+
+#### Chapter 12: LLM Training Engineering
+
+- 12.2 FLOPs, Memory, and Arithmetic Intensity: Why Compute Alone Is Not Enough
+- 12.3 Profiling: How to Find Where Code Is Slow
+- 12.4 Mixed Precision: FP32, FP16, BF16, and Loss Scaling
+- 12.5 Gradient Accumulation: Simulating Large Batches When Memory Is Limited
+- 12.6 Activation Checkpointing: Trading Recomputation for Memory
+- 12.7 Modern Attention APIs and Hugging Face Kernels
+- 12.8 Introduction to Triton: When to Write Your Own Kernel
+- 12.9 Introduction to Distributed Training: Intuition for DDP, ZeRO, and FSDP
+- 12.10 Large-Model Checkpointing: Recovering Model, Optimizer, and Distributed State
+
+#### Exercises
+
+- 1.6 Chapter 1 Exercises: Introduction to Deep Learning
+- 2.8 Chapter 2 Exercises: PyTorch Fundamentals and the Training Workflow
+- 3.9 Chapter 3 Exercises: Multi-Layer Perceptrons
+- 4.10 Chapter 4 Exercises: Optimization Algorithms
+- 5.7 Chapter 5 Exercises: Convolutional Neural Networks
+- 6.9 Chapter 6 Exercises: Regularization and Normalization
+- 9.12 Chapter 9 Exercises: Attention and Transformers
+- 11.8 Chapter 11 Exercises: Implementing GPT-2 from Scratch
+- 12.11 Chapter 12 Exercises: LLM Training Engineering
+
+### Stanford CS224N
+
+- Added a dedicated CS224N course section and website navigation.
+- Added the Assignment 3 write-up, handout, training configuration, training script, and supporting figures.
+- Added a GPT-2 implementation with small, medium, large, and XL configurations.
+- Added pretrained Hugging Face weight conversion, text generation, language-modeling loss, and TinyStories training support.
+- Added minimal `gensim`-compatible downloading, `KeyedVectors`, similarity, and Word2Vec-format loading utilities for the course exercises.
+- Added reference snapshots and tests for the GPT-2 and word-vector implementations.
+
+### `dnnlpy` Package Updates
+
+- Added the CS224N GPT-2 model, configuration, pretrained-weight conversion, generation, and training utilities.
+- Added lightweight `gensim`-compatible downloader, keyed-vector, similarity, and Word2Vec-format APIs.
+- Refined multi-head attention, scaled dot-product attention, and Transformer implementations and documentation.
+- Improved GPT-2 pretrained loading to support all standard model sizes.
+- Optimized normalization statistics with `torch.var_mean`.
+- Removed Local Response Normalization and its public exports.
+- Removed the device-memory helpers in favor of PyTorch accelerator APIs.
+- Removed the ViT, VAE, and DDPM model implementations to match the project’s revised scope.
+- Refactored neural-network tests around reusable lowercase dimension fixtures and broader parameterization.
+- Expanded tests for attention, FlashAttention, Transformers, GPT-2, keyed vectors, and Word2Vec-format loading.
+- Updated package support for PyTorch 2.14 and Transformers 5.18 and standardized the uv PyTorch backend on CPU.
+
+### Book and Documentation Updates
+
+- Adopted DNEP 2, narrowing the book to deep-learning fundamentals and large-language-model topics.
+- Removed the Vision Transformer, autoencoder and VAE, and diffusion-model chapters from the current book structure.
+- Renumbered Regularization and Normalization from Chapter 7 to Chapter 6.
+- Renumbered Implementing GPT-2 from Scratch from Chapter 18 to Chapter 11.
+- Renumbered LLM Training Engineering from Chapter 19 to Chapter 12 and expanded it to ten instructional sections plus exercises.
+- Updated the English and Chinese navigation, part structure, chapter listings, metadata, references, figures, and `README.md` files for the revised organization.
+- Rewrote the introduction to regularization and normalization and refined optimization, attention, and LLM engineering explanations.
+- Added Colab links to the new exercise chapters and restored missing chapters in the Typst configuration.
+- Added repository guidelines and a dedicated workflow for synchronizing Chinese Quarto documentation to English.
+- Added DNEP proposal and improvement-request templates and refreshed the pull-request and issue templates.
+
+### Build and Development Updates
+
+- Updated the project dependencies for PyTorch 2.14, TorchVision 0.29, Transformers 5.18, TorchCodec 0.17, Triton 3.8 on Linux, xFormers 0.0.35, and related libraries.
+- Added TorchCodec and removed unused notebook, Seaborn, Weights & Biases, Rich Click, and Windows-specific Triton dependencies.
+- Simplified the Docker environment and updated Typst page-break and table styling.
+- Improved device detection, profiler trace naming, SVG backgrounds, figure rendering, and high-performance-kernel compatibility checks.
+
+### CI Updates
+
+- Added Netlify deployment previews for pull requests with GitHub deployment registration, status reporting, and sticky preview comments.
+- Added a fixed metadata artifact that securely connects unprivileged Quarto renders to the privileged deployment workflow.
+- Added validation for run IDs, head SHAs, repository identity, pull-request state, and preview metadata before deployment.
+- Added automated tests for the Netlify preview metadata and routing logic.
+- Improved concurrency handling so newer preview deployments supersede stale runs.
+- Enabled cancellation of superseded CI runs and simplified Quarto caching and browser setup.
+- Updated Ruff pre-commit hooks and refreshed workflow permissions and artifact handling.
+
+### Merged Pull Requests
+
+- [zh] MNT: Add simulated hidden state in shape demonstration example by @wqpwqp1222 in [#16](https://github.com/jshn9515/deep-learning-notes/pull/16)
+- DEP: Update dependency regex to >=2026.8.31,<2026.9.0 by @renovate[bot] in [#18](https://github.com/jshn9515/deep-learning-notes/pull/18)
+- DEP: Update dependency regex to >=2026.9.3,<2026.10.0 by @renovate[bot] in [#21](https://github.com/jshn9515/deep-learning-notes/pull/21)
+- DEP: Update dependencies torch and torchvision to 2.14.0/0.29.0 by @renovate[bot] in [#25](https://github.com/jshn9515/deep-learning-notes/pull/25)
+- [DNEP 1] Update torch-backend to CPU and remove unused CUDA configurations by @jshn9515 in [#26](https://github.com/jshn9515/deep-learning-notes/pull/26)
+- DEP: Update dependency gdown to >=6.2.0,<6.3.0 by @renovate[bot] in [#27](https://github.com/jshn9515/deep-learning-notes/pull/27)
+- DEP: Update dependency wandb to >=0.30.0,<0.31.0 by @renovate[bot] in [#28](https://github.com/jshn9515/deep-learning-notes/pull/28)
+- DEP: Update dependency accelerate to >=1.15.0,<1.16.0 by @renovate[bot] in [#29](https://github.com/jshn9515/deep-learning-notes/pull/29)
+- DEP: Update dependency transformers to >=5.17.0,<5.18.0 by @renovate[bot] in [#30](https://github.com/jshn9515/deep-learning-notes/pull/30)
+- FEA: Add ch12.3-profiling and corresponding figures by @jshn9515 in [#31](https://github.com/jshn9515/deep-learning-notes/pull/31)
+- MNT: Move `eval` mode to cell level and add xFormers dependency by @jshn9515 in [#32](https://github.com/jshn9515/deep-learning-notes/pull/32)
+- FEA: Add ch12.8-triton and corresponding figures by @jshn9515 in [#33](https://github.com/jshn9515/deep-learning-notes/pull/33)
+- FEA: Add ch12.6-activation-checkpointing and corresponding figures by @jshn9515 in [#34](https://github.com/jshn9515/deep-learning-notes/pull/34)
+- FEA: Enhance Netlify deployment workflow with GitHub deployment status by @jshn9515 in [#35](https://github.com/jshn9515/deep-learning-notes/pull/35)
+- DEP: Update dependency kernels to >=0.17.0,<0.18.0 by @renovate[bot] in [#37](https://github.com/jshn9515/deep-learning-notes/pull/37)
+- [pre-commit.ci] pre-commit autoupdate by @pre-commit-ci[bot] in [#38](https://github.com/jshn9515/deep-learning-notes/pull/38)
+- FEA: Add ch12.9-distributed-training and corresponding figures by @jshn9515 in [#39](https://github.com/jshn9515/deep-learning-notes/pull/39)
+- DEP: Update dependency gdown to >=6.3.0,<6.4.0 by @renovate[bot] in [#40](https://github.com/jshn9515/deep-learning-notes/pull/40)
+- FEA: Add ch12.2-roofline and corresponding figures by @jshn9515 in [#41](https://github.com/jshn9515/deep-learning-notes/pull/41)
+- DEP: Update dependency gdown to >=6.4.0,<6.5.0 by @renovate[bot] in [#43](https://github.com/jshn9515/deep-learning-notes/pull/43)
+- FEA: Add ch12.10-large-model-checkpoint and corresponding figures by @jshn9515 in [#44](https://github.com/jshn9515/deep-learning-notes/pull/44)
+- [DNEP 2] Narrow the Project Scope to Deep Learning Fundamentals and LLMs by @jshn9515 in [#46](https://github.com/jshn9515/deep-learning-notes/pull/46)
+- FEA: Add ch19.1-from-vllm-to-sglang and corresponding figures by @jshn9515 in [#47](https://github.com/jshn9515/deep-learning-notes/pull/47)
+- [zh] FEA: Add exercises for chapters 1-4 by @xcherry9988-code in [#48](https://github.com/jshn9515/deep-learning-notes/pull/48)
+- [pre-commit.ci] pre-commit autoupdate by @pre-commit-ci[bot] in [#50](https://github.com/jshn9515/deep-learning-notes/pull/50)
+- [zh] FEA: Add exercises for chapters 5-6 by @Unicornlyy in [#52](https://github.com/jshn9515/deep-learning-notes/pull/52)
+- [zh] FEA: Add exercises for chapters 9 by @xcherry9988-code in [#53](https://github.com/jshn9515/deep-learning-notes/pull/53)
+- [zh] FEA: Add exercises for chapters 11-12 by @Unicornlyy in [#58](https://github.com/jshn9515/deep-learning-notes/pull/58)
+- [pre-commit.ci] pre-commit autoupdate by @pre-commit-ci[bot] in [#59](https://github.com/jshn9515/deep-learning-notes/pull/59)
+- DEP: Update dependency torchcodec to >=0.17.0,<0.18.0 by @renovate[bot] in [#61](https://github.com/jshn9515/deep-learning-notes/pull/61)
+- DEP: Update dependency transformers to >=5.18.0,<5.19.0 by @renovate[bot] in [#62](https://github.com/jshn9515/deep-learning-notes/pull/62)
+
+### New Contributors
+
+- @pre-commit-ci[bot] made their first contribution in [#38](https://github.com/jshn9515/deep-learning-notes/pull/38)
+- @xcherry9988-code made their first contribution in [#48](https://github.com/jshn9515/deep-learning-notes/pull/48)
+- @Unicornlyy made their first contribution in [#52](https://github.com/jshn9515/deep-learning-notes/pull/52)
+
+> [!NOTE]
+> This project continues to be maintained in both **Chinese** and **English** through a Quarto-based structure, as an open and continuously growing collection of deep learning study notes.
+
+**Full Changelog**: [https://github.com/jshn9515/deep-learning-notes/compare/v2026.08.24...v2026.10.02](https://github.com/jshn9515/deep-learning-notes/compare/v2026.08.24...v2026.10.02)
+
 ## August 2026 Release
 
 This release expands the bilingual deep-learning curriculum with new and refined material on loss functions, neural-network trainability, convolutional networks, VAEs, diffusion models, attention, MLPs, memory engineering, and LLM training engineering. It also adds a complete Stanford CS336 Assignment 1 implementation, substantially improves dnnlpy, and modernizes the project’s build, rendering, and release infrastructure.
