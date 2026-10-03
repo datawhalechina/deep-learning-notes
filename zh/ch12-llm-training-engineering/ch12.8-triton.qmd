@@ -570,7 +570,12 @@ Triton 官方教程中也包含 LayerNorm、attention 等 forward + backward 更
 
 实际工程里，更合理的判断顺序是：
 
-![图 12.8.10 Triton Fusion 判断顺序](figures/ch12.8-summary.svg){height=550px}
+1. 代码慢吗？
+2. Profiler 证明瓶颈在哪里了吗？
+3. 已有高性能 library / operator 能解决吗？
+4. `torch.compile` 能自动 fusion 吗？
+5. 这个热点是否足够重要且足够稳定？
+6. 自定义 Triton kernel 是否有明确优化空间？
 
 比较适合 Triton 的场景通常包括：
 
@@ -588,4 +593,4 @@ Triton 官方教程中也包含 LayerNorm、attention 等 forward + backward 更
 
 当 profiler 把问题定位到某个具体 kernel，而且成熟算子与 `torch.compile` 仍然无法解决瓶颈时，Triton 才真正进入我们的工具箱。
 
-这也是性能优化里最重要的顺序：**先测性能，再做优化。** 下一节，我们将从单卡内的算子效率转向单机多卡训练，讨论如何用 DDP、ZeRO 与 FSDP 分摊计算和训练状态。
+这也是性能优化里最重要的顺序：**先测性能，再做优化。**下一节，我们将从单卡内的算子效率转向单机多卡训练，讨论如何用 DDP、ZeRO 与 FSDP 分摊计算和训练状态。
