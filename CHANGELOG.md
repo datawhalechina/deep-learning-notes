@@ -1,6 +1,6 @@
 # Changelog
 
-## Sep 2026 Release
+## September 2026 Release
 
 This release narrows the project around deep-learning fundamentals and large-language-model systems, expands the Chinese LLM training engineering curriculum into a complete ten-part chapter, and adds new material on chapter exercises, as well as Stanford CS224N. It also extends `dnnlpy` with GPT-2 and `gensim`-compatible utilities, simplifies the package surface, and introduces a secure Netlify preview workflow for pull requests.
 
