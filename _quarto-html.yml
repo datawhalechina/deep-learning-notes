@@ -76,6 +76,7 @@ website:
         - "cs336/assignment1/assignment1.qmd"
     - id: zh
       style: floating
+      collapse-level: 1
       contents:
         - section: "Part 1: 深度学习基础"
           contents:
@@ -111,6 +112,7 @@ website:
               contents: "zh/ch19-sglang-serving/*.qmd"
     - id: en
       style: floating
+      collapse-level: 1
       contents:
         - section: "Part 1: Deep Learning Fundamentals"
           contents:
