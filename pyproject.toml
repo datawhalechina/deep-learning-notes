@@ -70,7 +70,7 @@ dependencies = [
     "pyyaml>=6.0.0,<6.1.0",
 
     # DNNL utilities
-    "dnnlpy==2026.09.26rc1",
+    "dnnlpy==2026.10.2",
 ]
 
 [project.urls]
