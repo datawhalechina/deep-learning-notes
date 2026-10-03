@@ -112,6 +112,6 @@
 - 12.10 大模型 Checkpoint：模型、优化器与分布式状态如何恢复
 - 12.11 Chapter 12 练习题：LLM 训练工程
 
-## Chapter 19: SGLang：从请求调度到 Cache-Aware Serving
+## Chapter 18: vLLM：从 LLM 推理到高性能推理框架
 
-- 19.1 From vLLM to SGLang：相同的 Serving 问题，不同的设计
+- 18.1 从 generate() 到 vLLM：为什么推理需要一个 Engine

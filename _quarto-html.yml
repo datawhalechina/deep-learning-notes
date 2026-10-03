@@ -108,8 +108,8 @@ website:
               contents: "zh/ch12-llm-training-engineering/*.qmd"
         - section: "Part 7: LLM Serving：vLLM 与 SGLang"
           contents:
-            - section: "Chapter 19: SGLang：从请求调度到 Cache-Aware Serving"
-              contents: "zh/ch19-sglang-serving/*.qmd"
+            - section: "Chapter 18: vLLM：从 LLM 推理到高性能推理框架"
+              contents: "zh/ch18-vllm-introduction/*.qmd"
     - id: en
       style: floating
       collapse-level: 1

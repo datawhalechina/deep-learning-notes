@@ -148,6 +148,6 @@ book:
         - "zh/ch12-llm-training-engineering/ch12.9-distributed-training.qmd"
         - "zh/ch12-llm-training-engineering/ch12.10-large-model-checkpoint.qmd"
         - "zh/ch12-llm-training-engineering/ch12.11-exercises.qmd"
-    - part: "Chapter 19: SGLang：从请求调度到 Cache-Aware Serving"
+    - part: "Chapter 18: vLLM：从 LLM 推理到高性能推理框架"
       chapters:
-        - "zh/ch19-sglang-serving/ch19.1-from-vllm-to-sglang.qmd"
+        - "zh/ch18-vllm-introduction/ch18.1-vllm-overview.qmd"

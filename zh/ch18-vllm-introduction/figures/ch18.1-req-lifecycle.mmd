@@ -1,0 +1,46 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+sequenceDiagram
+    participant A as API Server
+    participant E as EngineCore
+    participant S as Scheduler
+    participant K as KVCacheManager
+    participant G as GPU Worker
+
+    A->>E: 发送 Token IDs (IPC)
+    E->>S: 加入请求
+    E->>S: schedule()
+    S->>K: 分配/检查 KV Cache
+    K-->>S: 缓存分配结果
+    S-->>E: SchedulerOutput
+    E->>G: 执行模型 (via Executor)
+    G-->>E: ModelRunnerOutput
+    E->>S: update_from_output()
+    E-->>A: 输出 token (IPC)
+    Note over E,G: 持续调度和执行直到请求完成
+    A-->>A: Detokenization
