@@ -6,6 +6,8 @@ on:
     paths:
       - "zh/**"
       - "en/**"
+      - "cs224n/**"
+      - "cs234/**"
       - "cs336/**"
       - "index.qmd"
       - "pyproject.toml"
