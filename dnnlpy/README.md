@@ -6,7 +6,7 @@ The package structure is similar to PyTorch, but keeps a clear boundary between 
 
 - `dnnlpy.cs224n` contains implementations and utilities for the CS224N assignments.
 - `dnnlpy.cs336` contains implementations and utilities for the CS336 assignments.
-- `dnnlpy.models` contains higher-level model architectures or model-specific components, such as MiniGPT and other models introduced in the notes.
+- `dnnlpy.models` contains higher-level model architectures or model-specific components, such as NumPy MLP, MiniGPT, and other complete model implementations.
 - `dnnlpy.nn` contains general neural network modules, such as attention layers, positional encodings, and other reusable components.
 - `dnnlpy.nn.functional` contains stateless helper functions, such as functional attention implementations.
 - `dnnlpy.optim` contains small optimizer implementations for teaching purposes, such as SGD and Adam.
@@ -52,7 +52,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for local package development
 
 ```bash
 git clone https://github.com/datawhalechina/deep-learning-notes.git
-cd dnnlpy
+cd deep-learning-notes/dnnlpy
 uv pip install .
 ```
 
