@@ -12,9 +12,11 @@
 
 关于怎么学深度学习，我困扰了很久。
 
-《动手学深度学习》是很好的入门书，但更新速度已经有些跟不上这个领域的发展。Transformer 之后，ViT、DiT、LLM、Agent，以及围绕大模型逐渐形成的数据处理、训练优化、推理和 Post-training 等内容不断出现。网上的资料虽然很多，却往往散落在论文、博客、课程和代码仓库里：今天学习 Attention，明天研究 LoRA，后天又开始看 vLLM、SGLang 和 FlashAttention，最后留下的往往只是碎片，很难真正串成体系。
+《动手学深度学习》是一本很好的入门书，但深度学习，尤其是大模型相关技术的发展速度实在太快。Transformer 之后，大模型逐渐成为重要方向，而围绕大模型，又逐渐出现了数据处理、训练优化、模型评测、推理系统和 post-training 等越来越多的内容。网上的资料虽然很多，却往往散落在论文、博客、课程和代码仓库里。学着学着就很容易变成一堆彼此独立的知识点，很难真正串成一条完整的线。
 
-所以我想，干脆把自己学过的内容系统地整理下来。这份笔记从神经网络、PyTorch、优化算法和 CNN 等基础内容开始，逐渐进入 Attention、Transformer、ViT、VAE 和 DDPM，并进一步延伸到现代 LLM：从零实现 GPT、训练工程、数据处理、Scaling Laws、模型评测、LLM Inference，以及 Post-training。我会尽量把每个主题的核心思想、公式推导、代码实现和常见问题都写清楚。这个仓库就是这份笔记的公开版。如果你也在自学深度学习，希望它能给你一些帮助。
+所以我想，把自己学习过程中遇到的内容慢慢整理下来。这份笔记从神经网络简介、PyTorch、优化算法、CNN 和 RNN 等基础内容开始，逐渐学习 attention、Transformer，再继续往 LLM 方向深入，包括从零实现 GPT-2、大模型训练工程、数据处理、scaling laws、模型评测、LLM inference、post-training，以及 vLLM 和 SGLang 这样的推理框架。
+
+当然，我自己也还在持续学习，所以这个仓库是一份不断更新的学习记录。我会尽量把自己学到的，理解过的东西写清楚，也把公式、代码和实际 project 联系起来。如果你也在自学深度学习，希望这些笔记能给你一些帮助。
 
 > [!NOTE]
 > **AI 辅助写作：** 本教程的写作过程中使用了 LLM 辅助生成初稿。每次生成后，我都会自行 review，并根据自己的理解对内容、逻辑和表述进行修改。发布前，我也会进一步检查相关代码和技术细节。尽管如此，内容中仍可能存在疏漏或错误，欢迎指出并提出修改建议。
@@ -25,15 +27,13 @@
 
 内容主要包括：
 
-- PyTorch 基础与深度学习训练实践
-- Attention 与 Transformer 简介
-- ViT、Swin 等视觉 Transformer 模型
-- GAN、VAE、DDPM 等生成模型
-- CLIP、BLIP 等视觉与多模态模型
-- 从零实现 GPT-2 与现代语言模型
-- LLM 数据处理、训练工程与 Scaling Laws
-- LLM Evaluation、Inference 与 Serving
-- Instruction Tuning、LoRA、DPO、RLHF 等 Post-training 方法
+- 神经网络基础、PyTorch、MLP 与优化算法
+- CNN、正则化与归一化
+- RNN、LSTM、GRU 与 Seq2Seq
+- Attention、Transformer、FlashAttention
+- MiniGPT 的实现与训练、Tokenizer 和 GPT-2
+- LLM 训练工程
+- vLLM 和 SGLang 的推理与优化
 
 项目对应的 Jupyter Notebook 版本在 [jshn9515/dnnl-notebooks](https://github.com/jshn9515/dnnl-notebooks)。这个仓库会与主仓库保持同步，其中的 notebooks 可以直接在 Google Colab 中打开。GitHub Actions Artifacts 也可以作为备用来源，在仓库同步失败或暂时不可用时，用于获取最新的构建输出。
 

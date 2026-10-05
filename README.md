@@ -12,11 +12,11 @@
 
 For a long time, I struggled with how to learn deep learning effectively.
 
-_Dive into Deep Learning_ is a very good introductory book, but its updates have gradually fallen behind the rapid development of the field. After Transformer, topics such as ViT, DiT, LLMs, Agents, as well as data processing, training optimization, inference, and post-training have continued to emerge. Although there are many materials online, they are often scattered across papers, blogs, courses, and code repositories, making it difficult to connect what you learn into a complete system.
+_Dive into Deep Learning_ is a great introductory book, but deep learning is evolving incredibly quickly. After the Transformer, large models gradually became a major direction, and a growing ecosystem has emerged around them, including data processing, training optimization, model evaluation, inference systems, and post-training. There is no shortage of material online, but it is often scattered across papers, blog posts, courses, and code repositories. As I kept learning, I found it easy to end up with a collection of isolated concepts that were difficult to connect into a coherent picture.
 
-So I decided to systematically organize what I have learned. These notes start from neural networks, PyTorch, optimization algorithms, and CNNs, then move to Attention, Transformer, ViT, VAE, and DDPM, and further extend to modern LLMs, including implementing GPT from scratch, training engineering, data processing, Scaling Laws, model evaluation, LLM Inference, and post-training.
+So I decided to gradually organize what I encounter during my own learning process. These notes start with the basics, including an introduction to neural networks, PyTorch, optimization algorithms, CNNs, and RNNs. From there, they move on to attention and Transformers, and then continue into LLM-related topics, including implementing GPT-2 from scratch, large-scale model training engineering, data processing, scaling laws, model evaluation, LLM inference, post-training, and inference frameworks such as vLLM and SGLang.
 
-For each topic, I will try to clearly explain the core ideas, formula derivations, code implementations, and common problems. This repository is the public version of these notes. If you are also self-studying deep learning, I hope they can be helpful.
+Of course, I am still learning as well, so this repository is an ongoing record of that process. I will try to clearly explain the things I have learned and genuinely understood, while connecting formulas, code, and practical projects whenever possible. If you are also learning deep learning on your own, I hope these notes can be helpful to you.
 
 > [!NOTE]
 > **AI-assisted writing:** LLMs were used during the writing process of this tutorial to assist with drafting. After each generated draft, I review it myself and revise the content, logic, and wording based on my own understanding. Before publication, I also further check the relevant code and technical details. Despite this, the tutorial may still contain omissions or errors, and corrections and suggestions are always welcome.
@@ -27,15 +27,13 @@ This project is primarily maintained and published in **Quarto Markdown**, and b
 
 The content mainly includes:
 
-- PyTorch fundamentals and Deep Learning training practice
-- Introduction to Attention and Transformer
-- Vision Transformer models such as ViT and Swin
-- Generative models such as GAN, VAE, and DDPM
-- Vision and multimodal models such as CLIP and BLIP
-- Implementing GPT-2 from scratch and modern language models
-- LLM data processing, training engineering, and Scaling Laws
-- LLM Evaluation, Inference, and Serving
-- Post-training methods such as Instruction Tuning, LoRA, DPO, and RLHF
+- Neural network fundamentals, PyTorch, MLPs, and optimization algorithms
+- CNNs, regularization, and normalization
+- RNNs, LSTMs, GRUs, and Seq2Seq
+- Attention, Transformers and FlashAttention
+- Implementing and training MiniGPT, tokenization, and GPT-2
+- LLM training engineering
+- vLLM and SGLang inference and optimization
 
 The corresponding Jupyter Notebook version of this project is available at [jshn9515/dnnl-notebooks](https://github.com/jshn9515/dnnl-notebooks). This repository is kept in sync with the main repository, and the notebooks can be opened directly in Google Colab. GitHub Actions Artifacts can also serve as a backup source for accessing the latest build outputs when repository synchronization fails or is temporarily unavailable.
 
