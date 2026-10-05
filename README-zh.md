@@ -4,7 +4,7 @@
 [![build](https://github.com/datawhalechina/deep-learning-notes/actions/workflows/dnnlpy-ci.yml/badge.svg)](https://github.com/datawhalechina/deep-learning-notes/actions/workflows/dnnlpy-ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.14-blue)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.14.0-ee4c2c?logo=pytorch)](https://pytorch.org/)
-[![Transformers](https://img.shields.io/badge/Transformers-5.16.0-ffcc00?logo=huggingface)](https://huggingface.co/docs/transformers/index)
+[![Transformers](https://img.shields.io/badge/Transformers-5.18.0-ffcc00?logo=huggingface)](https://huggingface.co/docs/transformers/index)
 
 [English](README.md) | **简体中文**
 
