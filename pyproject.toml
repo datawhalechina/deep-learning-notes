@@ -37,7 +37,7 @@ dependencies = [
 
     # Hugging Face ecosystem
     "accelerate>=1.15.0,<1.16.0",
-    "datasets>=5.0.0,<5.1.0",
+    "datasets>=5.1.0,<5.2.0",
     "diffusers>=0.40.0,<0.41.0",
     "evaluate>=0.4.5,<0.5.0",
     "kernels>=0.17.0,<0.18.0",

@@ -25,7 +25,7 @@ dependencies = [
     "torchmetrics>=1.9.0,<1.10.0",
 
     # Hugging Face and tokenization
-    "datasets>=5.0.0,<5.1.0",
+    "datasets>=5.1.0,<5.2.0",
     "tokenizers>=0.23.0,<0.24.0",
     "transformers>=5.18.0,<5.19.0",
     "tiktoken>=0.14.0,<0.15.0",
