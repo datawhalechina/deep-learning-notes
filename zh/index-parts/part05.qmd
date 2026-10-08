@@ -1,5 +1,5 @@
 ---
-title: "Part 5：LLM 基础：以 GPT-2 为例"
+title: "Part 5：LLM 基础：架构、训练与规模化"
 author: jshn9515
 date: 2026-05-05
 date-modified: today
@@ -16,6 +16,6 @@ listing:
   date-format: iso
 
 open-graph:
-  title: part8-fundamentals-of-llm
-  description: "Part 8: Fundamentals of LLM"
+  title: part5-fundamentals-of-llm
+  description: "Part 5: Fundamentals of LLM"
 ---

@@ -1,5 +1,5 @@
 ---
-title: "Part 5: LLM Fundamentals: Using GPT-2 as an Example"
+title: "Part 5: LLM Fundamentals: Architecture, Training, and Scaling"
 author: jshn9515
 date: 2026-05-05
 date-modified: today
@@ -15,6 +15,6 @@ listing:
   date-format: iso
 
 open-graph:
-  title: part8-fundamentals-of-llm
-  description: "Part 8: Fundamentals of LLM"
+  title: part5-fundamentals-of-llm
+  description: "Part 5: Fundamentals of LLM"
 ---
