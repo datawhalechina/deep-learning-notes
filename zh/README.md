@@ -112,6 +112,10 @@
 - 12.10 大模型 Checkpoint：模型、优化器与分布式状态如何恢复
 - 12.11 Chapter 12 练习题：LLM 训练工程
 
+## Chapter 16: LLM 推理系统：从 Request 到 GPU Execution
+
+- 16.1 从 generate() 到 Inference Engine：为什么大模型推理需要一个系统
+
 ## Chapter 18: vLLM：从 LLM 推理到高性能推理框架
 
 - 18.1 从 generate() 到 vLLM：为什么推理需要一个 Engine

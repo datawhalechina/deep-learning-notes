@@ -1,0 +1,221 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="background: #ffffff; background-color: #ffffff; color-scheme: light;" version="1.1" width="502px" height="442px" viewBox="0 0 502 442" content="&lt;mxfile host=&quot;Electron&quot; scale=&quot;1&quot; border=&quot;0&quot;&gt;&#10;  &lt;diagram name=&quot;Page-1&quot; id=&quot;nK7FPv4b0VS_LIOWHTDP&quot;&gt;&#10;    &lt;mxGraphModel dx=&quot;938&quot; dy=&quot;677&quot; grid=&quot;1&quot; gridSize=&quot;10&quot; guides=&quot;1&quot; tooltips=&quot;1&quot; connect=&quot;1&quot; arrows=&quot;1&quot; fold=&quot;1&quot; page=&quot;1&quot; pageScale=&quot;1&quot; pageWidth=&quot;827&quot; pageHeight=&quot;1169&quot; math=&quot;0&quot; shadow=&quot;0&quot;&gt;&#10;      &lt;root&gt;&#10;        &lt;mxCell id=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;1&quot; parent=&quot;0&quot; /&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-1&quot; parent=&quot;1&quot; style=&quot;swimlane;html=1;startSize=40;horizontal=1;rounded=1;arcSize=8;fillColor=#f5f5f5;swimlaneFillColor=#ffffff;strokeColor=#999999;fontSize=16;fontStyle=1;align=center;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Standard Model Inference&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;440&quot; width=&quot;230&quot; x=&quot;60&quot; y=&quot;60&quot; as=&quot;geometry&quot;&gt;&#10;            &lt;mxRectangle height=&quot;40&quot; width=&quot;220&quot; x=&quot;60&quot; y=&quot;60&quot; as=&quot;alternateBounds&quot; /&gt;&#10;          &lt;/mxGeometry&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-2&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-1&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Input&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;45&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;70&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-3&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-1&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Forward&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;45&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;160&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-4&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-1&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Output&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;45&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;250&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-5&quot; edge=&quot;1&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-1&quot; source=&quot;yUB1sqXzRFZyHbcEXYaU-2&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;convertToSvg=1;&quot; target=&quot;yUB1sqXzRFZyHbcEXYaU-3&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-6&quot; edge=&quot;1&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-1&quot; source=&quot;yUB1sqXzRFZyHbcEXYaU-3&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;convertToSvg=1;&quot; target=&quot;yUB1sqXzRFZyHbcEXYaU-4&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; parent=&quot;1&quot; style=&quot;swimlane;html=1;startSize=40;horizontal=1;rounded=1;arcSize=8;fillColor=#f5f5f5;swimlaneFillColor=#ffffff;strokeColor=#999999;fontSize=16;fontStyle=1;align=center;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;LLM Inference&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;440&quot; width=&quot;230&quot; x=&quot;330&quot; y=&quot;60&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-8&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Prompt&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;40&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;60&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-9&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Forward 1&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;40&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;130&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-10&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Forward 2&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;40&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;200&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-11&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Forward 3&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;40&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;270&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-12&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; style=&quot;text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;...&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;25&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;330&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-13&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; style=&quot;rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=18;convertToSvg=1;svgWhiteSpace=wrap;&quot; value=&quot;Forward N&quot; vertex=&quot;1&quot;&gt;&#10;          &lt;mxGeometry height=&quot;40&quot; width=&quot;130&quot; x=&quot;50&quot; y=&quot;380&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-14&quot; edge=&quot;1&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; source=&quot;yUB1sqXzRFZyHbcEXYaU-8&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;convertToSvg=1;&quot; target=&quot;yUB1sqXzRFZyHbcEXYaU-9&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-15&quot; edge=&quot;1&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; source=&quot;yUB1sqXzRFZyHbcEXYaU-9&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;convertToSvg=1;&quot; target=&quot;yUB1sqXzRFZyHbcEXYaU-10&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-16&quot; edge=&quot;1&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; source=&quot;yUB1sqXzRFZyHbcEXYaU-10&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;convertToSvg=1;&quot; target=&quot;yUB1sqXzRFZyHbcEXYaU-11&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-17&quot; edge=&quot;1&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; source=&quot;yUB1sqXzRFZyHbcEXYaU-11&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;convertToSvg=1;&quot; target=&quot;yUB1sqXzRFZyHbcEXYaU-12&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;        &lt;mxCell id=&quot;yUB1sqXzRFZyHbcEXYaU-18&quot; edge=&quot;1&quot; parent=&quot;yUB1sqXzRFZyHbcEXYaU-7&quot; source=&quot;yUB1sqXzRFZyHbcEXYaU-12&quot; style=&quot;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;convertToSvg=1;&quot; target=&quot;yUB1sqXzRFZyHbcEXYaU-13&quot;&gt;&#10;          &lt;mxGeometry relative=&quot;1&quot; as=&quot;geometry&quot; /&gt;&#10;        &lt;/mxCell&gt;&#10;      &lt;/root&gt;&#10;    &lt;/mxGraphModel&gt;&#10;  &lt;/diagram&gt;&#10;&lt;/mxfile&gt;&#10;">
+  <defs/>
+  <rect fill="#ffffff" width="100%" height="100%" x="0" y="0" style="fill: rgb(255, 255, 255);"/>
+  <g>
+    <g data-cell-id="0">
+      <g data-cell-id="1">
+        <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-1">
+          <g transform="translate(0.5,0.5)">
+            <path d="M 230 40 L 230 9.6 Q 230 0 220.4 0 L 9.6 0 Q 0 0 0 9.6 L 0 40" fill="#f5f5f5" stroke="#999999" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(245, 245, 245); stroke: rgb(153, 153, 153);"/>
+            <path d="M 0 40 L 0 430.4 Q 0 440 9.6 440 L 220.4 440 Q 230 440 230 430.4 L 230 40" fill="#ffffff" stroke="#999999" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(255, 255, 255); stroke: rgb(153, 153, 153);"/>
+            <path d="M 0 40 L 230 40" fill="none" stroke="#999999" stroke-miterlimit="10" pointer-events="all" style="stroke: rgb(153, 153, 153);"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" font-weight="bold" text-anchor="middle" font-size="16px" style="fill: rgb(0, 0, 0);">
+              <g transform="translate(115,27) scale(1)">
+                <text>
+                  <tspan>Standard Model Inference
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-2">
+            <g transform="translate(0.5,0.5)">
+              <rect x="50" y="70" width="130" height="45" rx="6.75" ry="6.75" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all" style="fill: rgb(218, 232, 252); stroke: rgb(108, 142, 191);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(115,100.5) scale(1)">
+                  <text>
+                    <tspan>Input
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-3">
+            <g transform="translate(0.5,0.5)">
+              <rect x="50" y="160" width="130" height="45" rx="6.75" ry="6.75" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all" style="fill: rgb(218, 232, 252); stroke: rgb(108, 142, 191);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(115,190.5) scale(1)">
+                  <text>
+                    <tspan>Forward
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-4">
+            <g transform="translate(0.5,0.5)">
+              <rect x="50" y="250" width="130" height="45" rx="6.75" ry="6.75" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all" style="fill: rgb(218, 232, 252); stroke: rgb(108, 142, 191);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(115,280.5) scale(1)">
+                  <text>
+                    <tspan>Output
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-5">
+            <g transform="translate(0.5,0.5)">
+              <path d="M 115 115 L 115 151.88" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(0, 0, 0);"/>
+              <path d="M 115 158.88 L 111.5 151.88 L 118.5 151.88 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(0, 0, 0); stroke: rgb(0, 0, 0);"/>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-6">
+            <g transform="translate(0.5,0.5)">
+              <path d="M 115 205 L 115 241.88" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(0, 0, 0);"/>
+              <path d="M 115 248.88 L 111.5 241.88 L 118.5 241.88 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(0, 0, 0); stroke: rgb(0, 0, 0);"/>
+            </g>
+          </g>
+        </g>
+        <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-7">
+          <g transform="translate(0.5,0.5)">
+            <path d="M 500 40 L 500 9.6 Q 500 0 490.4 0 L 279.6 0 Q 270 0 270 9.6 L 270 40" fill="#f5f5f5" stroke="#999999" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(245, 245, 245); stroke: rgb(153, 153, 153);"/>
+            <path d="M 270 40 L 270 430.4 Q 270 440 279.6 440 L 490.4 440 Q 500 440 500 430.4 L 500 40" fill="#ffffff" stroke="#999999" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(255, 255, 255); stroke: rgb(153, 153, 153);"/>
+            <path d="M 270 40 L 500 40" fill="none" stroke="#999999" stroke-miterlimit="10" pointer-events="all" style="stroke: rgb(153, 153, 153);"/>
+          </g>
+          <g>
+            <g fill="#000000" font-family="Helvetica" font-weight="bold" text-anchor="middle" font-size="16px" style="fill: rgb(0, 0, 0);">
+              <g transform="translate(385,27) scale(1)">
+                <text>
+                  <tspan>LLM Inference
+                  </tspan>
+                </text>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-8">
+            <g transform="translate(0.5,0.5)">
+              <rect x="320" y="60" width="130" height="40" rx="6" ry="6" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(385,88) scale(1)">
+                  <text>
+                    <tspan>Prompt
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-9">
+            <g transform="translate(0.5,0.5)">
+              <rect x="320" y="130" width="130" height="40" rx="6" ry="6" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(385,158) scale(1)">
+                  <text>
+                    <tspan>Forward 1
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-10">
+            <g transform="translate(0.5,0.5)">
+              <rect x="320" y="200" width="130" height="40" rx="6" ry="6" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(385,228) scale(1)">
+                  <text>
+                    <tspan>Forward 2
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-11">
+            <g transform="translate(0.5,0.5)">
+              <rect x="320" y="270" width="130" height="40" rx="6" ry="6" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(385,298) scale(1)">
+                  <text>
+                    <tspan>Forward 3
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-12">
+            <g>
+              <rect x="320" y="330" width="130" height="25" fill="none" stroke="none" pointer-events="all"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(385,350.5) scale(1)">
+                  <text>
+                    <tspan>...
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-13">
+            <g transform="translate(0.5,0.5)">
+              <rect x="320" y="380" width="130" height="40" rx="6" ry="6" fill="#d5e8d4" stroke="#82b366" pointer-events="all" style="fill: rgb(213, 232, 212); stroke: rgb(130, 179, 102);"/>
+            </g>
+            <g>
+              <g fill="#000000" font-family="Helvetica" text-anchor="middle" font-size="18px" style="fill: rgb(0, 0, 0);">
+                <g transform="translate(385,408) scale(1)">
+                  <text>
+                    <tspan>Forward N
+                    </tspan>
+                  </text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-14">
+            <g transform="translate(0.5,0.5)">
+              <path d="M 385 100 L 385 121.88" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(0, 0, 0);"/>
+              <path d="M 385 128.88 L 381.5 121.88 L 388.5 121.88 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(0, 0, 0); stroke: rgb(0, 0, 0);"/>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-15">
+            <g transform="translate(0.5,0.5)">
+              <path d="M 385 170 L 385 191.88" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(0, 0, 0);"/>
+              <path d="M 385 198.88 L 381.5 191.88 L 388.5 191.88 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(0, 0, 0); stroke: rgb(0, 0, 0);"/>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-16">
+            <g transform="translate(0.5,0.5)">
+              <path d="M 385 240 L 385 261.88" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(0, 0, 0);"/>
+              <path d="M 385 268.88 L 381.5 261.88 L 388.5 261.88 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(0, 0, 0); stroke: rgb(0, 0, 0);"/>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-17">
+            <g transform="translate(0.5,0.5)">
+              <path d="M 385 310 L 385 321.88" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(0, 0, 0);"/>
+              <path d="M 385 328.88 L 381.5 321.88 L 388.5 321.88 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(0, 0, 0); stroke: rgb(0, 0, 0);"/>
+            </g>
+          </g>
+          <g data-cell-id="yUB1sqXzRFZyHbcEXYaU-18">
+            <g transform="translate(0.5,0.5)">
+              <path d="M 385 355 L 385 371.88" fill="none" stroke="#000000" stroke-miterlimit="10" pointer-events="stroke" style="stroke: rgb(0, 0, 0);"/>
+              <path d="M 385 378.88 L 381.5 371.88 L 388.5 371.88 Z" fill="#000000" stroke="#000000" stroke-miterlimit="10" pointer-events="all" style="fill: rgb(0, 0, 0); stroke: rgb(0, 0, 0);"/>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

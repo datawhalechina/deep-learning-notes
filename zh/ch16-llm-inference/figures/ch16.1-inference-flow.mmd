@@ -1,0 +1,41 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 20px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A[Incoming Requests] --> B[Request Queue]
+    B --> C[Scheduler]
+    C --> D[Execution Batch]
+    D --> E[Model Runner]
+    E --> F[GPU Forward]
+    G[KV Cache] --> F
+    F --> G[KV Cache]
+    F --> H[Logits]
+    H --> I[Sampling]
+    I --> J[Update Request State]
+    J --> K{Finished?}
+    K -->|No| C
+    K -->|Yes| L[Return / Stream Output]

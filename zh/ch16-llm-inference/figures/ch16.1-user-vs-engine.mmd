@@ -1,0 +1,49 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    subgraph U[User View]
+        A[Request A]
+        B[Request B]
+        C[Request C]
+    end
+
+    A --> S[Scheduling]
+    B --> S
+    C --> S
+
+    S --> D[Execution Batch]
+
+    subgraph E[Engine View]
+        D --> E1[Tokens from A]
+        D --> E2[Tokens from B]
+        D --> E3[Tokens from C]
+    end
+
+    E1 --> G[GPU Forward]
+    E2 --> G
+    E3 --> G

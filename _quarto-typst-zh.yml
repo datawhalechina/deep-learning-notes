@@ -148,6 +148,9 @@ book:
         - "zh/ch12-llm-training-engineering/ch12.9-distributed-training.qmd"
         - "zh/ch12-llm-training-engineering/ch12.10-large-model-checkpoint.qmd"
         - "zh/ch12-llm-training-engineering/ch12.11-exercises.qmd"
+    - part: "LLM 推理系统：从 Request 到 GPU Execution"
+      chapters:
+        - "zh/ch16-llm-inference/ch16.1-inference-engine.qmd"
     - part: "Chapter 18: vLLM：从 LLM 推理到高性能推理框架"
       chapters:
         - "zh/ch18-vllm-introduction/ch18.1-vllm-overview.qmd"

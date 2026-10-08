@@ -1,0 +1,41 @@
+---
+config:
+  startOnLoad: false
+  theme: base
+  htmlLabels: false
+  fontFamily: Arial, Microsoft YaHei, Noto Serif CJK SC, sans-serif
+  themeVariables:
+    fontSize: 16px
+    primaryColor: "#e9f2fc"
+    primaryBorderColor: "#296bb7"
+    primaryTextColor: "#333333"
+    lineColor: "#0b0b0b"
+
+  themeCSS: |
+    .node text,
+    .nodeLabel,
+    .label text {
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .node rect,
+    .flowchart-link {
+      stroke-width: 1px;
+    }
+---
+
+flowchart TD
+    A[Scheduling Result] --> B[Model Runner]
+
+    B --> C[Input Tokens]
+    B --> D[Positions]
+    B --> E[Attention Metadata]
+    B --> F[KV Cache Metadata]
+
+    C --> G[Model Forward]
+    D --> G
+    E --> G
+    F --> G
+
+    G --> H[Logits]
