@@ -42,7 +42,7 @@ dependencies = [
     "evaluate>=0.4.5,<0.5.0",
     "kernels>=0.17.0,<0.18.0",
     "tokenizers>=0.23.0,<0.24.0",
-    "transformers>=5.18.0,<5.19.0",
+    "transformers>=5.19.0,<5.20.0",
 
     # High performance kernels
     "triton>=3.8.0,<3.9.0; sys_platform == 'linux'",
