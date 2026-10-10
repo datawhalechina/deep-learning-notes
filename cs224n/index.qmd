@@ -1,5 +1,5 @@
 ---
-title: CS224n
+title: "Stanford CS224N: Natural Language Processing"
 author: jshn9515
 date: 2026-07-17
 date-modified: today

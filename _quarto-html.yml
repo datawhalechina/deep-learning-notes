@@ -50,7 +50,7 @@ website:
       language: en
   navbar:
     left:
-      - text: CS224n
+      - text: CS224N
         href: cs224n/index.qmd
       - text: CS336
         href: cs336/index.qmd
