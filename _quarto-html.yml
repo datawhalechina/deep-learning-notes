@@ -52,6 +52,8 @@ website:
     left:
       - text: CS224N
         href: cs224n/index.qmd
+      - text: CS234
+        href: cs234/index.qmd
       - text: CS336
         href: cs336/index.qmd
     right:
@@ -67,6 +69,13 @@ website:
         - href: "cs224n/index.qmd"
           text: Overview
         - "cs224n/assignment3/assignment3.qmd"
+    - id: cs234
+      title: "CS234: Reinforcement Learning"
+      style: floating
+      contents:
+        - href: "cs234/index.qmd"
+          text: Overview
+        - "cs234/assignment1/assignment1.qmd"
     - id: cs336
       title: "CS336: Language Modeling from Scratch"
       style: floating

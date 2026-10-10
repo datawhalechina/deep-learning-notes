@@ -139,7 +139,7 @@ class RiverSwimEnvr(RiverSwimProblem):
         Returns:
             Q (float): The updated value for the given state and action.
         """
-        assert 0 <= gamma <= 1, 'Discount factor must be in [0, 1].'
+        assert 0 <= gamma < 1, 'Discount factor must be in [0, 1).'
         return self.R[state, action] + gamma * np.dot(self.T[state, action], V)
 
     def policy_evaluation(
@@ -167,7 +167,7 @@ class RiverSwimEnvr(RiverSwimProblem):
             >>> policy = np.array([Action.RIGHT] * env.num_states)
             >>> V = env.policy_evaluation(policy, gamma=0.9)
         """
-        assert 0 <= gamma <= 1, 'Discount factor must be in [0, 1].'
+        assert 0 <= gamma < 1, 'Discount factor must be in [0, 1).'
         old_V = np.zeros(self.num_states)
 
         while True:
@@ -202,7 +202,7 @@ class RiverSwimEnvr(RiverSwimProblem):
             >>> V_policy = env.policy_evaluation(policy, gamma=0.9)
             >>> new_policy = env.policy_improvement(V_policy, gamma=0.9)
         """
-        assert 0 <= gamma <= 1, 'Discount factor must be in [0, 1].'
+        assert 0 <= gamma < 1, 'Discount factor must be in [0, 1).'
         new_policy = np.zeros(self.num_states, dtype=np.int8)
 
         for state in range(self.num_states):
@@ -230,7 +230,7 @@ class RiverSwimEnvr(RiverSwimProblem):
             >>> env = RiverSwimEnvr(Current.WEAK)
             >>> result = env.policy_iteration(gamma=0.9)
         """
-        assert 0 <= gamma <= 1, 'Discount factor must be in [0, 1].'
+        assert 0 <= gamma < 1, 'Discount factor must be in [0, 1).'
         old_policy = np.zeros(self.num_states, dtype=np.int8)
 
         while True:
@@ -265,7 +265,7 @@ class RiverSwimEnvr(RiverSwimProblem):
             >>> env = RiverSwimEnvr(Current.WEAK)
             >>> result = env.value_iteration(gamma=0.9)
         """
-        assert 0 <= gamma <= 1, 'Discount factor must be in [0, 1].'
+        assert 0 <= gamma < 1, 'Discount factor must be in [0, 1).'
         old_V = np.zeros(self.num_states)
 
         while True:
