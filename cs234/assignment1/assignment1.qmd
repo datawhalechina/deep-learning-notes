@@ -4,7 +4,7 @@ date: 2026-10-05
 date-modified: 2026-10-05
 open-graph:
   title: cs234-assignment1-writeup
-  description: "CS234 2026 Winter Assignment 1：强化学习基础"
+  description: "CS234 Assignment 1: Fundamentals of Reinforcement Learning"
 title: "CS234 Assignment 1：强化学习基础"
 order: 1
 ---
