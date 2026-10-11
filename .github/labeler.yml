@@ -1,0 +1,15 @@
+ci:
+  - changed-files:
+      - any-glob-to-any-file: '.github/**'
+
+dnnlpy:
+  - changed-files:
+      - any-glob-to-any-file: 'dnnlpy/**'
+
+tutorial:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'index.qmd'
+          - 'zh/**'
+          - 'en/**'
+          - 'cs*/**'
