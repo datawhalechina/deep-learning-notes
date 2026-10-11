@@ -4,7 +4,7 @@ date: 2026-08-30
 date-modified: 2026-08-30
 open-graph:
   title: cs224n-assignment3-writeup
-  description: "C224N Assignment 3：Self-Attention and Transformers"
+  description: "C224N Assignment 3: Self-Attention and Transformers"
 title: "C224N Assignment 3：Self-Attention 和 Transformers"
 order: 3
 ---
@@ -17,7 +17,7 @@ order: 3
 - 第二部分中，你将推导位置编码（Positional Encoding）的一些性质；
 - 第三部分中，你将从零开始编写一个 Transformer，并在本地训练它。
 
-## 1. 注意力机制探索
+## 1. 注意力机制探索 (14 pts)
 
 多头自注意力（Multi-Head Self-Attention）是 Transformer 的核心建模组件。在本题中，我们将练习使用自注意力的相关公式，并说明为什么多头自注意力相比单头自注意力可能更有优势。
 
@@ -38,14 +38,14 @@ $$
 
 其中，$\alpha = \{\alpha_1, \ldots, \alpha_n\}$ 被称为注意力权重（attention weights）。注意，输出 $c \in \mathbb{R}^d$ 是对各个值向量进行的加权平均，而权重由 $\alpha$ 决定。
 
-### 1.1 注意力中的复制
+### 1.a 注意力中的复制 (3 pts)
 
 注意力机制的一个优点是：把某个值向量复制到输出 $c$ 中尤其容易。本题将说明为什么会这样。
 
 ::: {.callout-caution}
-# Question 1.1.1 (2 pts)
+# Question 1.a(i) (2 pts)
 
-在注意力机制中，分布 $\alpha$ 通常比较分散，也就是说，概率质量会分布在许多不同的 $\alpha_i$ 上。不过情况并非总是如此。请用一句话说明：当类别分布 $\alpha$ 把几乎全部权重都放到某个 $\alpha_j$ 上，即
+在注意力机制中，分布 $\alpha$ 通常比较分散，也就是说，概率质量会分布在许多不同的 $\alpha_i$ 上。不过情况并非总是如此。请用一句话说明：当类别分布 $\alpha$ 把几乎全部权重都放到某个 $\alpha_j$ 上，即：
 
 $$
 \alpha_j \gg \sum_{i \ne j} \alpha_i, \quad \forall i, \exists j \in \{1, 2, \ldots, n\}
@@ -55,27 +55,27 @@ $$
 :::
 
 ::: {.callout-tip}
-# Answer 1.1.1
+# Answer 1.a(i)
 
 必须满足 $q$ 和某个 $k_j$ 的点积显著大于和其他 $k_i$ 的点积。
 :::
 
 ::: {.callout-caution}
-# Question 1.1.2 (1 pt)
+# Question 1.a(ii) (1 pt)
 
 请描述输出 $c$ 会是什么样子。
 :::
 
 ::: {.callout-tip}
-# Answer 1.1.2
+# Answer 1.a(ii)
 
-在刚才那个条件下，
+在 1.a(i) 条件下，
 
 $$
 \alpha_j \approx 1, \quad \alpha_i \approx 0, \quad \forall i \ne j
 $$
 
-而输出是
+而输出是：
 
 $$
 c = \sum_{i=1}^{n} v_i \alpha_i \approx v_j
@@ -84,12 +84,12 @@ $$
 也就是说，输出 $c$ 会非常接近值向量 $v_j$。
 :::
 
-### 1.2 两个向量的平均
+### 1.b 两个向量的平均 (2 pts)
 
 Transformer 模型不一定只关注一个向量 $v_j$，它也可能希望同时整合多个源向量中的信息。
 
 ::: {.callout-caution}
-# Question 1.2 (2 pts)
+# Question 1.b (2 pts)
 
 考虑这样一种情况：我们希望同时整合两个向量 $v_a$ 和 $v_b$ 的信息，它们对应的键向量分别为 $k_a$ 和 $k_b$。
 
@@ -108,7 +108,7 @@ $$
 :::
 
 ::: {.callout-tip}
-# Answer 1.2
+# Answer 1.b
 
 可以取
 
@@ -161,9 +161,9 @@ c = \sum_{i=1}^{n} v_i \alpha_i \approx \frac{1}{2}(v_a + v_b)
 $$
 :::
 
-### 1.3 单头注意力的缺点
+### 1.c 单头注意力的缺点 (5 pts)
 
-在上一部分中，我们看到，单头注意力可以同时等量关注两个值向量。同样的思想也很容易推广到任意一个值向量子集。不过，在本题中我们将看到，实际使用这种方法并不理想。
+在上一部分中我们看到，单头注意力可以同时等量关注两个值向量。同样的思想也很容易推广到任意一个值向量子集。不过，在本题中我们将看到，实际使用这种方法并不理想。
 
 考虑一组键向量 $\{k_1, \ldots, k_n\}$。现在这些键向量是随机采样得到的：
 
@@ -186,7 +186,7 @@ $$
 $$
 
 ::: {.callout-caution}
-# Question 1.3.1 (2 pts)
+# Question 1.c(i) (2 pts)
 
 假设所有协方差矩阵均为
 
@@ -206,7 +206,7 @@ $$
 :::
 
 ::: {.callout-tip}
-# Answer 1.3.1
+# Answer 1.c(i)
 
 可以取
 
@@ -224,7 +224,7 @@ $$
 
 意味着 $k_i \approx \mu_i$。
 
-其余部分同上题 1.2 的推导，最终得到：
+其余部分同上题 1.b 的推导，最终得到：
 
 $$
 c \approx \frac{1}{2}(v_a + v_b)
@@ -232,7 +232,7 @@ $$
 :::
 
 ::: {.callout-caution}
-# Question 1.3.2 (3 pts)
+# Question 1.c(ii) (3 pts)
 
 虽然单头注意力能够抵抗键向量的小幅扰动，但某些较大的扰动可能会带来更严重的问题。在某些情况下，某个键向量 $k_a$ 的范数可能比其他键更大或更小，但它仍然大致沿着与 $\mu_a$ 相同的方向。
 
@@ -242,7 +242,7 @@ $$
 \Sigma_a = \alpha I + \frac{1}{2}(\mu_a \mu_a^\top)
 $$
 
-其中，$\alpha$ 趋近于 0 。这会使 $k_a$ 大致指向与 $\mu_a$ 相同的方向，但其长度会有较大的方差。
+其中，$\alpha$ 趋近于 0。这会使 $k_a$ 大致指向与 $\mu_a$ 相同的方向，但其长度会有较大的方差。
 
 ![图 1.3.2 $\mu_a$ 向量以及 $k_a$ 可能的取值范围](figures/key-distribution.svg){width=50%}
 
@@ -252,13 +252,11 @@ $$
 \Sigma_i = \alpha I
 $$
 
-当你多次采样 $\{k_1, \ldots, k_n\}$，并使用你在 Question 1.3.1 中定义的查询向量 $q$ 时，对于不同的采样结果，你预期向量 $c$ 从定性上看会是什么样子？
-
-请思考它与 Question 1.3.1 中的情况有何不同，以及 $c$ 的方差会受到什么影响。
+当你多次采样 $\{k_1, \ldots, k_n\}$，并使用你在 1.c(i) 中定义的查询向量 $q$ 时，对于不同的采样结果，你预期向量 $c$ 从定性上看会是什么样子？请思考它与 1.c(i) 中的情况有何不同，以及 $c$ 的方差会受到什么影响。
 :::
 
 ::: {.callout-tip}
-# Answer 1.3.2
+# Answer 1.c(ii)
 
 由于：
 
@@ -268,7 +266,7 @@ $$
 
 $k_a$ 会主要沿着 $\mu_a$ 的方向波动，并且其长度具有较大的方差；而其他 $k_i$ 仍然因为 $\Sigma_i = \alpha I$ 且 $\alpha \to 0$ 而非常接近对应的 $\mu_i$。
 
-继续使用上一问中的
+继续使用 1.c(i) 中的
 
 $$
 q = \lambda(\mu_a+\mu_b)
@@ -288,14 +286,14 @@ $$
 \frac{1}{2}(v_a+v_b)
 $$
 
-而会在不同样本之间产生更大的变化，即 $c$ 的方差会比上一问明显增大。
+而会在不同样本之间产生更大的变化，即 $c$ 的方差会比 1.c(i) 明显增大。
 :::
 
-### 1.4 多头注意力的优点
+### 1.d 多头注意力的优点 (3 pts)
 
 现在我们来看看多头注意力的一些优势。
 
-我们考虑一个简化版的多头注意力。它与前面介绍的单头自注意力基本相同，区别在于：现在定义两个查询向量 $q_1$ 和 $q_2$，从而得到两个向量 $c_1$ 和 $c_2$。每个 $c_i$ 都是使用对应查询向量进行一次单头注意力后得到的输出。
+我们考虑一个简化版的多头注意力。它与前面介绍的单头自注意力基本相同。区别在于：现在定义两个查询向量 $q_1$ 和 $q_2$，从而得到两个向量 $c_1$ 和 $c_2$。每个 $c_i$ 都是使用对应查询向量进行一次单头注意力后得到的输出。
 
 多头注意力最终的输出是二者的平均：
 
@@ -303,7 +301,7 @@ $$
 \frac{1}{2}(c_1 + c_2)
 $$
 
-与 Question 1.3 一样，考虑一组随机采样的键向量
+与 1.c 一样，考虑一组随机采样的键向量
 
 $$
 \{k_1, \ldots, k_n\}, \qquad k_i \sim \mathcal{N}(\mu_i, \Sigma_i)
@@ -324,7 +322,7 @@ $$
 $$
 
 ::: {.callout-caution}
-# Question 1.4.1 (1 pt)
+# Question 1.d(i) (1 pt)
 
 假设所有协方差矩阵均为
 
@@ -344,7 +342,7 @@ $$
 :::
 
 ::: {.callout-tip}
-# Answer 1.4.1
+# Answer 1.d(i)
 
 可以取
 
@@ -380,7 +378,7 @@ $$
 :::
 
 ::: {.callout-caution}
-# Question 1.4.2 (2 pts)
+# Question 1.d(ii) (2 pts)
 
 假设
 
@@ -394,11 +392,11 @@ $$
 \Sigma_i = \alpha I
 $$
 
-使用你在 Question 1.4.1 中设计的查询向量 $q_1$ 和 $q_2$。对于不同的键向量采样结果，你从定性上预期输出 $c$ 会是什么样子？请从 $c_1$ 和 $c_2$ 的方差角度简要解释。你可以忽略 $k_a^\top q_i < 0$ 的情况。
+使用你在 1.d(i) 中设计的查询向量 $q_1$ 和 $q_2$。对于不同的键向量采样结果，你从定性上预期输出 $c$ 会是什么样子？请从 $c_1$ 和 $c_2$ 的方差角度简要解释。你可以忽略 $k_a^\top q_i < 0$ 的情况。
 :::
 
 ::: {.callout-tip}
-# Answer 1.4.2
+# Answer 1.d(ii)
 
 仍然使用
 
@@ -442,42 +440,36 @@ $$
 
 其方差比单头注意力中的情况小得多。
 
-至于为什么要忽略 $k_a^\top q_i < 0$ 的情况，因为如果 $k_a^\top q_i < 0$，这时 $a$ 的 attention score 反而可能比那些接近 0 的其他 key 还低，于是 softmax 就不会选 $a$ 了，导致
+至于为什么要忽略 $k_a^\top q_i < 0$ 的情况？因为如果 $k_a^\top q_i < 0$，这时 $a$ 的 attention score 反而可能比那些接近 0 的其他 key 还低，于是 softmax 就不会选 $a$ 了，导致
 
 $$
 c_1 \not\approx v_a
 $$
 
-这样一来，题目就不再只是讨论 key 的长度波动会不会让 multi-head 的输出方差变大，而会混入一个更严重的问题：
-
-> **这个 head 直接选错目标了。**
-
-也就是说，我们假设 $k_a$ 仍然朝大致正确的方向，只讨论它的 magnitude 变化，而不讨论方向翻转导致 attention 完全失效的极端情况。
+这样一来，题目就不再只是讨论 key 的长度波动会不会让 multi-head 的输出方差变大，而会混入一个更严重的问题：这个 head 直接选错目标了。所以，我们假设 $k_a$ 仍然朝大致正确的方向，只讨论它的大小变化，而不讨论方向翻转导致 attention 完全失效的极端情况。
 :::
 
-### 1.5 多头注意力的优势总结
+### 1.5 多头注意力的优势总结 (1 pt)
 
 ::: {.callout-caution}
-# Question 1.5 (1 pt)
+# Question 1.e (1 pt)
 
-基于 Question 1.4，请简要总结：多头注意力是如何克服你在 Question 1.3 中发现的单头注意力缺点的？
+基于 1.d，请简要总结：多头注意力是如何克服你在 1.c 中发现的单头注意力缺点的？
 :::
 
 ::: {.callout-tip}
-# Answer 1.5
+# Answer 1.e
 
 单头注意力需要用一个查询向量同时维持多个 key 之间的注意力权重平衡，因此当某个 key 的长度发生较大波动时，softmax 权重可能明显偏向其中一个 value，使输出具有较大的方差。
 
 多头注意力则可以让不同的 head 分别关注不同的 value，例如令 $q_1$ 主要关注 $v_a$，令 $q_2$ 主要关注 $v_b$，再对各个 head 的输出进行平均。这样就不需要依赖单个 softmax 在多个 key 之间精确维持平衡，因此对 key 的长度扰动更加稳定，最终输出的方差也更小。
 :::
 
-## 2. 位置嵌入探索
+## 2. 位置嵌入探索 (6 pts)
 
 **位置嵌入（Position Embedding）**是 Transformer 架构中的重要组成部分，它使模型能够根据 token 在序列中的位置来区分不同 token。在本题中，我们将探讨 Transformer 为什么需要位置嵌入，以及位置嵌入可以如何设计。
 
-回顾一下，Transformer 架构中的关键组件包括自注意力层（self-attention layer）和前馈神经网络层（feed-forward neural network layer）。
-
-给定输入张量 $X \in \mathbb{R}^{T \times d}$，$T$ 为序列长度，$d$ 为隐藏维度，自注意力层执行以下计算：
+回顾一下，Transformer 架构中的关键组件包括自注意力层（self-attention）和前馈神经网络层（FFN）。给定输入张量 $X \in \mathbb{R}^{T \times d}$，$T$ 为序列长度，$d$ 为隐藏维度，自注意力层执行以下计算：
 
 $$
 Q = XW_Q, \qquad K = XW_K, \qquad V = XW_V
@@ -498,18 +490,16 @@ $$
 其中，
 
 $$
-\begin{align}
-W_1, W_2 &\in \mathbb{R}^{d \times d} \\
-b_1, b_2 &\in \mathbb{R}^{1 \times d}
-\end{align}
+W_1, W_2 \in \mathbb{R}^{d \times d} \qquad
+b_1, b_2 \in \mathbb{R}^{1 \times d}
 $$
 
 分别为权重和偏置；$\mathbf{1} \in \mathbb{R}^{T \times 1}$ 是一个全 1 向量；$Z \in \mathbb{R}^{T \times d}$ 为最终输出。
 
-### 2.1 对输入进行置换
+### 2.a 对输入进行置换 (4 pts)
 
 ::: {.callout-caution}
-# Question 2.1.1 (3 pts)
+# Question 2.a(i) (3 pts)
 
 假设我们对输入序列 $X$ 进行置换，使 token 的顺序被随机打乱。这可以表示为左乘一个置换矩阵 $P \in \mathbb{R}^{T \times T}$：
 
@@ -537,9 +527,9 @@ $$
 :::
 
 ::: {.callout-tip}
-# Answer 2.1.1
+# Answer 2.a(i)
 
-这道题其实就是需要证明，先置换输入，再过 Transformer，等于先过 Transformer，再对输出做同样的置换。也就是 Transformer 的 **置换等变性（permutation equivariance）**。
+这道题其实就是需要证明，先置换输入，再过 Transformer，等于先过 Transformer，再对输出做同样的置换。也就是 Transformer 的**置换等变性（permutation equivariance）**。
 
 **Self-Attention 部分**
 
@@ -693,18 +683,18 @@ $$
 :::
 
 ::: {.callout-caution}
-# Question 2.1.2 (1 pt)
+# Question 2.a.(ii) (1 pt)
 
-思考你在 Question 2.1.1 中推导出的结果意味着什么。请解释：为什么 Transformer 模型的这一性质在处理文本时可能会造成问题？
+思考你在 2.a.(i) 中推导出的结果意味着什么。请解释为什么 Transformer 模型的这一性质在处理文本时可能会造成问题？
 :::
 
 ::: {.callout-tip}
-# Answer 2.1.2
+# Answer 2.a.(ii)
 
 Transformer 在没有位置编码时具有置换等变性，即输入 token 的顺序发生置换后，输出只会按照相同方式置换。这在处理文本时会造成问题，因为自然语言的语义通常依赖 token 的顺序。对于**词相同但顺序不同，导致含义却不同**的句子，例如 man bites dog 和 dog bites man，模型缺少表示其位置差异的机制，因此难以区分它们不同的语义。
 :::
 
-### 2.2 位置嵌入
+### 2.b 位置嵌入 (2 pts)
 
 位置嵌入是用于编码序列中每个 token 所处位置的向量。在将输入送入 Transformer 之前，会先把位置嵌入加到输入 token 上。位置嵌入的其中一种方法是：使用位置以及嵌入维度的固定函数来生成位置嵌入。
 
@@ -732,25 +722,25 @@ X_{\text{pos}} = X + \Phi
 $$
 
 ::: {.callout-caution}
-# Question 2.2.1 (1 pt)
+# Question 2.b(i) (1 pt)
 
-你认为位置嵌入能解决你在 Question 2.1 中发现的问题吗？如果能，请解释为什么；如果不能，也请解释原因。
+你认为位置嵌入能解决你在 2.a 中发现的问题吗？如果能，请解释为什么；如果不能，也请解释原因。
 :::
 
 ::: {.callout-tip}
-# Answer 2.2.1
+# Answer 2.b(i)
 
 能。位置嵌入会为不同位置的 token 加入不同的位置信息，因此即使输入包含相同的 token，只要它们的顺序不同，加入位置嵌入后的表示也会不同。这样 Transformer 就能够区分 token 的位置和顺序，从而缓解没有位置编码时由置换等变性带来的问题。
 :::
 
 ::: {.callout-caution}
-# Question 2.2.2 (1 pt)
+# Question 2.b(ii) (1 pt)
 
 输入序列中两个不同 token 的位置嵌入是否可能完全相同？如果可以，请给出一个例子；如果不可以，请解释为什么。
 :::
 
 ::: {.callout-tip}
-# Answer 2.2.2
+# Answer 2.b(ii)
 
 不可以。关键看位置嵌入的前两个维度就够了。
 
@@ -793,11 +783,11 @@ $$
 $$
 :::
 
-## 3. 从零开始编写 Transformer
+## 3. 从零开始编写 Transformer (30 pts)
 
 在本题中，你将补全代码，实现一个仅包含解码器（decoder-only）的 GPT-2 风格 Transformer，以及一个简单的训练循环。
 
-对于 3.1，我们为每个小题都提供了可以直接在你的笔记本电脑上本地运行的单元测试。如果你通过某个小题对应的单元测试，就可以获得该小题的全部分数。
+对于 3.a，我们为每个小题都提供了可以直接在你的笔记本电脑上本地运行的单元测试。如果你通过某个小题对应的单元测试，就可以获得该小题的全部分数。
 
 在完成这部分作业时，下面这些建议可能会有所帮助：
 
@@ -807,15 +797,21 @@ $$
 
 这些做法不仅能帮助你减少代码中的 bug，也能显著提升代码的可读性。
 
-### 3.1 实现一个 Transformer
+### 3.a 实现一个 Transformer (20 pts)
 
-在本题这一部分中，我们将在 `model.py` 文件中实现一个 Transformer。该文件包含多个需要你实现的类。最终，你将得到一个完整的 Transformer 类实现，其中 `forward` 和 `generate` 方法都可以正常工作。
+在 3.a 中，我们将在 `model.py` 文件中实现一个 Transformer。该文件包含多个需要你实现的类。最终，你将得到一个完整的 Transformer 类，`forward` 和 `generate` 方法都可以正常工作。在 3.b 中，我们将开始训练你实现的 Transformer。
 
-在 3.2 中，我们将开始训练你实现的 Transformer。
+::: {.callout-caution}
+# Question 3.a(i) 熟悉代码 (0 pt)
 
-#### **3.1.1 实现 GPT2MLP (1 pt)**
+请你熟悉 `model.py` 文件中的各个类。我们将要求你按照 `GPT2MLP`、`GPT2CasualAttention`、`GPT2Block` 以及最后的 `GPT2Model` 这一顺序来实现它们。之所以按此顺序进行，是因为它们之间存在依赖关系：`GPT2Model` 依赖于 `GPT2Block`，而 `GPT2Block` 又依赖于 `GPT2CasualAttention` 和 `GPT2MLP`。
+:::
+
+::: {.callout-caution}
+# Question 3.a(ii) 实现 GPT2MLP (1 pt)
 
 实现 `GPT2MLP`。检查你是否通过对应的测试。
+:::
 
 ```{.python filename="GPT2MLP.py"}
 class GPT2MLP(nn.Module):
@@ -834,12 +830,14 @@ class GPT2MLP(nn.Module):
         return x
 ```
 
-#### **3.1.2 实现 GPT2SelfAttention (6 pts)**
+::: {.callout-caution}
+# Question 3.a(iii) 实现 GPT2CasualAttention (6 pts)
 
-实现 `GPT2SelfAttention`。检查你是否通过对应的测试。
+实现 `GPT2CasualAttention`。检查你是否通过对应的测试。
+:::
 
-```{.python filename="GPT2SelfAttention.py"}
-class GPT2SelfAttention(nn.Module):
+```{.python filename="GPT2CasualAttention.py"}
+class GPT2CasualAttention(nn.Module):
     """Creates a self-attention layer for the GPT-2 model."""
 
     def __init__(self, config: GPT2Config):
@@ -855,9 +853,11 @@ class GPT2SelfAttention(nn.Module):
         return attn_output
 ```
 
-#### **3.1.3 实现 GPT2Block (2 pts)**
+::: {.callout-caution}
+# Question 3.a(iv) 实现 GPT2CasualAttention (2 pts)
 
 实现 `GPT2Block`。检查你是否通过对应的测试。
+:::
 
 ```{.python filename="GPT2Block.py"}
 class GPT2Block(nn.Module):
@@ -868,7 +868,7 @@ class GPT2Block(nn.Module):
     def __init__(self, config: GPT2Config):
         super().__init__()
         self.norm1 = dnn.LayerNorm(config.d_model)
-        self.attn = GPT2SelfAttention(config)
+        self.attn = GPT2CasualAttention(config)
         self.norm2 = dnn.LayerNorm(config.d_model)
         self.mlp = GPT2MLP(config)
 
@@ -878,9 +878,11 @@ class GPT2Block(nn.Module):
         return x
 ```
 
-#### **3.1.4 实现 GPT2Model.forward (6 pts)**
+::: {.callout-caution}
+# Question 3.a(v) 实现 GPT2Model.forward (6 pts)
 
 实现 `GPT2Model.forward`。检查你是否通过对应的测试。
+:::
 
 ```{.python filename="GPT2Model.forward.py"}
 class GPT2Model(nn.Module):
@@ -906,29 +908,6 @@ class GPT2Model(nn.Module):
             self.lm_head.weight = self.tok_embed.weight
             assert self.lm_head.weight is self.tok_embed.weight
 
-    def reset_parameters(self):
-        """Reset the parameters of the model using the initialization scheme from
-        the original GPT-2 paper.
-        """
-        for module in self.modules():
-            if isinstance(module, dnn.Linear):
-                nn.init.normal_(module.weight, mean=0.0, std=0.02)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, dnn.Embedding):
-                nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            elif isinstance(module, dnn.LayerNorm):
-                if module.weight is not None:
-                    nn.init.ones_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-
-        for name, param in self.named_parameters():
-            if name.endswith(('mlp.fc2.weight', 'attn.out_proj.weight')):
-                nn.init.normal_(
-                    param, mean=0.0, std=0.02 / math.sqrt(2 * self.config.n_layers)
-                )
-
     def forward(self, x: Tensor) -> Tensor:
         if x.size(1) > self.config.context_length:
             raise AssertionError(
@@ -948,9 +927,11 @@ class GPT2Model(nn.Module):
         return logits
 ```
 
-#### **3.1.5 实现 GPT2Model.generate (5 pts)**
+::: {.callout-caution}
+# Question 3.a(vi) 实现 GPT2Model.generate (5 pts)
 
 实现 `GPT2Model.generate`。检查你是否通过对应的测试。注意：该函数中应实现**贪心解码（greedy decoding）**。
+:::
 
 ```{.python filename="GPT2Model.generate.py"}
 @torch.inference_mode()
@@ -986,19 +967,25 @@ def generate(
     return x
 ```
 
-### 3.2 训练一个 Transformer
+### 3.b 训练一个 Transformer (10 pts)
 
-完成 3.1 部分后，你现在已经拥有一个可以正常工作的 Transformer 模型。
+完成 3.a 部分后，你现在已经拥有一个可以正常工作的 Transformer 模型。
 
-如果查看 `GPT2Model` 源代码，你会看到，当我们在创建 `GPT2Model` 类的实例时，我们会根据 `reset_parameters` 方法，使用随机权重初始化模型。
+如果查看 `GPT2Model` 源代码，你会看到，当我们在创建 `GPT2Model` 类时，我们会调用 `reset_parameters` 方法，使用随机权重初始化模型。初始化方法参照了 GPT-2 论文中描述的初始化方法。
 
 在本题这一部分中，你将实现一个训练循环，并开始在本地训练一个小型模型。
 
-#### **3.2.1 实现 `GPT2Model.loss` (7 pts)**
+::: {.callout-caution}
+# Question 3.b(i) 熟悉代码 (0 pt)
 
-首先，实现 `GPT2Model.loss`。这个函数会把一批 token 映射为一个标量损失值。我们会在 `train.py` 中使用该函数计算一个 batch 上的 loss。
+请查看 `train.py` 文件，熟悉训练循环。我们将运行这段代码来训练模型。
+:::
 
-检查你是否通过对应的测试。
+::: {.callout-caution}
+# Question 3.b(ii) 实现 GPT2Model.generate (7 pts)
+
+首先，实现 `GPT2Model.loss`。这个函数会把一批 token 映射为一个标量损失值。我们会在 `train.py` 中使用该函数计算一个 batch 上的 loss。检查你是否通过对应的测试。
+:::
 
 ```{.python filename="GPT2Model.loss.py"}
 def loss(self, input_ids: Tensor, targets: Tensor) -> Tensor:
@@ -1009,7 +996,8 @@ def loss(self, input_ids: Tensor, targets: Tensor) -> Tensor:
     return loss
 ```
 
-#### **3.2.2 运行 Training Loop (3 pts)**
+::: {.callout-caution}
+# Question 3.b(iii) 运行 Training Loop (3 pts)
 
 运行：
 
@@ -1017,15 +1005,14 @@ def loss(self, input_ids: Tensor, targets: Tensor) -> Tensor:
 python -m src.train.py
 ```
 
-这会使用你的 `GPT2Model.loss`，在 100 个 batch 的数据上训练模型。注意，训练使用 `wandb` 记录训练过程中的 loss 和梯度范数，你可能需要首先登录你的 `wandb` 账户。
+这会使用你的 `GPT2Model.loss`，在 100 个 batch 的数据上训练模型。注意，训练使用 `wandb` 记录训练过程中的 loss 和梯度范数，你可能需要首先登录你的 `wandb` 账户。如果一切实现正确，你应该能看到一条逐渐下降的 loss 曲线。
+:::
 
-如果一切实现正确，你应该能看到一条逐渐下降的 loss 曲线。
-
-### 3.3 加快模型学习过程
+### 3.c 加快模型学习过程 (9 pts | Optional)
 
 在这个可选的加分题中，你的目标是加快模型的学习过程。
 
-我们会把梯度更新步数固定为 100 步，不过你可以修改 `train.py` 或 `model.py` 中的其他任何内容，以加快训练。如果在 100 步训练结束后，你修改后的 loss 低于你在 3.2.2 中报告的基线，我们就认为这个修改取得了成功。
+我们会把梯度更新步数固定为 100 步，不过你可以修改 `train.py` 或 `model.py` 中的其他任何内容，以加快训练。如果在 100 步训练结束后，你修改后的 loss 低于你在 3.b(iii) 中报告的基线，我们就认为这个修改取得了成功。
 
 每一种能够带来加速效果的不同修改都会获得 **3 分**。因此，如果想拿满分，你需要对训练文件做出 3 种不同类型的修改，并且每种修改都需要带来加速效果。这些修改应当能够逐步叠加。
 
