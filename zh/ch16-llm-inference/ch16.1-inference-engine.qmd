@@ -9,7 +9,7 @@ title: "16.1 从 generate() 到 Inference Engine：为什么大模型推理需�
 order: 1
 ---
 
-[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch11-gpt2-from-scratch/ch16.1-inference-engine.ipynb){fig-align="left"}
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jshn9515/dnnl-notebooks/blob/main/zh/ch16-llm-inference/ch16.1-inference-engine.ipynb){fig-align="left"}
 
 前面的章节里，我们已经讨论过 Decoder-only Transformer、自回归生成、KV cache，以及 temperature、top-k、top-p 等生成方法。如果只是让一个模型根据 prompt 生成一段文本，代码看起来并不复杂：
 
