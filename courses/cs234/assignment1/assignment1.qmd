@@ -790,6 +790,6 @@ def value_iteration(self, gamma: float, tol: float = 1e-3) -> RiverSwimResult:
 
 ```{python}
 #| output: false
-%run test_riverswim.py
+%run src/test_riverswim.py
 ```
 :::
