@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch import Tensor
 from torch.types import Device
 
-import dnnlpy.cs336.assignment1 as assignment1
+import dnnlpy.cs336.assignment1 as a1
 import dnnlpy.nn as dnn
 import dnnlpy.nn.functional as dF
 import dnnlpy.optim as dopt
@@ -150,7 +150,7 @@ def run_multihead_self_attention(
             multi-headed attention implementation with the given QKV projection weights
             and input features.
     """
-    attention = assignment1.MultiheadSelfAttention(
+    attention = a1.MultiheadSelfAttention(
         embed_dim=d_model,
         num_heads=num_heads,
         bias=False,
@@ -204,12 +204,12 @@ def run_multihead_self_attention_with_rope(
             multi-headed attention implementation with the given QKV projection weights
             and input features.
     """
-    rope = assignment1.RotaryPositionalEmbedding(
+    rope = a1.RotaryPositionalEmbedding(
         embed_dim=d_model // num_heads,
         theta=theta,
         max_seq_len=max_seq_len,
     )
-    attention = assignment1.MultiheadSelfAttention(
+    attention = a1.MultiheadSelfAttention(
         embed_dim=d_model,
         num_heads=num_heads,
         bias=False,
@@ -247,7 +247,7 @@ def run_rope(
     Returns:
         output (Tensor): Tensor with RoPE applied to the input tensor.
     """
-    rope = assignment1.RotaryPositionalEmbedding(
+    rope = a1.RotaryPositionalEmbedding(
         embed_dim=embed_dim,
         theta=theta,
         max_seq_len=max_seq_len,
@@ -289,12 +289,12 @@ def run_transformer_block(
         output (Tensor) Tensor with the output of running the Transformer block on the input
             features while using RoPE.
     """
-    rope = assignment1.RotaryPositionalEmbedding(
+    rope = a1.RotaryPositionalEmbedding(
         embed_dim=d_model // num_heads,
         theta=theta,
         max_seq_len=max_seq_len,
     )
-    block = assignment1.TransformerBlock(
+    block = a1.TransformerBlock(
         embed_dim=d_model,
         num_heads=num_heads,
         hidden_dim=d_ff,
@@ -340,7 +340,7 @@ def run_transformer_lm(
         output (Tensor): Tensor with the predicted unnormalized next-word distribution
             for each token.
     """
-    model = assignment1.TransformerLM(
+    model = a1.TransformerLM(
         vocab_size=vocab_size,
         block_size=context_length,
         embed_dim=d_model,
@@ -410,7 +410,7 @@ def run_get_batch(
             context_length). The first item is the sampled input sequences, and the
             second item is the corresponding language modeling labels.
     """
-    output = assignment1.get_batch(dataset, context_length, batch_size, device=device)
+    output = a1.get_batch(dataset, context_length, batch_size, device=device)
     return output
 
 

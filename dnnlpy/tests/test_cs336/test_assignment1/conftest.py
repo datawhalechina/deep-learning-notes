@@ -8,12 +8,6 @@ import torch
 from torch import Tensor
 from torch.testing import assert_close
 
-__all__ = [
-    'FIXTURES_PATH',
-    'SNAPSHOT_PATH',
-    'SnapShot',
-]
-
 FIXTURES_PATH = Path(__file__).parent / 'fixtures'
 SNAPSHOT_PATH = Path(__file__).parent / 'snapshots'
 

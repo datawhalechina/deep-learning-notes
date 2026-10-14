@@ -4,36 +4,10 @@ from typing import cast
 
 import tiktoken
 
+import dnnlpy.cs336.assignment1.adapters as a1
 import dnnlpy.tokenizers as dltk
 
-from .adapters import get_tokenizer
 from .conftest import FIXTURES_PATH
-
-__all__ = [
-    'test_address_matches_tiktoken',
-    'test_address_roundtrip',
-    'test_ascii_string_matches_tiktoken',
-    'test_empty_matches_tiktoken',
-    'test_encode_iterable_tinystories_matches_tiktoken',
-    'test_encode_iterable_tinystories_sample_roundtrip',
-    'test_encode_special_token_double_newline_non_whitespace',
-    'test_encode_special_token_trailing_newlines',
-    'test_german_matches_tiktoken',
-    'test_german_roundtrip',
-    'test_overlapping_special_tokens',
-    'test_roundtrip_ascii_string',
-    'test_roundtrip_empty',
-    'test_roundtrip_single_character',
-    'test_roundtrip_single_unicode_character',
-    'test_roundtrip_unicode_string',
-    'test_roundtrip_unicode_string_with_special_tokens',
-    'test_single_character_matches_tiktoken',
-    'test_single_unicode_character_matches_tiktoken',
-    'test_tinystories_matches_tiktoken',
-    'test_tinystories_sample_roundtrip',
-    'test_unicode_string_matches_tiktoken',
-    'test_unicode_string_with_special_tokens_matches_tiktoken',
-]
 
 VOCAB_PATH = FIXTURES_PATH / 'gpt2_vocab.json'
 MERGES_PATH = FIXTURES_PATH / 'gpt2_merges.txt'
@@ -64,7 +38,7 @@ def get_tokenizer_from_vocab_merges_path(
         merges = [tuple(line.split()) for line in fp]
         merges = cast(list[tuple[str, str]], merges)
 
-    return get_tokenizer(vocab, merges, special_tokens)
+    return a1.get_tokenizer(vocab, merges, special_tokens)
 
 
 def test_roundtrip_empty():

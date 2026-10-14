@@ -7,11 +7,8 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.testing import assert_close
 
+import dnnlpy.cs336.assignment1.adapters as a1
 import dnnlpy.optim as dopt
-
-from .adapters import get_adamw_cls, run_load_checkpoint, run_save_checkpoint
-
-__all__ = ['test_checkpointing']
 
 
 class _TestNet(nn.Module):
@@ -86,7 +83,7 @@ def test_checkpointing(tmp_path: Path):
     num_iters = 10
 
     model = _TestNet(in_features=d_input, out_features=d_output)
-    optimizer_cls = cast(type[dopt.AdamW], get_adamw_cls())
+    optimizer_cls = cast(type[dopt.AdamW], a1.get_adamw_cls())
     optimizer = optimizer_cls(
         model.parameters(),
         lr=1e-3,
@@ -109,7 +106,7 @@ def test_checkpointing(tmp_path: Path):
     ckpt_path = tmp_path / 'checkpoint.pt'
 
     # Save the model
-    run_save_checkpoint(
+    a1.run_save_checkpoint(
         path=ckpt_path,
         model=model,
         optimizer=optimizer,
@@ -126,7 +123,7 @@ def test_checkpointing(tmp_path: Path):
         eps=1e-8,
     )
 
-    loaded_iterations = run_load_checkpoint(ckpt_path, new_model, new_optimizer)
+    loaded_iterations = a1.run_load_checkpoint(ckpt_path, new_model, new_optimizer)
     assert it == loaded_iterations
 
     # Compare the loaded model state with the original model state

@@ -2,14 +2,9 @@ import json
 import time
 from typing import cast
 
-from .adapters import run_train_bpe
-from .conftest import FIXTURES_PATH, SNAPSHOT_PATH
+import dnnlpy.cs336.assignment1.adapters as a1
 
-__all__ = [
-    'test_train_bpe',
-    'test_train_bpe_special_tokens',
-    'test_train_bpe_speed',
-]
+from .conftest import FIXTURES_PATH, SNAPSHOT_PATH
 
 
 def test_train_bpe_speed():
@@ -21,7 +16,7 @@ def test_train_bpe_speed():
     input_path = FIXTURES_PATH / 'corpus.en.txt'
 
     start_time = time.perf_counter()
-    run_train_bpe(
+    a1.run_train_bpe(
         input_path=input_path,
         vocab_size=500,
         special_tokens=['<|endoftext|>'],
@@ -40,7 +35,7 @@ def test_train_bpe():
     The reference vocab and merges are stored in the `tests/fixtures` directory.
     """
     input_path = FIXTURES_PATH / 'corpus.en.txt'
-    tokenizer = run_train_bpe(
+    tokenizer = a1.run_train_bpe(
         input_path=input_path,
         vocab_size=500,
         special_tokens=['<|endoftext|>'],
@@ -72,7 +67,7 @@ def test_train_bpe_special_tokens():
     end of a text sequence, and should not be split into multiple tokens.
     """
     input_path = FIXTURES_PATH / 'tinystories_sample_5M.txt'
-    tokenizer = run_train_bpe(
+    tokenizer = a1.run_train_bpe(
         input_path=input_path,
         vocab_size=1000,
         special_tokens=['<|endoftext|>'],

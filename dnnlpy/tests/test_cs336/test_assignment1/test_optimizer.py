@@ -5,15 +5,10 @@ import torch.optim as optim
 from torch import Tensor
 from torch.testing import assert_close
 
+import dnnlpy.cs336.assignment1.adapters as a1
 import dnnlpy.optim as dopt
 
-from .adapters import get_adamw_cls, run_get_lr_cosine_schedule
 from .conftest import SnapShot
-
-__all__ = [
-    'test_adamw',
-    'test_get_lr_cosine_schedule',
-]
 
 
 def optimize(opt_class: type[optim.Optimizer]) -> Tensor:
@@ -53,7 +48,7 @@ def test_adamw(snapshot: SnapShot):
     _either_ our reference implementation's expected results or those from the
     PyTorch AdamW.
     """
-    actual = optimize(get_adamw_cls())
+    actual = optimize(a1.get_adamw_cls())
     expected = optimize(optim.AdamW)
 
     try:
@@ -104,7 +99,7 @@ def test_get_lr_cosine_schedule():
     ]
 
     actual_lrs = [
-        run_get_lr_cosine_schedule(
+        a1.run_get_lr_cosine_schedule(
             iteration=it,
             max_learning_rate=max_learning_rate,
             min_learning_rate=min_learning_rate,

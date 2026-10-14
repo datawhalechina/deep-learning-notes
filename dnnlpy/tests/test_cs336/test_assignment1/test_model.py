@@ -5,38 +5,11 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.testing import assert_close
 
-from .adapters import (
-    run_embedding,
-    run_linear,
-    run_multihead_self_attention,
-    run_multihead_self_attention_with_rope,
-    run_rmsnorm,
-    run_rope,
-    run_scaled_dot_product_attention,
-    run_silu,
-    run_swiglu,
-    run_transformer_block,
-    run_transformer_lm,
-)
+import dnnlpy.cs336.assignment1.adapters as a1
+
 from .conftest import SnapShot
 
 type StateDict = tuple[dict[str, Tensor], dict[str, Any]]
-
-__all__ = [
-    'test_3d_scaled_dot_product_attention',
-    'test_4d_scaled_dot_product_attention',
-    'test_embedding',
-    'test_linear',
-    'test_multihead_self_attention',
-    'test_multihead_self_attention_with_rope',
-    'test_rmsnorm',
-    'test_rope',
-    'test_silu',
-    'test_swiglu',
-    'test_transformer_block',
-    'test_transformer_lm',
-    'test_transformer_lm_truncated_input',
-]
 
 
 def test_linear(
@@ -47,7 +20,7 @@ def test_linear(
     """Test the linear layer with the provided embeddings."""
     weight = ts_state_dict[0]['blocks.0.mlp.fc1.weight']
 
-    actual = run_linear(embeddings, weight)
+    actual = a1.run_linear(embeddings, weight)
     expected = F.linear(embeddings, weight)
 
     snapshot.assert_close(actual)
@@ -62,7 +35,7 @@ def test_embedding(
     """Test the embedding layer with the provided token IDs."""
     weight = ts_state_dict[0]['token_embed.weight']
 
-    actual = run_embedding(token_ids, weight)
+    actual = a1.run_embedding(token_ids, weight)
     excepted = F.embedding(token_ids, weight)
 
     snapshot.assert_close(actual)
@@ -80,7 +53,7 @@ def test_swiglu(
         for name in ['fc1', 'fc2', 'fc3']
     ]
 
-    actual_output = run_swiglu(
+    actual_output = a1.run_swiglu(
         x=embeddings,
         w1_weight=fc1_weight,
         w2_weight=fc2_weight,
@@ -97,7 +70,7 @@ def test_3d_scaled_dot_product_attention(
     attn_mask: Tensor,
 ) -> None:
     """Test scaled dot product attention with 3D input tensors (batch_size=1)."""
-    actual = run_scaled_dot_product_attention(query, key, value, attn_mask)
+    actual = a1.run_scaled_dot_product_attention(query, key, value, attn_mask)
     expected = F.scaled_dot_product_attention(query, key, value, attn_mask)
 
     snapshot.assert_close(actual, atol=1e-5)
@@ -120,7 +93,7 @@ def test_4d_scaled_dot_product_attention(
     value = value.reshape(batch_size, n_heads, *value.shape[1:])
     attn_mask = attn_mask.reshape(batch_size, n_heads, *attn_mask.shape[1:])
 
-    actual = run_scaled_dot_product_attention(query, key, value, attn_mask)
+    actual = a1.run_scaled_dot_product_attention(query, key, value, attn_mask)
     expected = F.scaled_dot_product_attention(query, key, value, attn_mask)
 
     snapshot.assert_close(actual, atol=1e-5)
@@ -141,7 +114,7 @@ def test_multihead_self_attention(
     v_proj_weight = d['blocks.0.attn.v_proj.weight']
     o_proj_weight = d['blocks.0.attn.out_proj.weight']
 
-    actual_output = run_multihead_self_attention(
+    actual_output = a1.run_multihead_self_attention(
         x=embeddings,
         d_model=d_model,
         num_heads=n_heads,
@@ -171,7 +144,7 @@ def test_multihead_self_attention_with_rope(
     o_proj_weight = d['blocks.0.attn.out_proj.weight']
 
     pos_ids = pos_ids.unsqueeze(0)  # Add batch dimension
-    output = run_multihead_self_attention_with_rope(
+    output = a1.run_multihead_self_attention_with_rope(
         x=embeddings,
         token_pos=pos_ids,
         d_model=d_model,
@@ -201,7 +174,7 @@ def test_transformer_lm(
     """Test the Transformer language model against the reference implementation."""
     state_dict = ts_state_dict[0]
 
-    output = run_transformer_lm(
+    output = a1.run_transformer_lm(
         x=token_ids,
         vocab_size=vocab_size,
         context_length=n_keys,
@@ -229,7 +202,7 @@ def test_transformer_lm_truncated_input(
 ) -> None:
     """Test Transformer language model output for truncated input sequences."""
     in_indices_truncated = token_ids[..., : token_ids.shape[-1] // 2]
-    truncated_actual_output = run_transformer_lm(
+    truncated_actual_output = a1.run_transformer_lm(
         x=in_indices_truncated,
         vocab_size=vocab_size,
         context_length=n_keys,
@@ -261,7 +234,7 @@ def test_transformer_block(
         if name.startswith(prefix)
     }
 
-    output = run_transformer_block(
+    output = a1.run_transformer_block(
         d_model=d_model,
         num_heads=n_heads,
         d_ff=d_ff,
@@ -281,7 +254,7 @@ def test_rmsnorm(
     normalized_shape = embeddings.size(-1)
     weight = state_dict['blocks.1.norm1.weight']
 
-    actual = run_rmsnorm(embeddings, weight, eps=1e-5)
+    actual = a1.run_rmsnorm(embeddings, weight, eps=1e-5)
     expected = F.rms_norm(embeddings, (normalized_shape,), weight, eps=1e-5)
 
     snapshot.assert_close(actual, atol=1e-4)
@@ -297,7 +270,7 @@ def test_rope(
     pos_ids: Tensor,
 ) -> None:
     """Test rotary positional embeddings against the reference implementation."""
-    output = run_rope(
+    output = a1.run_rope(
         x=embeddings,
         token_pos=pos_ids,
         embed_dim=d_model,
@@ -316,7 +289,7 @@ def test_silu() -> None:
         ]
     )
 
-    actual = run_silu(x)
+    actual = a1.run_silu(x)
     expected = F.silu(x)
 
     assert_close(actual, expected, rtol=1e-5, atol=1e-5)

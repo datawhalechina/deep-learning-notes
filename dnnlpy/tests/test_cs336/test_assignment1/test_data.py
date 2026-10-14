@@ -5,9 +5,7 @@ import pytest
 import torch
 from torch.testing import assert_close
 
-from .adapters import run_get_batch
-
-__all__ = ['test_get_batch']
+import dnnlpy.cs336.assignment1.adapters as a1
 
 
 def test_get_batch():
@@ -28,7 +26,7 @@ def test_get_batch():
     num_iters = 1000
 
     for _ in range(num_iters):
-        x, y = run_get_batch(
+        x, y = a1.run_get_batch(
             dataset=dataset,
             batch_size=batch_size,
             context_length=context_length,
@@ -80,7 +78,7 @@ def test_get_batch():
         # We're assuming that cuda:99 is an invalid device ordinal.
         # Just adding this here to make sure that the device flag is
         # being handled.
-        run_get_batch(
+        a1.run_get_batch(
             dataset=dataset,
             batch_size=batch_size,
             context_length=context_length,
