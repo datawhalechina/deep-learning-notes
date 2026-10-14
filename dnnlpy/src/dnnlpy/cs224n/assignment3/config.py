@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+import pydantic as dt
 
 __all__ = [
     'GPT2_LARGE',
@@ -10,8 +10,7 @@ __all__ = [
 ]
 
 
-@dataclass
-class GPT2Config:
+class GPT2Config(dt.BaseModel):
     """Configuration for the Transformer model.
 
     Args:
@@ -25,11 +24,11 @@ class GPT2Config:
         fast (bool, optional): Whether to use fast attention implementation.
     """
 
-    vocab_size: int
-    context_length: int
-    d_model: int
-    n_heads: int
-    n_layers: int
+    vocab_size: dt.PositiveInt
+    context_length: dt.PositiveInt
+    d_model: dt.PositiveInt
+    n_heads: dt.PositiveInt
+    n_layers: dt.PositiveInt
     weight_tying: bool = True
     fast: bool = False
 
