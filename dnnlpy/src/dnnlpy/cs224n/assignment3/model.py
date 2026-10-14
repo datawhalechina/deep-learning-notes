@@ -120,10 +120,9 @@ class GPT2Model(nn.Module):
                     nn.init.zeros_(module.bias)
 
         for name, param in self.named_parameters():
+            std = 0.02 / math.sqrt(2 * self.config.n_layers)
             if name.endswith(('mlp.fc2.weight', 'attn.out_proj.weight')):
-                nn.init.normal_(
-                    param, mean=0.0, std=0.02 / math.sqrt(2 * self.config.n_layers)
-                )
+                nn.init.normal_(param, mean=0.0, std=std)
 
     def forward(self, x: Tensor) -> Tensor:
         if x.size(1) > self.config.context_length:
