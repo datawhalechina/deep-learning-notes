@@ -41,8 +41,8 @@ def mlp(model: a3.GPT2Model) -> a3.GPT2MLP:
 
 
 @pytest.fixture(scope='module')
-def attention(model: a3.GPT2Model) -> a3.GPT2SelfAttention:
-    return cast(a3.GPT2SelfAttention, model.backbone[0].attn)
+def attention(model: a3.GPT2Model) -> a3.GPT2CasualAttention:
+    return cast(a3.GPT2CasualAttention, model.backbone[0].attn)
 
 
 @pytest.fixture(scope='module')
@@ -60,7 +60,7 @@ def test_mlp(mlp: a3.GPT2MLP):
     assert_close(actual, expected)
 
 
-def test_attention(attention: a3.GPT2SelfAttention):
+def test_attention(attention: a3.GPT2CasualAttention):
     """Test the forward pass of the GPT2SelfAttention."""
     inputs = torch.load(SNAPSHOT_DIR / 'attention_input.pt')
 

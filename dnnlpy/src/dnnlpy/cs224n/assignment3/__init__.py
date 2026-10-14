@@ -9,6 +9,6 @@ from .config import (
 from .model import (
     GPT2MLP as GPT2MLP,
     GPT2Block as GPT2Block,
+    GPT2CasualAttention as GPT2CasualAttention,
     GPT2Model as GPT2Model,
-    GPT2SelfAttention as GPT2SelfAttention,
 )

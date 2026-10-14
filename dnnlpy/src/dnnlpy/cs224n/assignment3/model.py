@@ -17,8 +17,8 @@ type ModelSize = Literal['small', 'medium', 'large', 'xl']
 __all__ = [
     'GPT2MLP',
     'GPT2Block',
+    'GPT2CasualAttention',
     'GPT2Model',
-    'GPT2SelfAttention',
 ]
 
 
@@ -38,7 +38,7 @@ class GPT2MLP(nn.Module):
         return x
 
 
-class GPT2SelfAttention(nn.Module):
+class GPT2CasualAttention(nn.Module):
     """Creates a self-attention layer for the GPT-2 model."""
 
     def __init__(self, config: GPT2Config):
@@ -62,7 +62,7 @@ class GPT2Block(nn.Module):
     def __init__(self, config: GPT2Config):
         super().__init__()
         self.norm1 = dnn.LayerNorm(config.d_model)
-        self.attn = GPT2SelfAttention(config)
+        self.attn = GPT2CasualAttention(config)
         self.norm2 = dnn.LayerNorm(config.d_model)
         self.mlp = GPT2MLP(config)
 
