@@ -45,7 +45,7 @@ dependencies = [
     "transformers>=5.19.0,<5.20.0",
 
     # High performance kernels
-    "triton>=3.8.0,<3.9.0; sys_platform == 'linux'",
+    "triton>=3.9.0,<3.10.0; sys_platform == 'linux'",
     "xformers==0.0.35",
 
     # Scientific computing and machine learning
