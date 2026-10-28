@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
     # PyTorch ecosystem
-    "torch>=2.14.0,<2.15.0",
+    "torch>=2.15.0,<2.16.0",
     "torchmetrics>=1.9.0,<1.10.0",
 
     # Hugging Face and tokenization
