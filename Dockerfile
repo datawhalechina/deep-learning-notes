@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM ghcr.io/quarto-dev/quarto:1.11.0 AS builder
+FROM ghcr.io/quarto-dev/quarto:1.12.3 AS builder
 
 USER root
 
